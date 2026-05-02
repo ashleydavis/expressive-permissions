@@ -33,6 +33,24 @@ After editing rules, rebuild and reload:
 bun bundle && /reload-plugins
 ```
 
+## How to test the plugin is working
+
+Once Claude is running with the plugin loaded, ask it to run a command that has no matching rule — for example `echo hello`. With no rule covering `echo`, the plugin defaults to `ask` and you should see a confirmation prompt. If the command runs silently without any prompt, the plugin is not intercepting calls.
+
+To confirm the plugin itself loaded without errors, check the Claude startup output for a line referencing the hook, or run:
+
+```bash
+/plugins
+```
+
+This lists all active plugins. `claude-permissions` should appear in the list.
+
+If the hook is silently not firing, the most common causes are:
+
+- `plugin/dist/hook.js` is missing — run `bun bundle` to generate it.
+- The plugin directory path is wrong — verify the path passed to `--plugin-dir` points to the `plugin/` subdirectory, not the repo root.
+- A stale hook after editing source — run `bun bundle && /reload-plugins`.
+
 ## Scripts
 
 | Script | Short | Description |
