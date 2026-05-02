@@ -74,14 +74,14 @@ This plugin simulates `cd` and environment-variable assignments as it walks the 
 
 ```
 /plugin marketplace add ashleydavis/claude-permissions
-/plugin install claude-permissions@ash-tools
+/plugin install claude-permissions@claude-permissions
 ```
 
 ### Pre-release / testing (pin to `dev` branch)
 
 ```
 /plugin marketplace add https://github.com/ashleydavis/claude-permissions.git#dev
-/plugin install claude-permissions@ash-tools
+/plugin install claude-permissions@claude-permissions
 /plugin marketplace update ash-tools   # pull latest dev commits
 ```
 

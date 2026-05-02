@@ -1,13 +1,21 @@
 {
-    "name": "ash-tools",
+    "name": "claude-permissions",
+    "description": "Marketplace for the claude-permissions plugin",
     "owner": {
-        "name": "Ashley Davis"
+        "name": "Ashley Davis",
+        "email": "ashley@codecapers.com.au"
     },
     "plugins": [
         {
             "name": "claude-permissions",
             "description": "Intercepts every tool call via PreToolUse and decides allow, deny, or ask based on configurable rules.",
-            "source": "./plugin"
+            "source": "./plugin",
+            "author": {
+                "name": "Ashley Davis",
+                "email": "ashley@codecapers.com.au"
+            },
+            "homepage": "https://github.com/ashleydavis/claude-permissions",
+            "repository": "https://github.com/ashleydavis/claude-permissions"
         }
     ]
 }
