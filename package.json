@@ -13,7 +13,7 @@
         "tw": "bun run test:watch",
         "smoke": "bash scripts/smoke-tests.sh",
         "test:all": "bun run test && bash smoke-tests-bash-parser.sh && bash scripts/hook-smoke-tests.sh && bash scripts/smoke-tests.sh",
-        "dev": "claude --plugin-dir /home/ash/projects/claude-permissions",
+        "dev": "claude --plugin-dir /home/ash/projects/claude-permissions/plugin",
         "d": "bun run dev"
     },
     "dependencies": {

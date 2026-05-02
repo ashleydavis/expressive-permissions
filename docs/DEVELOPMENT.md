@@ -13,11 +13,24 @@ bun install
 bun bundle   # bundle plugin/dist/hook.js
 ```
 
-Run Claude Code with the plugin loaded from your local clone:
+## Running it during development
+
+From inside the repo:
 
 ```bash
-claude --plugin-dir .
-# after editing rules: bun bundle && /reload-plugins
+claude --plugin-dir ./plugin
+```
+
+Or from any other project directory:
+
+```bash
+claude --plugin-dir /path/to/claude-permissions/plugin
+```
+
+After editing rules, rebuild and reload:
+
+```bash
+bun bundle && /reload-plugins
 ```
 
 ## Scripts

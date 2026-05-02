@@ -1,9 +1,10 @@
 {
-    "hooks": [
-        {
-            "event": "PreToolUse",
-            "matcher": "*",
-            "command": "bun ${CLAUDE_PLUGIN_ROOT}/dist/hook.js"
-        }
-    ]
+    "hooks": {
+        "PreToolUse": [
+            {
+                "matcher": "*",
+                "hooks": [{ "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/dist/hook.js" }]
+            }
+        ]
+    }
 }
