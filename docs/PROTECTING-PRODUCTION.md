@@ -247,7 +247,7 @@ kubectl:
 
 ## Scoping rules to production contexts
 
-The recipes above apply globally. Use `env` to match the active AWS profile, or `args` to match the kubectl `--context` flag, leaving development workflows unrestricted.
+The recipes above apply globally. Use `env` to match the active AWS profile, or `args` to match the kubectl `--context` flag, leaving the sandbox environment unrestricted.
 
 ### AWS: matching on the active profile
 
@@ -294,7 +294,7 @@ aws:
     reason: Confirm AWS operation on non-sandbox profile
 ```
 
-`/^(?!sandbox$)/` matches any profile name except `sandbox` exactly. The `deny` rules and the catch-all `ask` both match destructive operations on non-sandbox profiles -- deny wins because it is stricter. The `ask` only takes effect when no `deny` rule fires, which covers operations like `describe-*` and `list-*`.
+`/^(?!sandbox$)/` matches any profile name except `sandbox` exactly. The `deny` rules and the catch-all `ask` both match destructive operations on non-sandbox profiles -- deny wins because it is stricter. The `ask` only takes effect when no `deny` rule matches, which covers operations like `describe-*` and `list-*`.
 
 > **Note on `allow` vs `ask`:** Because `ask` beats `allow` in the strictest-wins ordering, adding explicit `allow` rules for reads (e.g. `pos: ["*", "describe-*"], decide: allow`) would have no effect -- the catch-all `ask` would still win. If you want reads to pass through silently on production, remove the catch-all `ask` and enumerate only the operations you want to deny. Anything not covered by an explicit rule falls through to the default behavior.
 
@@ -304,35 +304,65 @@ Match on the `--context` flag to scope rules to specific clusters:
 
 ```yaml
 kubectl:
-  - args:
-      context: prod-*
-    pos: delete
-    decide: deny
-    reason: kubectl delete blocked when targeting a production cluster
-  - args:
-      context: prod-*
-    pos: apply
-    decide: deny
-    reason: Applying manifests blocked when targeting a production cluster
-  - args:
-      context: prod-*
-    pos: exec
-    decide: deny
-    reason: Pod shell access blocked when targeting a production cluster
-  - args:
-      context: prod-*
-    pos: scale
-    decide: deny
-    reason: Scaling blocked when targeting a production cluster
-  - args:
-      context: prod-*
-    decide: ask
-    reason: Confirm kubectl operation on production cluster
-
+  # Sandbox: allow everything without prompting
   - args:
       context: sandbox-*
     decide: allow
+
+  # Any non-sandbox context: allow read-only operations
+  - args:
+      context: /^(?!sandbox)/
+    pos: get
+    decide: allow
+  - args:
+      context: /^(?!sandbox)/
+    pos: describe
+    decide: allow
+  - args:
+      context: /^(?!sandbox)/
+    pos: logs
+    decide: allow
+  - args:
+      context: /^(?!sandbox)/
+    pos: top
+    decide: allow
+  - args:
+      context: /^(?!sandbox)/
+    pos: version
+    decide: allow
+  - args:
+      context: /^(?!sandbox)/
+    pos: cluster-info
+    decide: allow
+
+  # Any non-sandbox context: deny known-destructive operations
+  - args:
+      context: /^(?!sandbox)/
+    pos: delete
+    decide: deny
+    reason: kubectl delete blocked outside sandbox
+  - args:
+      context: /^(?!sandbox)/
+    pos: apply
+    decide: deny
+    reason: Applying manifests blocked outside sandbox
+  - args:
+      context: /^(?!sandbox)/
+    pos: exec
+    decide: deny
+    reason: Pod shell access blocked outside sandbox
+  - args:
+      context: /^(?!sandbox)/
+    pos: scale
+    decide: deny
+    reason: Scaling blocked outside sandbox
+
+  # Non-sandbox catch-all: ask for anything not explicitly denied above
+  - args:
+      context: /^(?!sandbox)/
+    decide: ask
+    reason: Confirm kubectl operation outside sandbox
 ```
 
-This fires when `--context` is passed explicitly, which is common in scripts and pipelines. If the active context was set with `kubectl config use-context` and commands run without the flag, these rules will not match -- for that case, a custom TypeScript rule can call `kubectl config current-context` to detect the active context automatically.
+This matches when `--context` is passed explicitly, which is common in scripts and pipelines. If the active context was set with `kubectl config use-context` and commands run without the flag, these rules will not match -- for that case, a custom TypeScript rule can call `kubectl config current-context` to detect the active context automatically.
 

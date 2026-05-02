@@ -1,0 +1,25 @@
+description: "protecting-production: aws delete on non-sandbox profile → deny"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "AWS_PROFILE=prod aws ec2 delete-instance --instance-id i-1234567890"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    aws:
+      - env:
+          AWS_PROFILE: sandbox
+        decide: allow
+      - env:
+          AWS_PROFILE: /^(?!sandbox$)/
+        pos:
+          - "*"
+          - delete-*
+        decide: deny
+        reason: Destructive deletes blocked on this profile
+
+expected:
+  decision: deny
+  reason: Destructive deletes blocked on this profile

@@ -8,6 +8,10 @@ rm --force --recursive
 
 I though I had an elegant way to do this but I'm not sure now.
 
+Would this even work?
+
+`cmd`: `rm -r|recursive&f|force`
+
 ---
 
 How to install globally?

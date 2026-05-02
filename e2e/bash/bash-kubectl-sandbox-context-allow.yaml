@@ -1,0 +1,22 @@
+description: "protecting-production: kubectl delete with sandbox context → allow"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "kubectl delete pod my-pod --context sandbox-cluster"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    kubectl:
+      - args:
+          context: sandbox-*
+        decide: allow
+      - args:
+          context: /^(?!sandbox)/
+        pos: delete
+        decide: deny
+        reason: kubectl delete blocked outside sandbox
+
+expected:
+  decision: allow

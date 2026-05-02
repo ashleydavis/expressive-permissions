@@ -1,0 +1,23 @@
+description: "protecting-production: aws describe-instances → allow (read-only)"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "aws ec2 describe-instances"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    aws:
+      - pos:
+          - "*"
+          - describe-*
+        decide: allow
+      - pos:
+          - "*"
+          - delete-*
+        decide: deny
+        reason: Deletion blocked
+
+expected:
+  decision: allow

@@ -171,20 +171,29 @@ interface IArgvResult {
 }
 
 // Converts a flat array of argument token strings into an IArgvResult.
-// Rules: --flag → boolean, --flag=val → string, -abc → three booleans,
-// -f=val → string, anything else → positional. One positional → string; otherwise → string[].
+// Rules: --flag → boolean, --flag=val → string, --flag val → string (next non-flag token),
+// -abc → three booleans, -f=val → string, anything else → positional.
+// One positional → string; otherwise → string[].
 function parseArgv(argTokens: string[]): IArgvResult {
     const args: Record<string, string | boolean> = {};
     const positionals: string[] = [];
+    let index = 0;
 
-    for (const token of argTokens) {
+    while (index < argTokens.length) {
+        const token = argTokens[index];
         if (token.startsWith("--")) {
             const rest = token.substring(2);
             const eqIdx = rest.indexOf("=");
             if (eqIdx !== -1) {
                 args[rest.substring(0, eqIdx)] = rest.substring(eqIdx + 1);
             } else {
-                args[rest] = true;
+                const next = argTokens[index + 1];
+                if (next !== undefined && !next.startsWith("-")) {
+                    args[rest] = next;
+                    index++;
+                } else {
+                    args[rest] = true;
+                }
             }
         } else if (token.startsWith("-") && token.length > 1) {
             const rest = token.substring(1);
@@ -199,6 +208,7 @@ function parseArgv(argTokens: string[]): IArgvResult {
         } else {
             positionals.push(token);
         }
+        index++;
     }
 
     const pos: string | string[] = positionals.length === 1 ? positionals[0] : positionals;

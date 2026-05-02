@@ -40,10 +40,33 @@ describe("parseBash", () => {
             expect(cmd.pos).toBe("test");
         });
 
-        test("long flag with value", () => {
+        test("long flag with equals value", () => {
             const node = parseBash("npm test --reporter=spec");
             const cmd = expectCommand(node, "npm");
             expect(cmd.args).toEqual({ reporter: "spec" });
+            expect(cmd.pos).toBe("test");
+        });
+
+        test("long flag with space-separated value", () => {
+            const node = parseBash("kubectl delete --context prod-cluster");
+            const cmd = expectCommand(node, "kubectl");
+            expect(cmd.args).toEqual({ context: "prod-cluster" });
+            expect(cmd.pos).toBe("delete");
+        });
+
+        test("long flag with equals value and space-separated value are equivalent", () => {
+            const nodeEquals = parseBash("kubectl delete --context=prod-cluster");
+            const cmdEquals = expectCommand(nodeEquals, "kubectl");
+            const nodeSpace = parseBash("kubectl delete --context prod-cluster");
+            const cmdSpace = expectCommand(nodeSpace, "kubectl");
+            expect(cmdEquals.args).toEqual(cmdSpace.args);
+            expect(cmdEquals.pos).toEqual(cmdSpace.pos);
+        });
+
+        test("long flag followed by another flag stays boolean", () => {
+            const node = parseBash("npm test --watch --reporter=spec");
+            const cmd = expectCommand(node, "npm");
+            expect(cmd.args).toEqual({ watch: true, reporter: "spec" });
             expect(cmd.pos).toBe("test");
         });
 

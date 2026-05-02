@@ -1,0 +1,31 @@
+description: "protecting-production: kubectl scale outside sandbox → ask (catch-all)"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "kubectl scale deployment my-app --replicas 3 --context staging-cluster"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    kubectl:
+      - args:
+          context: sandbox-*
+        decide: allow
+      - args:
+          context: /^(?!sandbox)/
+        pos: get
+        decide: allow
+      - args:
+          context: /^(?!sandbox)/
+        pos: delete
+        decide: deny
+        reason: kubectl delete blocked outside sandbox
+      - args:
+          context: /^(?!sandbox)/
+        decide: ask
+        reason: Confirm kubectl operation outside sandbox
+
+expected:
+  decision: ask
+  reason: Confirm kubectl operation outside sandbox

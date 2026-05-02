@@ -1,0 +1,26 @@
+description: "protecting-production: kubectl get outside sandbox → allow (read-only)"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "kubectl get pods --context prod-cluster"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    kubectl:
+      - args:
+          context: sandbox-*
+        decide: allow
+      - args:
+          context: /^(?!sandbox)/
+        pos: get
+        decide: allow
+      - args:
+          context: /^(?!sandbox)/
+        pos: delete
+        decide: deny
+        reason: kubectl delete blocked outside sandbox
+
+expected:
+  decision: allow
