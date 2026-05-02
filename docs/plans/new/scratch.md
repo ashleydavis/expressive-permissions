@@ -75,6 +75,14 @@ I really hate `pos`, but `args` is already taken.
 Any solution to this?
 
 
+Could just paper over it by having `cmd` that is a string that is parsed:
+
+```yaml
+aws:
+  - cmd: "* describe-*"
+    decide: allow
+```
+
 --- 
 
 How do I add an allow for any "sandbox" commands?

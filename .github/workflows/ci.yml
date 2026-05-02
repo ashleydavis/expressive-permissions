@@ -23,8 +23,11 @@ jobs:
       - name: Test
         run: bun run test
 
-      - name: Smoke tests
+      - name: Smoke tests (e2e pipeline)
         run: bash scripts/smoke-tests.sh
 
       - name: Smoke tests (bash parser)
         run: bash smoke-tests-bash-parser.sh
+
+      - name: Smoke tests (hook sanity)
+        run: bash scripts/hook-smoke-tests.sh
