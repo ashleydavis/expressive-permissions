@@ -1,4 +1,5 @@
 import { decide, expandToken, expandCommandArgs, rank, isLeaf, aggregateChildren, combine } from "../interpret";
+import { NullAuditLogger } from "../audit-log";
 import { rules } from "../rules";
 import { cdRule } from "../rules/builtin/cd";
 import { envPrefixRule } from "../rules/builtin/env-prefix";
@@ -56,30 +57,30 @@ beforeEach(() => {
 
 test("leaf default: all rules abstain → ask", () => {
     rules.push(spyRule(ABSTAIN));
-    const result = decide(makeBashCall("ls"));
+    const result = decide(makeBashCall("ls"), new NullAuditLogger());
     expect(result.action).toBe("ask");
 });
 
 test("leaf default: no rules → ask", () => {
-    const result = decide(makeBashCall("ls"));
+    const result = decide(makeBashCall("ls"), new NullAuditLogger());
     expect(result.action).toBe("ask");
 });
 
 test("leaf default: allow rule → allow", () => {
     rules.push(spyRule({ decision: { action: "allow" } }));
-    const result = decide(makeBashCall("ls"));
+    const result = decide(makeBashCall("ls"), new NullAuditLogger());
     expect(result.action).toBe("allow");
 });
 
 test("leaf default: ask rule → ask", () => {
     rules.push(spyRule({ decision: { action: "ask" } }));
-    const result = decide(makeBashCall("ls"));
+    const result = decide(makeBashCall("ls"), new NullAuditLogger());
     expect(result.action).toBe("ask");
 });
 
 test("leaf default: deny rule → deny", () => {
     rules.push(spyRule({ decision: { action: "deny", reason: "blocked" } }));
-    const result = decide(makeBashCall("ls"));
+    const result = decide(makeBashCall("ls"), new NullAuditLogger());
     expect(result.action).toBe("deny");
 });
 
@@ -92,13 +93,13 @@ test("intermediate aggregation: any child deny wins", () => {
         (node: AstNode) => node.type === "command" && (node as { binary?: string }).binary === "rm",
         { decision: { action: "deny", reason: "no rm" } }
     ));
-    const result = decide(makeBashCall("ls && rm -rf /"));
+    const result = decide(makeBashCall("ls && rm -rf /"), new NullAuditLogger());
     expect(result.action).toBe("deny");
 });
 
 test("intermediate aggregation: all children allow → allow", () => {
     rules.push(spyRule({ decision: { action: "allow" } }));
-    const result = decide(makeBashCall("ls && pwd"));
+    const result = decide(makeBashCall("ls && pwd"), new NullAuditLogger());
     expect(result.action).toBe("allow");
 });
 
@@ -108,7 +109,7 @@ test("intermediate aggregation: all allow + abstain own rule → allow", () => {
         { decision: { action: "allow" } }
     ));
     // No rule for the bash root or binop node → abstain on own → keep children's allow
-    const result = decide(makeBashCall("ls && pwd"));
+    const result = decide(makeBashCall("ls && pwd"), new NullAuditLogger());
     expect(result.action).toBe("allow");
 });
 
@@ -121,7 +122,7 @@ test("intermediate aggregation: all allow + ask own rule → ask", () => {
         (node: AstNode) => node.type === "bash",
         { decision: { action: "ask" } }
     ));
-    const result = decide(makeBashCall("ls && pwd"));
+    const result = decide(makeBashCall("ls && pwd"), new NullAuditLogger());
     expect(result.action).toBe("ask");
 });
 
@@ -131,7 +132,7 @@ test("intermediate aggregation: mixed children + abstain own → ask", () => {
         { decision: { action: "allow" } }
     ));
     // pwd falls through to ask (default)
-    const result = decide(makeBashCall("ls && pwd"));
+    const result = decide(makeBashCall("ls && pwd"), new NullAuditLogger());
     expect(result.action).toBe("ask");
 });
 
@@ -145,7 +146,7 @@ test("intermediate aggregation: mixed children + allow own → allow", () => {
         { decision: { action: "allow" } }
     ));
     // ls allow, pwd ask → children mixed → bash root own rule allow overrides → allow
-    const result = decide(makeBashCall("ls && pwd"));
+    const result = decide(makeBashCall("ls && pwd"), new NullAuditLogger());
     expect(result.action).toBe("allow");
 });
 
@@ -163,7 +164,7 @@ test("deny short-circuit: child deny propagates to root", () => {
         (node: AstNode) => node.type === "bash",
         { decision: { action: "allow" } }
     ));
-    const result = decide(makeBashCall("ls && rm foo"));
+    const result = decide(makeBashCall("ls && rm foo"), new NullAuditLogger());
     expect(result.action).toBe("deny");
 });
 
@@ -174,14 +175,14 @@ test("deny short-circuit: child deny propagates to root", () => {
 test("rule iteration: allow then ask → ask (strictest-wins)", () => {
     rules.push(spyRule({ decision: { action: "allow" } }));
     rules.push(spyRule({ decision: { action: "ask" } }));
-    const result = decide(makeBashCall("ls"));
+    const result = decide(makeBashCall("ls"), new NullAuditLogger());
     expect(result.action).toBe("ask");
 });
 
 test("rule iteration: ask then allow → ask (ask not downgraded)", () => {
     rules.push(spyRule({ decision: { action: "ask" } }));
     rules.push(spyRule({ decision: { action: "allow" } }));
-    const result = decide(makeBashCall("ls"));
+    const result = decide(makeBashCall("ls"), new NullAuditLogger());
     expect(result.action).toBe("ask");
 });
 
@@ -192,7 +193,7 @@ test("rule iteration: deny short-circuits remaining rules", () => {
         secondRuleCalled = true;
         return { decision: { action: "allow" } };
     });
-    const result = decide(makeBashCall("ls"));
+    const result = decide(makeBashCall("ls"), new NullAuditLogger());
     expect(result.action).toBe("deny");
     expect(secondRuleCalled).toBe(false);
 });
@@ -201,7 +202,7 @@ test("rule iteration: same-rank ties go to latest rule", () => {
     rules.push(spyRule({ decision: { action: "allow" } }));
     rules.push(spyRule({ decision: { action: "allow" } }));
     // Both allow → allow wins (last one recorded since rank is equal and >=)
-    const result = decide(makeBashCall("ls"));
+    const result = decide(makeBashCall("ls"), new NullAuditLogger());
     expect(result.action).toBe("allow");
 });
 
@@ -218,7 +219,7 @@ test("persistent env composition: env update applied even if later rule denies",
         };
     });
     rules.push(spyRule({ decision: { action: "deny", reason: "blocked" } }, capturedEnvs));
-    decide(makeBashCall("ls"));
+    decide(makeBashCall("ls"), new NullAuditLogger());
     // The spy rule ran after envInstaller, so it should see INSTALLED
     expect(capturedEnvs.length).toBeGreaterThan(0);
     expect(capturedEnvs[0].env.INSTALLED).toBe("yes");
@@ -258,7 +259,7 @@ test("scoped env: visible to subsequent rules at same node but not siblings", ()
         return ABSTAIN;
     });
 
-    decide(makeBashCall("ls && pwd"));
+    decide(makeBashCall("ls && pwd"), new NullAuditLogger());
 
     expect(capturedAtSameNode.length).toBeGreaterThan(0);
     expect(capturedAtSameNode[0].env.SCOPED).toBe("yes");
@@ -295,7 +296,7 @@ test("scoped env with persistent env: scopedEnv visible at same node, persistent
         return ABSTAIN;
     });
 
-    decide(makeBashCall("ls; pwd"));
+    decide(makeBashCall("ls; pwd"), new NullAuditLogger());
 
     expect(capturedAtSameNode[0].env.SCOPED).toBe("yes");
     expect(capturedAtSameNode[0].env.PERSISTENT).toBe("yes");
@@ -317,7 +318,7 @@ test("$VAR expansion: FOO=bar; git add $FOO — rules at git add see pos === 'ba
         return ABSTAIN;
     });
 
-    decide(makeBashCall("FOO=bar; git add $FOO"));
+    decide(makeBashCall("FOO=bar; git add $FOO"), new NullAuditLogger());
 
     expect(capturedNodes.length).toBeGreaterThan(0);
     const gitNode = capturedNodes[0] as { pos?: string | string[] };
@@ -337,7 +338,7 @@ test("$VAR reversed: git add $FOO; FOO=bar — $FOO stays literal at git add tim
         return ABSTAIN;
     });
 
-    decide(makeBashCall("git add $FOO; FOO=bar"));
+    decide(makeBashCall("git add $FOO; FOO=bar"), new NullAuditLogger());
 
     expect(capturedNodes.length).toBeGreaterThan(0);
     const gitNode = capturedNodes[0] as { pos?: string | string[] };
@@ -356,7 +357,7 @@ test("${VAR} brace syntax expanded: BAR=main; git checkout ${BAR}", () => {
         return ABSTAIN;
     });
 
-    decide(makeBashCall("BAR=main; git checkout ${BAR}"));
+    decide(makeBashCall("BAR=main; git checkout ${BAR}"), new NullAuditLogger());
 
     expect(capturedNodes.length).toBeGreaterThan(0);
     const gitNode = capturedNodes[0] as { pos?: string | string[] };
@@ -374,7 +375,7 @@ test("OS-level vars not expanded: git add $HOME — rules see pos '$HOME'", () =
         return ABSTAIN;
     });
 
-    decide(makeBashCall("git add $HOME"));
+    decide(makeBashCall("git add $HOME"), new NullAuditLogger());
 
     expect(capturedNodes.length).toBeGreaterThan(0);
     const gitNode = capturedNodes[0] as { pos?: string | string[] };
@@ -397,7 +398,7 @@ test("env threading seq: left env propagates to right", () => {
         return ABSTAIN;
     });
 
-    decide(makeBashCall("cd /etc; rm x", "/start"));
+    decide(makeBashCall("cd /etc; rm x", "/start"), new NullAuditLogger());
 
     expect(capturedEnvs.length).toBeGreaterThan(0);
     expect(capturedEnvs[0].cwd).toBe("/etc");
@@ -413,7 +414,7 @@ test("env threading and: left env propagates to right", () => {
         return ABSTAIN;
     });
 
-    decide(makeBashCall("cd /etc && rm x", "/start"));
+    decide(makeBashCall("cd /etc && rm x", "/start"), new NullAuditLogger());
 
     expect(capturedEnvs.length).toBeGreaterThan(0);
     expect(capturedEnvs[0].cwd).toBe("/etc");
@@ -429,7 +430,7 @@ test("env threading pipe: right side does NOT see cd from left side", () => {
         return ABSTAIN;
     });
 
-    decide(makeBashCall("cd /etc | echo", "/start"));
+    decide(makeBashCall("cd /etc | echo", "/start"), new NullAuditLogger());
 
     expect(capturedEnvs.length).toBeGreaterThan(0);
     expect(capturedEnvs[0].cwd).toBe("/start");
@@ -445,7 +446,7 @@ test("env threading or: right side does NOT see cd from left side", () => {
         return ABSTAIN;
     });
 
-    decide(makeBashCall("cd /etc || echo", "/start"));
+    decide(makeBashCall("cd /etc || echo", "/start"), new NullAuditLogger());
 
     expect(capturedEnvs.length).toBeGreaterThan(0);
     expect(capturedEnvs[0].cwd).toBe("/start");
@@ -465,7 +466,7 @@ test("cwd propagation: absolute cd through &&", () => {
         return ABSTAIN;
     });
 
-    decide(makeBashCall("cd /etc && rm x", "/home/u"));
+    decide(makeBashCall("cd /etc && rm x", "/home/u"), new NullAuditLogger());
 
     expect(capturedEnvs[0].cwd).toBe("/etc");
     expect(capturedEnvs[0].cwdResolved).toBe(true);
@@ -481,7 +482,7 @@ test("cwd propagation: relative cd from /home/u", () => {
         return ABSTAIN;
     });
 
-    decide(makeBashCall("cd src && ls", "/home/u"));
+    decide(makeBashCall("cd src && ls", "/home/u"), new NullAuditLogger());
 
     expect(capturedEnvs[0].cwd).toBe("/home/u/src");
 });
@@ -496,7 +497,7 @@ test("cwd propagation: parent cd from /home/u", () => {
         return ABSTAIN;
     });
 
-    decide(makeBashCall("cd .. && ls", "/home/u"));
+    decide(makeBashCall("cd .. && ls", "/home/u"), new NullAuditLogger());
 
     expect(capturedEnvs[0].cwd).toBe("/home");
 });
@@ -511,7 +512,7 @@ test("cwd propagation: cd reset at pipe — echo sees original cwd", () => {
         return ABSTAIN;
     });
 
-    decide(makeBashCall("cd /etc | echo", "/start"));
+    decide(makeBashCall("cd /etc | echo", "/start"), new NullAuditLogger());
 
     expect(capturedEnvs[0].cwd).toBe("/start");
 });
@@ -527,7 +528,7 @@ test("cwd propagation: cd conservative across || — ls sees original cwd", () =
     });
 
     // cd /etc || cd /tmp; ls — the || discards env, so ; passes original cwd to ls
-    decide(makeBashCall("cd /etc || cd /tmp; ls", "/start"));
+    decide(makeBashCall("cd /etc || cd /tmp; ls", "/start"), new NullAuditLogger());
 
     expect(capturedEnvs[0].cwd).toBe("/start");
 });
@@ -542,7 +543,7 @@ test("cwd propagation: unresolvable cd — ls sees cwdResolved false", () => {
         return ABSTAIN;
     });
 
-    decide(makeBashCall("cd $HOME && ls", "/start"));
+    decide(makeBashCall("cd $HOME && ls", "/start"), new NullAuditLogger());
 
     expect(capturedEnvs[0].cwdResolved).toBe(false);
     expect(capturedEnvs[0].cwd).toBe("/start");
@@ -558,7 +559,7 @@ test("cwd propagation: cd no-arg → unresolved", () => {
         return ABSTAIN;
     });
 
-    decide(makeBashCall("cd && ls", "/start"));
+    decide(makeBashCall("cd && ls", "/start"), new NullAuditLogger());
 
     expect(capturedEnvs[0].cwdResolved).toBe(false);
 });
@@ -573,7 +574,7 @@ test("cwd propagation: chained cds resolve correctly", () => {
         return ABSTAIN;
     });
 
-    decide(makeBashCall("cd a && cd b && ls", "/orig"));
+    decide(makeBashCall("cd a && cd b && ls", "/orig"), new NullAuditLogger());
 
     expect(capturedEnvs[0].cwd).toBe("/orig/a/b");
 });
@@ -592,7 +593,7 @@ test("envPrefix: FOO=bar npm test — subsequent rules at same leaf see FOO", ()
         return ABSTAIN;
     });
 
-    decide(makeBashCall("FOO=bar npm test"));
+    decide(makeBashCall("FOO=bar npm test"), new NullAuditLogger());
 
     expect(capturedEnvs[0].env.FOO).toBe("bar");
 });
@@ -607,7 +608,7 @@ test("envPrefix: FOO=bar npm test && echo $FOO — echo does NOT see FOO", () =>
         return ABSTAIN;
     });
 
-    decide(makeBashCall("FOO=bar npm test && echo $FOO"));
+    decide(makeBashCall("FOO=bar npm test && echo $FOO"), new NullAuditLogger());
 
     expect(capturedEnvs[0].env.FOO).toBeUndefined();
 });
@@ -633,7 +634,7 @@ test("status aggregation: cd /etc && rm -rf / → deny", () => {
         { decision: { action: "deny", reason: "rm -rf / blocked" } }
     ));
 
-    const result = decide(makeBashCall("cd /etc && rm -rf /"));
+    const result = decide(makeBashCall("cd /etc && rm -rf /"), new NullAuditLogger());
     expect(result.action).toBe("deny");
 });
 
@@ -653,7 +654,7 @@ test("status aggregation: git status → allow", () => {
         { decision: { action: "allow" } }
     ));
 
-    const result = decide(makeBashCall("git status"));
+    const result = decide(makeBashCall("git status"), new NullAuditLogger());
     expect(result.action).toBe("allow");
 });
 
@@ -674,7 +675,7 @@ test("status aggregation: git status | wc -l → ask", () => {
     ));
     // wc has no matching rule → ask (default)
 
-    const result = decide(makeBashCall("git status | wc -l"));
+    const result = decide(makeBashCall("git status | wc -l"), new NullAuditLogger());
     expect(result.action).toBe("ask");
 });
 
@@ -689,14 +690,14 @@ test("allow override: parent bash-root rule allows, overrides mixed-status child
     ));
     // children default to ask since no leaf rules match
 
-    const result = decide(makeBashCall("ls && pwd"));
+    const result = decide(makeBashCall("ls && pwd"), new NullAuditLogger());
     expect(result.action).toBe("allow");
 });
 
 test("ask overrides allow: ask at node blocks a later allow", () => {
     rules.push(spyRule({ decision: { action: "ask" } }));
     rules.push(spyRule({ decision: { action: "allow" } }));
-    const result = decide(makeBashCall("ls"));
+    const result = decide(makeBashCall("ls"), new NullAuditLogger());
     expect(result.action).toBe("ask");
 });
 
@@ -714,12 +715,12 @@ test("non-bash leaf: Edit of .env denies", () => {
         file_path: "/project/.env",
         old_string: "FOO=old",
         new_string: "FOO=new",
-    }));
+    }), new NullAuditLogger());
     expect(result.action).toBe("deny");
 });
 
 test("non-bash leaf: Read of normal file falls through to ask", () => {
-    const result = decide(makeToolCall("Read", { file_path: "/project/src/main.ts" }));
+    const result = decide(makeToolCall("Read", { file_path: "/project/src/main.ts" }), new NullAuditLogger());
     expect(result.action).toBe("ask");
 });
 
@@ -746,7 +747,7 @@ test("combined: cd blah && env_var=X cmd-1 | cmd-2 — cmd-1 sees cwd and env_va
         return ABSTAIN;
     });
 
-    decide(makeBashCall("cd blah && env_var=X cmd-1 | cmd-2", "/orig"));
+    decide(makeBashCall("cd blah && env_var=X cmd-1 | cmd-2", "/orig"), new NullAuditLogger());
 
     expect(capturedCmd1Envs[0].cwd).toBe("/orig/blah");
     expect(capturedCmd1Envs[0].env.env_var).toBe("X");

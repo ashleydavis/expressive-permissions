@@ -1,4 +1,5 @@
 import { decide } from "./interpret";
+import { createLogger } from "./audit-log";
 import { ToolCall } from "./types";
 
 // Abort timer: kills the process if the hook takes longer than 5 seconds.
@@ -22,7 +23,12 @@ export async function readStdin(): Promise<string> {
 export async function runHook(): Promise<void> {
     try {
         const call = JSON.parse(await readStdin()) as ToolCall;
-        const decision = decide(call);
+        const projectDir = process.env["CLAUDE_PROJECT_DIR"];
+        if (!projectDir) {
+            throw new Error("CLAUDE_PROJECT_DIR is not set");
+        }
+        const logger = createLogger(projectDir, new Date());
+        const decision = decide(call, logger);
         const permissionDecision = decision.action;
         const permissionDecisionReason = "reason" in decision ? decision.reason : undefined;
         process.stdout.write(

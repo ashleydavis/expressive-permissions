@@ -1,5 +1,6 @@
 import { buildAst } from "./build-ast";
 import { rules } from "./rules";
+import { IAuditLogger, toLocalISOString } from "./audit-log";
 import {
     AstNode,
     Annotation,
@@ -91,15 +92,15 @@ export function isLeaf(node: AstNode): boolean {
 // the current runningEnv. Persistent (env) and scoped (scopedEnv) updates are threaded
 // through runningEnv so later rules at the same node see earlier rules' env changes.
 // Scoped changes do not escape this function; only persistent changes are captured in envUpdate.
-function runRules(node: AstNode, env: Environment, call: ToolCall): IRunRulesResult {
+function runRules(node: AstNode, env: Environment, call: ToolCall, logger: IAuditLogger): IRunRulesResult {
     let runningEnv: Environment = env;
     let lastPersistentEnv: Environment | null = null;
     let bestAnnotation: Annotation = { decision: { action: "abstain" } };
 
     for (const rule of rules) {
         const effectiveNode: AstNode =
-            node.type === "command" 
-                ? expandCommandArgs(node, runningEnv.env) 
+            node.type === "command"
+                ? expandCommandArgs(node, runningEnv.env)
                 : node;
 
         const outcome = rule(effectiveNode, runningEnv, call);
@@ -111,6 +112,19 @@ function runRules(node: AstNode, env: Environment, call: ToolCall): IRunRulesRes
 
         if (outcome.scopedEnv !== undefined) {
             runningEnv = outcome.scopedEnv;
+        }
+
+        if (outcome.decision.action !== "abstain") {
+            const timestamp = toLocalISOString(new Date());
+            const reason = "reason" in outcome.decision ? outcome.decision.reason : undefined;
+            logger.log({
+                type: "rule_match",
+                timestamp,
+                nodeType: node.type,
+                ruleName: rule.name || undefined,
+                decision: outcome.decision.action,
+                reason,
+            });
         }
 
         if (outcome.decision.action === "deny") {
@@ -174,13 +188,22 @@ export function combine(childrenAnnotation: Annotation, ownRuleAnnotation: Annot
 // walkChildren walks the direct children of an intermediate node with operator-specific env
 // semantics. seq/and thread env left→right→up; or/pipe discard subtree env changes.
 // Returns child annotations and the environment to propagate upward.
+// IWalkChildrenResult is the return type of walkChildren.
+interface IWalkChildrenResult {
+    // The annotation produced by each direct child node.
+    childAnnotations: Annotation[];
+    // The environment to propagate upward after walking all children.
+    envOut: Environment;
+}
+
 function walkChildren(
     node: AstNode,
     env: Environment,
-    call: ToolCall
-): { childAnnotations: Annotation[]; envOut: Environment } {
+    call: ToolCall,
+    logger: IAuditLogger
+): IWalkChildrenResult {
     if (node.type === "bash") {
-        const childResult = interpret(node.ast, env, call);
+        const childResult = interpret(node.ast, env, call, logger);
         return {
             childAnnotations: [childResult.annotation],
             envOut: childResult.envOut,
@@ -190,8 +213,8 @@ function walkChildren(
     const binop = node as BinOp;
 
     if (binop.op === ";" || binop.op === "&&") {
-        const leftResult = interpret(binop.left, env, call);
-        const rightResult = interpret(binop.right, leftResult.envOut, call);
+        const leftResult = interpret(binop.left, env, call, logger);
+        const rightResult = interpret(binop.right, leftResult.envOut, call, logger);
         return {
             childAnnotations: [leftResult.annotation, rightResult.annotation],
             envOut: rightResult.envOut,
@@ -199,8 +222,8 @@ function walkChildren(
     }
 
     // || and |: both sides see parent env; parent env is returned (no propagation)
-    const leftResult = interpret(binop.left, env, call);
-    const rightResult = interpret(binop.right, env, call);
+    const leftResult = interpret(binop.left, env, call, logger);
+    const rightResult = interpret(binop.right, env, call, logger);
     return {
         childAnnotations: [leftResult.annotation, rightResult.annotation],
         envOut: env,
@@ -210,9 +233,9 @@ function walkChildren(
 // interpret recursively walks an AST node, runs rules, and returns an InterpretResult.
 // Leaf nodes default to ask when all rules abstain. Intermediate nodes aggregate child
 // results first (deny short-circuits) then layer their own rule result on top.
-function interpret(node: AstNode, env: Environment, call: ToolCall): InterpretResult {
+function interpret(node: AstNode, env: Environment, call: ToolCall, logger: IAuditLogger): InterpretResult {
     if (isLeaf(node)) {
-        const rulesResult = runRules(node, env, call);
+        const rulesResult = runRules(node, env, call, logger);
         const envOut = rulesResult.envUpdate(env);
 
         let annotation = rulesResult.annotation;
@@ -222,16 +245,35 @@ function interpret(node: AstNode, env: Environment, call: ToolCall): InterpretRe
         return { annotation, envOut };
     }
 
-    const childrenResult = walkChildren(node, env, call);
+    const childrenResult = walkChildren(node, env, call, logger);
     const childrenAnnotation = aggregateChildren(childrenResult.childAnnotations);
 
     if (childrenAnnotation.decision.action === "deny") {
+        logger.log({
+            type: "aggregation",
+            timestamp: toLocalISOString(new Date()),
+            nodeType: node.type,
+            op: node.type === "binop" ? (node as BinOp).op : undefined,
+            childrenDecision: childrenAnnotation.decision.action,
+            ownDecision: "abstain",
+            combined: "deny",
+        });
         return { annotation: childrenAnnotation, envOut: childrenResult.envOut };
     }
 
-    const rulesResult = runRules(node, env, call);
+    const rulesResult = runRules(node, env, call, logger);
     const envOut = rulesResult.envUpdate(childrenResult.envOut);
     const annotation = combine(childrenAnnotation, rulesResult.annotation);
+
+    logger.log({
+        type: "aggregation",
+        timestamp: toLocalISOString(new Date()),
+        nodeType: node.type,
+        op: node.type === "binop" ? (node as BinOp).op : undefined,
+        childrenDecision: childrenAnnotation.decision.action,
+        ownDecision: rulesResult.annotation.decision.action,
+        combined: annotation.decision.action,
+    });
 
     return { annotation, envOut };
 }
@@ -240,7 +282,17 @@ function interpret(node: AstNode, env: Environment, call: ToolCall): InterpretRe
 // ToolCall, initialises env0 from the call's cwd, runs the full interpreter pass, and
 // returns the root decision. A root abstain (which should not occur in practice) is
 // promoted to ask as a safe default.
-export function decide(call: ToolCall): Decision {
+export function decide(call: ToolCall, logger: IAuditLogger): Decision {
+    const timestamp = toLocalISOString(new Date());
+
+    logger.log({
+        type: "tool_request",
+        timestamp,
+        tool: call.tool_name,
+        input: call.tool_input as Record<string, unknown>,
+        cwd: call.cwd,
+    });
+
     const root = buildAst(call);
     const env0: Environment = {
         cwd: call.cwd,
@@ -248,11 +300,21 @@ export function decide(call: ToolCall): Decision {
         env: {},
     };
 
-    const result = interpret(root, env0, call);
-    const decision = result.annotation.decision;
+    const result = interpret(root, env0, call, logger);
+    let decision = result.annotation.decision;
 
     if (decision.action === "abstain") {
-        return ASK;
+        decision = ASK;
     }
+
+    const finalReason = "reason" in decision ? decision.reason : undefined;
+    logger.log({
+        type: "final_decision",
+        timestamp: toLocalISOString(new Date()),
+        tool: call.tool_name,
+        decision: decision.action,
+        reason: finalReason,
+    });
+
     return decision;
 }

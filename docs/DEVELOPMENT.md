@@ -47,7 +47,11 @@ The repo ships several `echo` rules in `.claude/permissions.yaml` that cover all
 | `cd /tmp && echo cwdblock` | **Denied** — `cd` changes cwd to `/tmp`, satisfying the `cwd: /tmp` rule |
 | `BLOCK_ECHO=true echo envblock` | **Denied** — env prefix sets `BLOCK_ECHO=true`, satisfying the `env` rule |
 
-Run each of those commands after loading the plugin and verify you see the expected behaviour.
+Run each of those commands after loading the plugin and verify you see the expected behaviour. Each command also produces an audit log entry. To confirm the decisions were recorded, tail the current hour's log file:
+
+```bash
+tail .claude/permissions-log/$(date -u +%Y-%m/%d/%H).log
+```
 
 To confirm the plugin itself loaded without errors, check the Claude startup output for a line referencing the hook, or run:
 

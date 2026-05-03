@@ -57,17 +57,26 @@ describe("runHook", () => {
     let exitSpy: jest.SpyInstance;
     let stderrSpy: jest.SpyInstance;
     let stdoutSpy: jest.SpyInstance;
+    let originalProjectDir: string | undefined;
 
     beforeEach(() => {
         exitSpy = jest.spyOn(process, "exit").mockImplementation(jest.fn() as any);
         stderrSpy = jest.spyOn(process.stderr, "write").mockImplementation(() => true);
         stdoutSpy = jest.spyOn(process.stdout, "write").mockImplementation(() => true);
+        originalProjectDir = process.env["CLAUDE_PROJECT_DIR"];
+        process.env["CLAUDE_PROJECT_DIR"] = require("os").tmpdir();
     });
 
     afterEach(() => {
         exitSpy.mockRestore();
         stderrSpy.mockRestore();
         stdoutSpy.mockRestore();
+        if (originalProjectDir === undefined) {
+            delete process.env["CLAUDE_PROJECT_DIR"];
+        }
+        else {
+            process.env["CLAUDE_PROJECT_DIR"] = originalProjectDir;
+        }
     });
 
     test("malformed JSON writes to stderr and exits with code 1", async () => {

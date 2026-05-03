@@ -1,0 +1,21 @@
+description: "audit log: ls is allowed and a log file is created with tool_request and final_decision entries"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "ls"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    ls:
+      decide: allow
+
+expected:
+  decision: allow
+  audit_log:
+    - type: tool_request
+      tool: Bash
+    - type: final_decision
+      tool: Bash
+      decision: allow

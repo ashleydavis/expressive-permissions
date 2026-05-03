@@ -17,6 +17,8 @@ This gives you permissions that work, even when:
 
 It's all about allowing Claude the freedom to do what it needs to do, without constantly interupting you for permissions, but at the same time protecting you from the most damaging things it can do. Rules can also be scoped by environment, so you can allow full read/write access in a sandbox AWS account or dev cluster while locking down production to read-only - or blocking writes entirely. See [docs/PROTECTING-PRODUCTION.md](docs/PROTECTING-PRODUCTION.md) for ready-to-use recipes covering AWS CLI and kubectl.
 
+All decisions are fully auditable. Every allow, deny, and ask is written to a structured JSON Lines log at `.claude/permissions-log/`. See [docs/AUDIT-LOG.md](docs/AUDIT-LOG.md) for the format and retention policy.
+
 > **Safe by default:** if you add no rules, or if a tool call matches no rule, the plugin always falls back to `ask`. Claude will never run an unmatched command silently.
 
 ## Examples

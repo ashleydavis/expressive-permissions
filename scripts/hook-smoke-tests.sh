@@ -9,6 +9,8 @@ echo "Building bundle..."
 
 PASS=0
 FAIL=0
+TMPDIR_HOOK="$(mktemp -d)"
+export CLAUDE_PROJECT_DIR="$TMPDIR_HOOK"
 
 run_test() {
     local description="$1"
@@ -66,6 +68,8 @@ run_test_output \
     '{"tool_name":"Read","tool_input":{"file_path":"/test.txt"},"cwd":"/home/user"}' \
     "hookSpecificOutput.hookEventName" \
     "PreToolUse"
+
+rm -rf "$TMPDIR_HOOK"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

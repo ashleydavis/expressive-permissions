@@ -1,6 +1,6 @@
 # claude-permissions
 
-A permissions plugin for Claude Code that intercepts every tool call and decides allow, deny, or ask based on rules you define in a YAML config file.
+A permissions plugin for Claude Code that intercepts every tool call and decides allow, deny, or ask based on rules you define in a YAML config file. All decisions are fully auditable — see the [audit log documentation](https://github.com/ashleydavis/claude-permissions/blob/main/docs/AUDIT-LOG.md).
 
 For the full explanation of why this exists and how it works, see the [project README on GitHub](https://github.com/ashleydavis/claude-permissions).
 
