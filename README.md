@@ -95,9 +95,11 @@ The plugin intercepts tool calls via a `PreToolUse` hook. When the plugin is ins
 
 > **Warning:** Only add the allow-all settings below after the plugin is installed and you have verified it is working (see [Verifying the plugin](#verifying-the-plugin)). Once the plugin is active, these settings are safe: every tool call is intercepted by the hook and evaluated against your `permissions.yaml` rules before anything runs, and any call with no matching rule defaults to `ask`. Without the plugin active, however, these settings remove all permission checks and Claude will run every tool call without prompting.
 
-### Global configuration (applies to every project)
+There are two ways to configure Claude Code to allow all tools. Both cause the plugin's hook to be the sole decision-maker, but they differ in how they handle any `deny` rules you may have in other settings files.
 
-Add the following to `~/.claude/settings.json`:
+**Option 1: Explicit allow list (recommended)**
+
+Lists each tool explicitly. Any `deny` rules in other settings files are still respected.
 
 ```json
 {
@@ -115,29 +117,27 @@ Add the following to `~/.claude/settings.json`:
 }
 ```
 
-Place your global rules in `~/.claude/permissions.yaml`. These apply to every project on your machine.
+**Option 2: Bypass permissions mode**
+
+Bypasses Claude Code's entire permission system. Simpler, but ignores any `deny` rules in other settings files.
+
+```json
+{
+  "permissions": {
+    "defaultMode": "bypassPermissions"
+  }
+}
+```
+
+In both cases the plugin's PreToolUse hook still fires on every tool call and enforces your `permissions.yaml` rules.
+
+### Global configuration (applies to every project)
+
+Add one of the blocks above to `~/.claude/settings.json`. Place your global rules in `~/.claude/permissions.yaml`. These apply to every project on your machine.
 
 ### Local project configuration (applies to one project)
 
-Add the same `permissions` block to `.claude/settings.json` in your project root:
-
-```json
-{
-  "permissions": {
-    "allow": [
-      "Bash",
-      "Read",
-      "Write",
-      "Edit",
-      "MultiEdit",
-      "WebFetch",
-      "mcp__*"
-    ]
-  }
-}
-```
-
-Place your project rules in `.claude/permissions.yaml` at the project root. These are layered on top of your global rules and take precedence when both match.
+Add one of the blocks above to `.claude/settings.json` in your project root. Place your project rules in `.claude/permissions.yaml` at the project root. These are layered on top of your global rules and take precedence when both match.
 
 With either (or both) in place, every tool call flows through your `permissions.yaml` rules and nothing prompts twice.
 

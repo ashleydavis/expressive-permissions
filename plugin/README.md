@@ -28,15 +28,17 @@ rm:
   reason: rm -rf in any format is not allowed
 ```
 
-Then set Claude Code to allow all tools so the plugin is the sole decision-maker. Add to `~/.claude/settings.json`:
+Then set Claude Code to allow all tools so the plugin is the sole decision-maker. Add the following to `~/.claude/settings.json` (global) or `.claude/settings.json` (project):
 
 ```json
 {
   "permissions": {
-    "allow": ["Bash", "Read", "Write", "Edit", "MultiEdit", "WebFetch", "mcp__*"]
+    "defaultMode": "bypassPermissions"
   }
 }
 ```
+
+See the [full documentation](https://github.com/ashleydavis/claude-permissions#configuration) for alternative configuration options.
 
 Run `/reload-plugins` after editing rules to pick up changes.
 
