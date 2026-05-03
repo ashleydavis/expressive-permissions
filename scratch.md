@@ -181,3 +181,103 @@ npx => bpx (or whatever)
 
 ---
 
+
+The docs need to say that you might want to .gitignore your audit log.
+
+
+---
+
+Maybe have a doc to show the user how to iteratively build up their permissions over time.
+
+
+---
+
+Can I get rid of all dependencies in this project?
+
+That would be good to announce in the readme.
+
+
+---
+
+
+An audit log after each tool use would be good.
+
+It would be good to log every hook related to tool execution.
+
+
+---
+
+
+How to implement nested rules? Sub rules that match when an env var, cwd, file precences, file content or command rules is matched?
+
+
+---
+
+Test idea. Set AWS_PROFILE . run Claude . Have it print the env. Have my plugin print the env
+
+ALL GOOD
+
+`cwd` returns the current project dir as well.
+
+
+```yaml
+env:
+    AWS_PROFILE: sandbox
+```
+
+```yaml
+env:
+    AWS_PROFILE: 
+        not:
+            sandbox
+```
+
+```yaml
+cwd: ./ # Current project    
+```
+
+
+```yaml
+cwd: 
+    not: ./ # Not the current project    
+```
+
+```yaml
+file:
+    ~/.kube/config: true # File is present
+```
+
+```yaml
+file:
+    ~/.kube/config:
+        contains: "current-context: sandbox"
+```
+
+```yaml
+file:
+    ~/.kube/config:
+        not:
+            contains: "current-context: sandbox"
+```
+
+
+```yaml
+program:
+    cwd: ./ # Current project
+```
+
+
+```yaml
+program:
+    "kubectl config get-context": sandbox
+```
+
+
+```yaml
+program:
+    "kubectl config get-context": 
+        not: sandbox
+```
+``
+
+
