@@ -180,3 +180,17 @@ Could handling of each tool be delegated to a seperate file/function for each of
 When it want to use npx in a bun project, "tool redirects" would be good.
 
 npx => bpx (or whatever)
+
+
+---
+
+Maybe don't promote this configuration:
+
+```
+{
+    "permissions": {
+        "defaultMode": "bypassPermissions"
+    }
+}
+
+```

@@ -1550,6 +1550,48 @@ bash:
     });
 });
 
+test("bash allow rule with reason: decision.reason equals the reason value", () => {
+    const yaml = `
+bash:
+  ls:
+    decide: allow
+    reason: ls is safe
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const result = rules[0](makeCommand("ls", []), makeEnv(), dummyCall);
+        expect(result.decision.action).toBe("allow");
+        expect((result.decision as { action: string; reason?: string }).reason).toBe("ls is safe");
+    });
+});
+
+test("read allow rule with reason: decision.reason equals the reason value", () => {
+    const yaml = `
+read:
+  path: "/home/**"
+  decide: allow
+  reason: home dir reads are fine
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const readNode: AstNode = { type: "read", file_path: "/home/user/file.txt" };
+        const result = rules[0](readNode, makeEnv(), dummyCall);
+        expect(result.decision.action).toBe("allow");
+        expect((result.decision as { action: string; reason?: string }).reason).toBe("home dir reads are fine");
+    });
+});
+
+test("allow rule with no reason: decision.reason is undefined", () => {
+    const yaml = `
+bash:
+  ls:
+    decide: allow
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const result = rules[0](makeCommand("ls", []), makeEnv(), dummyCall);
+        expect(result.decision.action).toBe("allow");
+        expect((result.decision as { action: string; reason?: string }).reason).toBeUndefined();
+    });
+});
+
 // ---------------------------------------------------------------------------
 // pos: "." literal exact match (README quick-start example)
 // ---------------------------------------------------------------------------

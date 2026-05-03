@@ -80,7 +80,7 @@ function normalizeToList(value: IYamlEntry | IYamlEntry[]): IYamlEntry[] {
 // Converts a DecideValue string to the typed Decision object, forwarding reason to deny/ask decisions
 function mapDecision(decide: DecideValue, reason?: string): Decision {
     if (decide === "allow") {
-        return { action: "allow" };
+        return { action: "allow", reason };
     }
     if (decide === "deny") {
         return { action: "deny", reason };

@@ -16,6 +16,8 @@ export interface ToolCall {
 export interface IAllowDecision {
     // Discriminator for the allow variant
     action: "allow";
+    // Optional human-readable reason explaining why the call was allowed
+    reason?: string;
 }
 
 // Decision variant indicating the tool call should be blocked
