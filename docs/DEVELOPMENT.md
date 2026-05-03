@@ -108,15 +108,15 @@ import { blockCurl } from "./block-curl.js";
 ```ts
 import { describe, expect, test } from "@jest/globals";
 import { blockCurl } from "../../rules/block-curl.js";
-import { makeCommand, makeArgs, makeEnv, dummyCall } from "../../rules/test-helpers.js";
+import { makeCommand, makeOptions, makeEnv, dummyCall } from "../../rules/test-helpers.js";
 
 describe("blockCurl", () => {
     test("denies curl", () => {
-        expect(blockCurl(makeCommand("curl", makeArgs({}, ["https://example.com"])), makeEnv(), dummyCall))
+        expect(blockCurl(makeCommand("curl", makeOptions({}, ["https://example.com"])), makeEnv(), dummyCall))
             .toMatchObject({ decision: { action: "deny" } });
     });
     test("abstains on other binaries", () => {
-        expect(blockCurl(makeCommand("wget", makeArgs({}, [])), makeEnv(), dummyCall))
+        expect(blockCurl(makeCommand("wget", makeOptions({}, [])), makeEnv(), dummyCall))
             .toEqual({ decision: { action: "abstain" } });
     });
     test("abstains on non-command nodes", () => {
@@ -139,7 +139,7 @@ Match on `node.kind` to target the right call type:
 
 | `node.type` | When it matches | Key fields |
 |---|---|---|
-| `"command"` | Bash leaf (one command in a pipeline) | `binary`, `args`, `envPrefix`, `raw` |
+| `"command"` | Bash leaf (one command in a pipeline) | `binary`, `options`, `envPrefix`, `raw` |
 | `"bash"` | Bash root (the whole command string) | `raw`, `ast` |
 | `"read"` | Read tool call | `file_path` |
 | `"write"` | Write tool call | `file_path`, `content` |

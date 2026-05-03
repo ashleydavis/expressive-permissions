@@ -9,7 +9,7 @@ input:
 rules:
   bash:
     rm:
-      args-in:
+      options-in:
         - r
         - f
       decide: deny

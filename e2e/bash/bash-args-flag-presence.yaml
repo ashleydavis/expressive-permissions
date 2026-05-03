@@ -9,7 +9,7 @@ input:
 rules:
   bash:
     rm:
-      args:
+      options:
         - r
       decide: deny
       reason: "recursive rm denied"

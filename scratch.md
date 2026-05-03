@@ -12,35 +12,6 @@ Would this even work?
 
 `cmd`: `rm -r|recursive&f|force`
 
----
-
-How to install globally?
-
-
----
-
-
-Can it log to claude chat output to explain what's is doing?
-
-
----
-
-I'd like to support OR for matching commands likes `v|vi|vim` (for aliases). Please write it into the plan @docs/plans/new/add-pos-field.md and update the documentation to match so I can see how it sounds. 
-
-
----
-
-What a validation phase to check that rules are syntaxtically correct.
-
-I want to have examples that fail, smoke tests so I can check the errors that come out of it.
-
-
----
-
-After the plan...
-
-Does the code match the docs?
-
 
 --- 
 
@@ -147,69 +118,9 @@ aws:
 
 I'd like `switch` or `if` statement that says, "if sandbox, do this, otherwise do that".
 
-
 ---
-
-I need an interceptor rule that triggers when `kubectl` is spotted in the AST.
-
-We should run `kubectl config current-context` to determine the current context and then be able to use the `context` field to match against it.
-
-The context field should match current context or `--context` argument.
-
-This kubectl specific logic definitely needs to be a plugin and not a core part of the system.
-
-Is there an aws cli plugin that could help with AWS sepcific stuff like matching on `profile`, `region`, etc?
-
----
-
-Need to make sure it can match the system env.
-
-Does this even come through properly from claude?
-
-
----
-
-Could handling of each tool be delegated to a seperate file/function for each of maintenance?
-
----
-
-
-When it want to use npx in a bun project, "tool redirects" would be good.
-
-npx => bpx (or whatever)
-
-
----
-
-
-The docs need to say that you might want to .gitignore your audit log.
-
-
----
-
-Maybe have a doc to show the user how to iteratively build up their permissions over time.
-
-
----
-
-Can I get rid of all dependencies in this project?
-
-That would be good to announce in the readme.
-
-
----
-
-
-An audit log after each tool use would be good.
-
-It would be good to log every hook related to tool execution.
-
-
----
-
 
 How to implement nested rules? Sub rules that match when an env var, cwd, file precences, file content or command rules is matched?
-
 
 ---
 
@@ -278,6 +189,5 @@ program:
     "kubectl config get-context": 
         not: sandbox
 ```
-``
 
 

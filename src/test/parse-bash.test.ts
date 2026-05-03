@@ -22,35 +22,35 @@ describe("parseBash", () => {
         test("bare binary", () => {
             const node = parseBash("ls");
             const cmd = expectCommand(node, "ls");
-            expect(cmd.args).toEqual({});
+            expect(cmd.options).toEqual({});
             expect(cmd.pos).toEqual([]);
         });
 
         test("positionals and flags", () => {
             const node = parseBash("ls -la /tmp");
             const cmd = expectCommand(node, "ls");
-            expect(cmd.args).toEqual({ l: true, a: true });
+            expect(cmd.options).toEqual({ l: true, a: true });
             expect(cmd.pos).toBe("/tmp");
         });
 
         test("long flag", () => {
             const node = parseBash("npm test --watch");
             const cmd = expectCommand(node, "npm");
-            expect(cmd.args).toEqual({ watch: true });
+            expect(cmd.options).toEqual({ watch: true });
             expect(cmd.pos).toBe("test");
         });
 
         test("long flag with equals value", () => {
             const node = parseBash("npm test --reporter=spec");
             const cmd = expectCommand(node, "npm");
-            expect(cmd.args).toEqual({ reporter: "spec" });
+            expect(cmd.options).toEqual({ reporter: "spec" });
             expect(cmd.pos).toBe("test");
         });
 
         test("long flag with space-separated value", () => {
             const node = parseBash("kubectl delete --context prod-cluster");
             const cmd = expectCommand(node, "kubectl");
-            expect(cmd.args).toEqual({ context: "prod-cluster" });
+            expect(cmd.options).toEqual({ context: "prod-cluster" });
             expect(cmd.pos).toBe("delete");
         });
 
@@ -59,56 +59,56 @@ describe("parseBash", () => {
             const cmdEquals = expectCommand(nodeEquals, "kubectl");
             const nodeSpace = parseBash("kubectl delete --context prod-cluster");
             const cmdSpace = expectCommand(nodeSpace, "kubectl");
-            expect(cmdEquals.args).toEqual(cmdSpace.args);
+            expect(cmdEquals.options).toEqual(cmdSpace.options);
             expect(cmdEquals.pos).toEqual(cmdSpace.pos);
         });
 
         test("long flag followed by another flag stays boolean", () => {
             const node = parseBash("npm test --watch --reporter=spec");
             const cmd = expectCommand(node, "npm");
-            expect(cmd.args).toEqual({ watch: true, reporter: "spec" });
+            expect(cmd.options).toEqual({ watch: true, reporter: "spec" });
             expect(cmd.pos).toBe("test");
         });
 
         test("short flag with equals value", () => {
             const node = parseBash("git commit -m=fix");
             const cmd = expectCommand(node, "git");
-            expect(cmd.args).toEqual({ m: "fix" });
+            expect(cmd.options).toEqual({ m: "fix" });
             expect(cmd.pos).toBe("commit");
         });
 
         test("short flag without equals keeps value as positional", () => {
             const node = parseBash("git commit -m fix");
             const cmd = expectCommand(node, "git");
-            expect(cmd.args).toEqual({ m: true });
+            expect(cmd.options).toEqual({ m: true });
             expect(cmd.pos).toEqual(["commit", "fix"]);
         });
 
         test("double-quoted positional", () => {
             const node = parseBash('echo "hello world"');
             const cmd = expectCommand(node, "echo");
-            expect(cmd.args).toEqual({});
+            expect(cmd.options).toEqual({});
             expect(cmd.pos).toBe("hello world");
         });
 
         test("single-quoted flag value", () => {
             const node = parseBash("git commit -m='fix: bug'");
             const cmd = expectCommand(node, "git");
-            expect(cmd.args).toEqual({ m: "fix: bug" });
+            expect(cmd.options).toEqual({ m: "fix: bug" });
             expect(cmd.pos).toBe("commit");
         });
 
         test("escaped char becomes literal", () => {
             const node = parseBash("echo \\$HOME");
             const cmd = expectCommand(node, "echo");
-            expect(cmd.args).toEqual({});
+            expect(cmd.options).toEqual({});
             expect(cmd.pos).toBe("$HOME");
         });
 
         test("empty input returns empty command", () => {
             const node = parseBash("");
             const cmd = expectCommand(node, "");
-            expect(cmd.args).toEqual({});
+            expect(cmd.options).toEqual({});
             expect(cmd.pos).toEqual([]);
             expect(cmd.envPrefix).toEqual({});
             expect(cmd.redirects).toEqual([]);
@@ -211,7 +211,7 @@ describe("parseBash", () => {
             const node = parseBash("FOO=bar cmd");
             const cmd = expectCommand(node, "cmd");
             expect(cmd.envPrefix).toEqual({ FOO: "bar" });
-            expect(cmd.args).toEqual({});
+            expect(cmd.options).toEqual({});
             expect(cmd.pos).toEqual([]);
         });
 
@@ -289,35 +289,35 @@ describe("parseBash", () => {
         test("$VAR left as literal token by the parser", () => {
             const node = parseBash("git add $FOO");
             const cmd = expectCommand(node, "git");
-            expect(cmd.args).toEqual({});
+            expect(cmd.options).toEqual({});
             expect(cmd.pos).toEqual(["add", "$FOO"]);
         });
 
         test("* left as literal token with no glob expansion", () => {
             const node = parseBash("ls *");
             const cmd = expectCommand(node, "ls");
-            expect(cmd.args).toEqual({});
+            expect(cmd.options).toEqual({});
             expect(cmd.pos).toBe("*");
         });
 
         test("$(...) subshell captured as opaque binary token", () => {
             const node = parseBash("$(which sudo) -i");
             const cmd = expectCommand(node, "$(which sudo)");
-            expect(cmd.args).toEqual({ i: true });
+            expect(cmd.options).toEqual({ i: true });
             expect(cmd.pos).toEqual([]);
         });
 
         test("backtick subshell captured as opaque binary token", () => {
             const node = parseBash("`which sudo` -i");
             const cmd = expectCommand(node, "`which sudo`");
-            expect(cmd.args).toEqual({ i: true });
+            expect(cmd.options).toEqual({ i: true });
             expect(cmd.pos).toEqual([]);
         });
 
         test("$(...) containing pipe is opaque — inner | is not lexed as operator", () => {
             const node = parseBash("$(echo hello | head -1) arg");
             const cmd = expectCommand(node, "$(echo hello | head -1)");
-            expect(cmd.args).toEqual({});
+            expect(cmd.options).toEqual({});
             expect(cmd.pos).toBe("arg");
         });
     });

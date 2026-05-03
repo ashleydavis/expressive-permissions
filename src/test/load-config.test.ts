@@ -16,8 +16,8 @@ function makeEnv(cwd: string = "/project", cwdResolved: boolean = true, envVars:
 const dummyCall: ToolCall = { tool_name: "Bash", tool_input: { command: "" }, cwd: "/project" };
 
 // Builds a Command node
-function makeCommand(binary: string, pos: string | string[], namedArgs: Record<string, string | boolean> = {}): Command {
-    return { type: "command", binary, args: namedArgs, pos, envPrefix: {}, redirects: [], raw: binary };
+function makeCommand(binary: string, pos: string | string[], namedOptions: Record<string, string | boolean> = {}): Command {
+    return { type: "command", binary, options: namedOptions, pos, envPrefix: {}, redirects: [], raw: binary };
 }
 
 // Runs the first rule and returns its decision action
@@ -194,11 +194,11 @@ bash:
 // Bash: flag presence matcher
 // ---------------------------------------------------------------------------
 
-test("bash args flag presence: fires when flag is present", () => {
+test("bash options flag presence: fires when flag is present", () => {
     const yaml = `
 bash:
   rm:
-    args:
+    options:
       - r|recursive
     decide: deny
 `;
@@ -208,11 +208,11 @@ bash:
     });
 });
 
-test("bash args flag presence: abstains when flag absent", () => {
+test("bash options flag presence: abstains when flag absent", () => {
     const yaml = `
 bash:
   rm:
-    args:
+    options:
       - r|recursive
     decide: deny
 `;
@@ -259,14 +259,14 @@ bash:
 });
 
 // ---------------------------------------------------------------------------
-// Bash: flag value (object args)
+// Bash: flag value (object options)
 // ---------------------------------------------------------------------------
 
-test("bash args flag value: fires when flag value matches glob", () => {
+test("bash options flag value: fires when flag value matches glob", () => {
     const yaml = `
 bash:
   git:
-    args:
+    options:
       m|message: "wip*"
     decide: deny
 `;
@@ -693,7 +693,7 @@ test("mega config: all features combined load and match correctly", () => {
     const yaml = `
 bash:
   rm:
-    - args:
+    - options:
         - r|recursive
       decide: deny
     - pos: "/**"
@@ -703,7 +703,7 @@ bash:
     - push:
         decide: deny
     - commit:
-        args:
+        options:
           m|message: "wip*"
         decide: deny
     - decide: ask
@@ -881,7 +881,7 @@ test("realistic project config: deny dangerous ops, ask for writes, allow reads"
     const yaml = `
 bash:
   rm:
-    - args-in:
+    - options-in:
         - r|recursive
         - f|force
       decide: deny
@@ -923,9 +923,9 @@ webfetch:
             return best;
         }
 
-        // rm -rf → deny (either flag present via args-in OR semantics)
+        // rm -rf → deny (either flag present via options-in OR semantics)
         expect(strictest(makeCommand("rm", [], { r: true, f: true }))).toBe("deny");
-        // rm -r → deny (recursive flag matches args-in)
+        // rm -r → deny (recursive flag matches options-in)
         expect(strictest(makeCommand("rm", [], { r: true }))).toBe("deny");
         // rm foo.txt → ask (catch-all)
         expect(strictest(makeCommand("rm", "foo.txt"))).toBe("ask");
@@ -985,7 +985,7 @@ write:
     const projectYaml = `
 bash:
   rm:
-    args:
+    options:
       - r|recursive
     decide: deny
   curl:
@@ -1093,14 +1093,14 @@ bash:
 });
 
 // ---------------------------------------------------------------------------
-// matchesArgs: object args with boolean flag value (not a string) → abstain
+// matchesOptions: object args with boolean flag value (not a string) → abstain
 // ---------------------------------------------------------------------------
 
-test("bash args flag value: abstains when flag has a boolean value rather than a string", () => {
+test("bash options flag value: abstains when flag has a boolean value rather than a string", () => {
     const yaml = `
 bash:
   git:
-    args:
+    options:
       m|message: "wip*"
     decide: deny
 `;
@@ -1130,14 +1130,14 @@ bash:
 });
 
 // ---------------------------------------------------------------------------
-// matchesArgs: array AND semantics (all flags must be present)
+// matchesOptions: array AND semantics (all flags must be present)
 // ---------------------------------------------------------------------------
 
-test("bash args array AND: fires only when all listed flags are present", () => {
+test("bash options array AND: fires only when all listed flags are present", () => {
     const yaml = `
 bash:
   rm:
-    args:
+    options:
       - r|recursive
       - f|force
     decide: deny
@@ -1153,14 +1153,14 @@ bash:
 });
 
 // ---------------------------------------------------------------------------
-// args-in: OR semantics (any listed flag is sufficient)
+// options-in: OR semantics (any listed flag is sufficient)
 // ---------------------------------------------------------------------------
 
-test("bash args-in: fires when any listed flag is present", () => {
+test("bash options-in: fires when any listed flag is present", () => {
     const yaml = `
 bash:
   rm:
-    args-in:
+    options-in:
       - r|recursive
       - f|force
     decide: deny
@@ -1174,16 +1174,16 @@ bash:
 });
 
 // ---------------------------------------------------------------------------
-// pos + args combined (AND across fields)
+// pos + options combined (AND across fields)
 // ---------------------------------------------------------------------------
 
-test("bash pos and args combined: both must match simultaneously", () => {
+test("bash pos and options combined: both must match simultaneously", () => {
     const yaml = `
 bash:
   git:
     add:
       pos: "*.ts"
-      args:
+      options:
         - f
       decide: deny
 `;
@@ -1384,7 +1384,7 @@ test("bash reason field: rule with reason compiles and fires correctly", () => {
     const yaml = `
 bash:
   rm:
-    args:
+    options:
       - r|recursive
       - f|force
     decide: deny
@@ -1753,15 +1753,15 @@ bash:
 });
 
 // ---------------------------------------------------------------------------
-// USER-DEFINED-RULES: args object with boolean true value
-// Docs show: rm: args: r|recursive: true → deny (presence check via object form)
+// USER-DEFINED-RULES: options object with boolean true value
+// Docs show: rm: options: r|recursive: true → deny (presence check via object form)
 // ---------------------------------------------------------------------------
 
-test("USER-DEFINED-RULES: args object boolean true value matches flag presence", () => {
+test("USER-DEFINED-RULES: options object boolean true value matches flag presence", () => {
     const yaml = `
 bash:
   rm:
-    args:
+    options:
       r|recursive: true
     decide: deny
 `;
@@ -1774,7 +1774,7 @@ bash:
 
 // ---------------------------------------------------------------------------
 // USER-DEFINED-RULES: regex in flag value
-// Docs show: git commit args: m|message: "/wip/" → deny
+// Docs show: git commit options: m|message: "/wip/" → deny
 // ---------------------------------------------------------------------------
 
 test("USER-DEFINED-RULES: git commit regex flag value /wip/ matches wip messages", () => {
@@ -1782,7 +1782,7 @@ test("USER-DEFINED-RULES: git commit regex flag value /wip/ matches wip messages
 bash:
   git:
     commit:
-      args:
+      options:
         m|message: "/wip/"
       decide: deny
       reason: Don't commit with WIP messages
@@ -1795,7 +1795,7 @@ bash:
 });
 
 // ---------------------------------------------------------------------------
-// USER-DEFINED-RULES: multi-field combined rule (AND semantics across args+env+cwd)
+// USER-DEFINED-RULES: multi-field combined rule (AND semantics across options+env+cwd)
 // Docs show: git push --remote origin with CI=true from /projects/** → deny
 // ---------------------------------------------------------------------------
 
@@ -1804,7 +1804,7 @@ test("USER-DEFINED-RULES: multi-field combined rule fires only when all fields m
 bash:
   git:
     push:
-      args:
+      options:
         remote: origin
       env:
         CI: "true"
@@ -1825,8 +1825,8 @@ bash:
 });
 
 // ---------------------------------------------------------------------------
-// USER-DEFINED-RULES: args-in for force push flags
-// Docs show: git push args-in [force, force-with-lease] → ask
+// USER-DEFINED-RULES: options-in for force push flags
+// Docs show: git push options-in [force, force-with-lease] → ask
 // ---------------------------------------------------------------------------
 
 test("USER-DEFINED-RULES: git push force or force-with-lease → ask", () => {
@@ -1834,7 +1834,7 @@ test("USER-DEFINED-RULES: git push force or force-with-lease → ask", () => {
 bash:
   git:
     push:
-      args-in:
+      options-in:
         - force
         - force-with-lease
       decide: ask
@@ -2426,8 +2426,8 @@ test("resolveEntryCwdPatterns: array-form subcommand key recursed into", () => {
     expect(subEntries[1].cwd).toBeUndefined();
 });
 
-test("resolveEntryCwdPatterns: known fields (args, pos, env) not recursed into", () => {
-    const entry: IYamlEntry = { args: ["r"], pos: "./foo", decide: "deny" };
+test("resolveEntryCwdPatterns: known fields (options, pos, env) not recursed into", () => {
+    const entry: IYamlEntry = { options: ["r"], pos: "./foo", decide: "deny" };
     resolveEntryCwdPatterns(entry, "/base");
     expect(entry.pos).toBe("./foo");
 });

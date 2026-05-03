@@ -2,7 +2,7 @@ command: "cmd > out.log"
 ast:
   type: command
   binary: cmd
-  args: {}
+  options: {}
   pos: []
   envPrefix: {}
   redirects:

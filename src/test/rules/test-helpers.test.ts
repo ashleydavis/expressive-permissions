@@ -1,20 +1,20 @@
-import { makeArgs, makeCommand, makeEnv, dummyCall } from "../../rules/test-helpers";
+import { makeOptions, makeCommand, makeEnv, dummyCall } from "../../rules/test-helpers";
 
 // ---------------------------------------------------------------------------
-// makeArgs
+// makeOptions
 // ---------------------------------------------------------------------------
 
-test("makeArgs: returns the provided named args object unchanged", () => {
-    const args = { verbose: true, output: "file.txt" };
-    expect(makeArgs(args)).toEqual({ verbose: true, output: "file.txt" });
+test("makeOptions: returns the provided named options object unchanged", () => {
+    const namedOptions = { verbose: true, output: "file.txt" };
+    expect(makeOptions(namedOptions)).toEqual({ verbose: true, output: "file.txt" });
 });
 
-test("makeArgs: returns empty object when given empty object", () => {
-    expect(makeArgs({})).toEqual({});
+test("makeOptions: returns empty object when given empty object", () => {
+    expect(makeOptions({})).toEqual({});
 });
 
-test("makeArgs: boolean false value is preserved", () => {
-    expect(makeArgs({ dry: false })).toEqual({ dry: false });
+test("makeOptions: boolean false value is preserved", () => {
+    expect(makeOptions({ dry: false })).toEqual({ dry: false });
 });
 
 // ---------------------------------------------------------------------------
@@ -31,9 +31,9 @@ test("makeCommand: binary is set correctly", () => {
     expect(cmd.binary).toBe("git");
 });
 
-test("makeCommand: args are set correctly", () => {
+test("makeCommand: options are set correctly", () => {
     const cmd = makeCommand("ls", { recursive: true }, [], {});
-    expect(cmd.args).toEqual({ recursive: true });
+    expect(cmd.options).toEqual({ recursive: true });
 });
 
 test("makeCommand: pos as array is set correctly", () => {

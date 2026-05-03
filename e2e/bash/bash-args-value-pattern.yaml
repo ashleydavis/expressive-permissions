@@ -10,7 +10,7 @@ rules:
   bash:
     git:
       commit:
-        args:
+        options:
           message: "wip*"
         decide: deny
         reason: "no wip commits"

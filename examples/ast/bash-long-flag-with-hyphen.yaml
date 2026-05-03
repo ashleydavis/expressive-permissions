@@ -8,7 +8,7 @@ ast:
   ast:
     type: command
     binary: git
-    args:
+    options:
       force-with-lease: true
     pos: push
     envPrefix: {}

@@ -8,7 +8,7 @@ function makeEnv(envVars: Record<string, string> = {}): Environment {
 
 // makeCommand builds a Command node with the given binary and envPrefix.
 function makeCommand(binary: string, envPrefix: Record<string, string>): Command {
-    return { type: "command", binary, args: {}, pos: [], envPrefix, redirects: [], raw: binary };
+    return { type: "command", binary, options: {}, pos: [], envPrefix, redirects: [], raw: binary };
 }
 
 const dummyCall = { tool_name: "Bash", tool_input: { command: "" }, cwd: "/start" };

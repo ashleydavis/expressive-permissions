@@ -1,4 +1,4 @@
-import { decide, expandToken, expandCommandArgs, rank, isLeaf, aggregateChildren, combine } from "../interpret";
+import { decide, expandToken, expandCommandOptions, rank, isLeaf, aggregateChildren, combine } from "../interpret";
 import { NullAuditLogger } from "../audit-log";
 import { rules } from "../rules";
 import { cdRule } from "../rules/builtin/cd";
@@ -624,12 +624,12 @@ test("status aggregation: cd /etc && rm -rf / → deny", () => {
             if (node.type !== "command") {
                 return false;
             }
-            const cmd = node as { binary?: string; args?: Record<string, string | boolean>; pos?: string | string[] };
+            const cmd = node as { binary?: string; options?: Record<string, string | boolean>; pos?: string | string[] };
             if (cmd.binary !== "rm") {
                 return false;
             }
             const posArray = typeof cmd.pos === "string" ? [cmd.pos] : cmd.pos as string[];
-            return (cmd.args?.r === true || cmd.args?.R === true) && posArray.includes("/");
+            return (cmd.options?.r === true || cmd.options?.R === true) && posArray.includes("/");
         },
         { decision: { action: "deny", reason: "rm -rf / blocked" } }
     ));
@@ -794,52 +794,52 @@ test("expandToken: string with no vars returned unchanged", () => {
 });
 
 // ---------------------------------------------------------------------------
-// expandCommandArgs — direct unit tests
+// expandCommandOptions — direct unit tests
 // ---------------------------------------------------------------------------
 
-// makeCommand builds a minimal Command node for expandCommandArgs tests.
+// makeCommand builds a minimal Command node for expandCommandOptions tests.
 function makeCommand(
     binary: string,
-    args: Record<string, string | boolean>,
+    options: Record<string, string | boolean>,
     pos: string | string[]
 ): import("../types").Command {
-    return { type: "command", binary, args, pos, envPrefix: {}, redirects: [], raw: binary };
+    return { type: "command", binary, options, pos, envPrefix: {}, redirects: [], raw: binary };
 }
 
-test("expandCommandArgs: binary expanded", () => {
-    const result = expandCommandArgs(makeCommand("$CMD", {}, []), { CMD: "git" });
+test("expandCommandOptions: binary expanded", () => {
+    const result = expandCommandOptions(makeCommand("$CMD", {}, []), { CMD: "git" });
     expect(result.binary).toBe("git");
 });
 
-test("expandCommandArgs: string flag value expanded", () => {
-    const result = expandCommandArgs(makeCommand("cmd", { flag: "$VAR" }, []), { VAR: "val" });
-    expect(result.args.flag).toBe("val");
+test("expandCommandOptions: string flag value expanded", () => {
+    const result = expandCommandOptions(makeCommand("cmd", { flag: "$VAR" }, []), { VAR: "val" });
+    expect(result.options.flag).toBe("val");
 });
 
-test("expandCommandArgs: boolean flag unchanged", () => {
-    const result = expandCommandArgs(makeCommand("cmd", { verbose: true }, []), { verbose: "x" });
-    expect(result.args.verbose).toBe(true);
+test("expandCommandOptions: boolean flag unchanged", () => {
+    const result = expandCommandOptions(makeCommand("cmd", { verbose: true }, []), { verbose: "x" });
+    expect(result.options.verbose).toBe(true);
 });
 
-test("expandCommandArgs: positional string expanded", () => {
-    const result = expandCommandArgs(makeCommand("git", {}, "$BRANCH"), { BRANCH: "main" });
+test("expandCommandOptions: positional string expanded", () => {
+    const result = expandCommandOptions(makeCommand("git", {}, "$BRANCH"), { BRANCH: "main" });
     expect(result.pos).toBe("main");
 });
 
-test("expandCommandArgs: positional array expanded", () => {
-    const result = expandCommandArgs(makeCommand("git", {}, ["add", "$FILE"]), { FILE: "foo.ts" });
+test("expandCommandOptions: positional array expanded", () => {
+    const result = expandCommandOptions(makeCommand("git", {}, ["add", "$FILE"]), { FILE: "foo.ts" });
     expect(result.pos).toEqual(["add", "foo.ts"]);
 });
 
-test("expandCommandArgs: raw field preserved unchanged", () => {
+test("expandCommandOptions: raw field preserved unchanged", () => {
     const node = makeCommand("$CMD", {}, []);
     node.raw = "original $CMD raw";
-    const result = expandCommandArgs(node, { CMD: "git" });
+    const result = expandCommandOptions(node, { CMD: "git" });
     expect(result.raw).toBe("original $CMD raw");
 });
 
-test("expandCommandArgs: unknown var in positional left as-is", () => {
-    const result = expandCommandArgs(makeCommand("git", {}, "$UNKNOWN"), {});
+test("expandCommandOptions: unknown var in positional left as-is", () => {
+    const result = expandCommandOptions(makeCommand("git", {}, "$UNKNOWN"), {});
     expect(result.pos).toBe("$UNKNOWN");
 });
 
@@ -868,17 +868,17 @@ test("rank: deny returns 3", () => {
 // ---------------------------------------------------------------------------
 
 test("isLeaf: command node is a leaf", () => {
-    expect(isLeaf({ type: "command", binary: "ls", args: {}, pos: [], envPrefix: {}, redirects: [], raw: "ls" })).toBe(true);
+    expect(isLeaf({ type: "command", binary: "ls", options: {}, pos: [], envPrefix: {}, redirects: [], raw: "ls" })).toBe(true);
 });
 
 test("isLeaf: binop node is not a leaf", () => {
-    const left = { type: "command" as const, binary: "a", args: {}, pos: [], envPrefix: {}, redirects: [], raw: "a" };
-    const right = { type: "command" as const, binary: "b", args: {}, pos: [], envPrefix: {}, redirects: [], raw: "b" };
+    const left = { type: "command" as const, binary: "a", options: {}, pos: [], envPrefix: {}, redirects: [], raw: "a" };
+    const right = { type: "command" as const, binary: "b", options: {}, pos: [], envPrefix: {}, redirects: [], raw: "b" };
     expect(isLeaf({ type: "binop", op: "&&", left, right })).toBe(false);
 });
 
 test("isLeaf: bash node is not a leaf", () => {
-    const cmd = { type: "command" as const, binary: "ls", args: {}, pos: [], envPrefix: {}, redirects: [], raw: "ls" };
+    const cmd = { type: "command" as const, binary: "ls", options: {}, pos: [], envPrefix: {}, redirects: [], raw: "ls" };
     expect(isLeaf({ type: "bash", ast: cmd, raw: "ls" })).toBe(false);
 });
 

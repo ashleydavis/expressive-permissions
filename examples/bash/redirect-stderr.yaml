@@ -2,7 +2,7 @@ command: "cmd 2> err.log"
 ast:
   type: command
   binary: cmd
-  args: {}
+  options: {}
   pos: []
   envPrefix: {}
   redirects:

@@ -26,12 +26,12 @@ List of rules:
 
 ```yaml
 rm:
-  - args:
+  - options:
       - r|recursive
       - f|force
     decide: deny
     reason: rm -rf is not allowed
-  - args:
+  - options:
       - r|recursive
     decide: ask
     reason: Confirm before removing recursively
@@ -87,7 +87,7 @@ For fields that can satisfy multiple patterns simultaneously, the array form req
 
 ```yaml
 rm:
-  args: [r, f]
+  options: [r, f]
   decide: deny
 ```
 
@@ -95,7 +95,7 @@ Or equivalently in list form:
 
 ```yaml
 rm:
-  args:
+  options:
     - r
     - f
   decide: deny
@@ -103,12 +103,12 @@ rm:
 
 These example rules match only when both `-r` and `-f` are present.
 
-The `-in` form switches any field to OR semantics. For `args-in`, the rule matches when any one of the listed flags is present:
+The `-in` form switches any field to OR semantics. For `options-in`, the rule matches when any one of the listed flags is present:
 
 ```yaml
 git:
   push:
-    args-in:
+    options-in:
       - force
       - force-with-lease
     decide: ask
@@ -137,7 +137,7 @@ Use `|` in a flag name to match either the short or long form:
 
 ```yaml
 rm:
-  args:
+  options:
     - r|recursive
   decide: deny
 ```
@@ -146,7 +146,7 @@ This matches both `-r` and `--recursive`. The same syntax works as an object key
 
 ```yaml
 rm:
-  args:
+  options:
     r|recursive: true
   decide: deny
 ```
@@ -160,7 +160,7 @@ An example that matches the subcommand (`commit`) a particular argument (`m` or 
 ```yaml
 git:
   commit:
-    args:
+    options:
       m|message: "/wip/"
     decide: deny
     reason: Don't commit with WIP messages
@@ -173,7 +173,7 @@ All fields in a rule are AND'd together. This example matches a subcommand, an a
 ```yaml
 git:
   push:
-    args:
+    options:
       remote: origin
     env:
       CI: "true"
@@ -548,8 +548,8 @@ Every field follows this unified pattern:
 | Form | Semantics | Applies to |
 |---|---|---|
 | `field: X` | Matches the field value against pattern X (exact string, glob, or `/regex/`) | all fields |
-| `field: ["A", "B", "C"]` | AND: all patterns must match | multi-value fields only (`args`, `pos`) |
-| `field:`<br>`  - A`<br>`  - B`<br>`  - C` | AND: all patterns must match (list form) | multi-value fields only (`args`, `pos`) |
+| `field: ["A", "B", "C"]` | AND: all patterns must match | multi-value fields only (`options`, `pos`) |
+| `field:`<br>`  - A`<br>`  - B`<br>`  - C` | AND: all patterns must match (list form) | multi-value fields only (`options`, `pos`) |
 | `field-in: ["A", "B", "C"]` | OR: any pattern must match | all fields |
 | `field-in:`<br>`  - A`<br>`  - B`<br>`  - C` | OR: any pattern must match (list form) | all fields |
 
@@ -560,9 +560,9 @@ Every field follows this unified pattern:
 | `pos` | string | Bash | Matches `pos[0]` against the pattern. |
 | `pos` | array | Bash | Each pattern matches `pos[index]` in order (AND). |
 | `pos-in` | array | Bash | Matches when any positional argument matches any entry (OR). |
-| `args` | array | Bash | All listed flags must be present (AND). |
-| `args-in` | array | Bash | Any listed flag must be present (OR). |
-| `args` | object | Bash | All key/value pairs must match (AND). |
+| `options` | array | Bash | All listed flags must be present (AND). |
+| `options-in` | array | Bash | Any listed flag must be present (OR). |
+| `options` | object | Bash | All key/value pairs must match (AND). |
 | `cwd` | string | any | cwd matches the pattern. |
 | `cwd-in` | array | any | cwd matches any pattern (OR). |
 | `path` | string | read, write, edit, multi_edit | path matches the pattern. |

@@ -8,7 +8,7 @@ ast:
   ast:
     type: command
     binary: ls
-    args:
+    options:
       l: true
       a: true
     pos: /tmp

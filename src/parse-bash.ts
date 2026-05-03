@@ -164,8 +164,8 @@ function lex(input: string): IToken[] {
 
 // Result produced by the inline argv parser
 interface IArgvResult {
-    // Named arguments: boolean for standalone flags, string for value flags
-    args: Record<string, string | boolean>;
+    // Named options: boolean for standalone flags, string for value flags
+    options: Record<string, string | boolean>;
     // Positional (non-flag) tokens: string when exactly one, array otherwise
     pos: string | string[];
 }
@@ -175,7 +175,7 @@ interface IArgvResult {
 // -abc → three booleans, -f=val → string, anything else → positional.
 // One positional → string; otherwise → string[].
 function parseArgv(argTokens: string[]): IArgvResult {
-    const args: Record<string, string | boolean> = {};
+    const options: Record<string, string | boolean> = {};
     const positionals: string[] = [];
     let index = 0;
 
@@ -185,24 +185,24 @@ function parseArgv(argTokens: string[]): IArgvResult {
             const rest = token.substring(2);
             const eqIdx = rest.indexOf("=");
             if (eqIdx !== -1) {
-                args[rest.substring(0, eqIdx)] = rest.substring(eqIdx + 1);
+                options[rest.substring(0, eqIdx)] = rest.substring(eqIdx + 1);
             } else {
                 const next = argTokens[index + 1];
                 if (next !== undefined && !next.startsWith("-")) {
-                    args[rest] = next;
+                    options[rest] = next;
                     index++;
                 } else {
-                    args[rest] = true;
+                    options[rest] = true;
                 }
             }
         } else if (token.startsWith("-") && token.length > 1) {
             const rest = token.substring(1);
             const eqIdx = rest.indexOf("=");
             if (eqIdx !== -1) {
-                args[rest.substring(0, eqIdx)] = rest.substring(eqIdx + 1);
+                options[rest.substring(0, eqIdx)] = rest.substring(eqIdx + 1);
             } else {
                 for (const ch of rest) {
-                    args[ch] = true;
+                    options[ch] = true;
                 }
             }
         } else {
@@ -212,7 +212,7 @@ function parseArgv(argTokens: string[]): IArgvResult {
     }
 
     const pos: string | string[] = positionals.length === 1 ? positionals[0] : positionals;
-    return { args, pos };
+    return { options, pos };
 }
 
 // Returns the token at the current cursor position without advancing.
@@ -228,7 +228,7 @@ function consume(state: IParserState): IToken {
     return state.tokens[state.pos++];
 }
 
-// Parses a single Command leaf, collecting the env-var prefix, binary, args, and redirects.
+// Parses a single Command leaf, collecting the env-var prefix, binary, options, and redirects.
 // Stops when a non-redirect operator is seen (caller handles that operator).
 function parseCommand(state: IParserState): Command {
     const envPrefix: Record<string, string> = {};
@@ -291,7 +291,7 @@ function parseCommand(state: IParserState): Command {
     return {
         type: "command",
         binary,
-        args: argv.args,
+        options: argv.options,
 
         pos: argv.pos,
         envPrefix,
@@ -353,7 +353,7 @@ function parseSequence(state: IParserState): BashAstNode {
 export function parseBash(raw: string): BashAstNode {
     const trimmed = raw.trim();
     if (trimmed.length === 0) {
-        return { type: "command", binary: "", args: {}, pos: [], envPrefix: {}, redirects: [], raw: "" };
+        return { type: "command", binary: "", options: {}, pos: [], envPrefix: {}, redirects: [], raw: "" };
     }
 
     const tokens = lex(raw);

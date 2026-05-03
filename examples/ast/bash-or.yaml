@@ -11,7 +11,7 @@ ast:
     left:
       type: command
       binary: test
-      args:
+      options:
         f: true
       pos: foo.txt
       envPrefix: {}
@@ -20,7 +20,7 @@ ast:
     right:
       type: command
       binary: echo
-      args: {}
+      options: {}
       pos: missing
       envPrefix: {}
       redirects: []

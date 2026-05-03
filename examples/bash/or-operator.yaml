@@ -5,7 +5,7 @@ ast:
   left:
     type: command
     binary: a
-    args: {}
+    options: {}
     pos: []
     envPrefix: {}
     redirects: []
@@ -13,7 +13,7 @@ ast:
   right:
     type: command
     binary: b
-    args: {}
+    options: {}
     pos: []
     envPrefix: {}
     redirects: []

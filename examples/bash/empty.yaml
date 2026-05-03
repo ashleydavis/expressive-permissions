@@ -2,7 +2,7 @@ command: ""
 ast:
   type: command
   binary: ""
-  args: {}
+  options: {}
   pos: []
   envPrefix: {}
   redirects: []

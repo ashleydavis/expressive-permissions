@@ -62,7 +62,7 @@ If you want a rule to apply globally across your whole machine rather than just 
 
 Claude Code permission patterns match the raw command string. A rule written to catch `rm -rf` will miss `rm -r -f`, `rm --recursive --force`, `rm -fr`, or any other combination that means the same thing. You would need a separate pattern for every permutation, and Claude will always find one you missed.
 
-This plugin parses flags individually and normalises them, so a single rule can cover every syntactic form. A rule declaring `args: ["r|recursive", "f|force"]` matches when all listed flags are present, regardless of how they are written: `rm -rf`, `rm -fr`, `rm -r -f`, `rm --recursive --force`, and every other equivalent form. Use `args-in: [r, f]` when any one of the listed flags is sufficient to match the rule.
+This plugin parses flags individually and normalises them, so a single rule can cover every syntactic form. A rule declaring `options: ["r|recursive", "f|force"]` matches when all listed flags are present, regardless of how they are written: `rm -rf`, `rm -fr`, `rm -r -f`, `rm --recursive --force`, and every other equivalent form. Use `options-in: [r, f]` when any one of the listed flags is sufficient to match the rule.
 
 ### Environment variables and working directory are tracked
 
@@ -145,7 +145,7 @@ Deny `rm -rf`:
 
 ```yaml
 rm:
-  args:
+  options:
     - r|recursive
     - f|force
   decide: deny

@@ -2,7 +2,7 @@ command: 'echo "hello world"'
 ast:
   type: command
   binary: echo
-  args: {}
+  options: {}
   pos: "hello world"
   envPrefix: {}
   redirects: []

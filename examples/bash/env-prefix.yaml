@@ -2,7 +2,7 @@ command: "FOO=bar cmd"
 ast:
   type: command
   binary: cmd
-  args: {}
+  options: {}
   pos: []
   envPrefix:
     FOO: bar

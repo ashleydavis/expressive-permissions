@@ -2,7 +2,7 @@ command: "$(which sudo) -i"
 ast:
   type: command
   binary: "$(which sudo)"
-  args:
+  options:
     i: true
   pos: []
   envPrefix: {}

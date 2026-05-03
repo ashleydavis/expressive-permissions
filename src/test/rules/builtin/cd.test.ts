@@ -8,7 +8,7 @@ function makeEnv(cwd: string, cwdResolved: boolean = true): Environment {
 
 // makeCommand builds a minimal Command node.
 function makeCommand(binary: string, pos: string | string[]): Command {
-    return { type: "command", binary, args: {}, pos, envPrefix: {}, redirects: [], raw: binary };
+    return { type: "command", binary, options: {}, pos, envPrefix: {}, redirects: [], raw: binary };
 }
 
 // dummyCall is a minimal ToolCall placeholder — cdRule ignores it.

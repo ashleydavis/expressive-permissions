@@ -31,7 +31,7 @@ For `cd /etc && rm -rf /`:
 graph TD
   Bash["bash<br/>raw: cd /etc &amp;&amp; rm -rf /"] --> And["and"]
   And --> Cd["command<br/>binary: cd<br/>pos: /etc"]
-  And --> Rm["command<br/>binary: rm<br/>args: { r: true, f: true }<br/>pos: /"]
+  And --> Rm["command<br/>binary: rm<br/>options: { r: true, f: true }<br/>pos: /"]
 ```
 
 For an `Edit` tool call - there is no Bash sub-tree; the AST is a single typed leaf:
@@ -155,7 +155,7 @@ A rule is a single function `(node: AstNode, env: Environment, call: ToolCall) =
 
 Rules should:
 - Return `ABSTAIN` for node types they don't care about (by `node.type`).
-- Read `node.args`, `node.binary`, `node.file_path`, etc. - whichever fields match the node type.
+- Read `node.options`, `node.binary`, `node.file_path`, etc. - whichever fields match the node type.
 - Read `env.cwd` / `env.cwdResolved` / `env.env` when the decision depends on where the call runs.
 - Return a persistent `env` update (not a decision) for side effects like tracking cwd changes.
 

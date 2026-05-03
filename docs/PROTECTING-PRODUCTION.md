@@ -154,7 +154,7 @@ aws:
     reason: S3 sync blocked
 
   # Safety flag
-  - args-in:
+  - options-in:
       - force
     decide: deny
     reason: --force flag blocked
@@ -247,7 +247,7 @@ kubectl:
 
 ## Scoping rules to production contexts
 
-The recipes above apply globally. Use `env` to match the active AWS profile, or `args` to match the kubectl `--context` flag, leaving the sandbox environment unrestricted.
+The recipes above apply globally. Use `env` to match the active AWS profile, or `options` to match the kubectl `--context` flag, leaving the sandbox environment unrestricted.
 
 ### AWS: matching on the active profile
 
@@ -305,60 +305,60 @@ Match on the `--context` flag to scope rules to specific clusters:
 ```yaml
 kubectl:
   # Sandbox: allow everything without prompting
-  - args:
+  - options:
       context: sandbox-*
     decide: allow
 
   # Any non-sandbox context: allow read-only operations
-  - args:
+  - options:
       context: /^(?!sandbox)/
     pos: get
     decide: allow
-  - args:
+  - options:
       context: /^(?!sandbox)/
     pos: describe
     decide: allow
-  - args:
+  - options:
       context: /^(?!sandbox)/
     pos: logs
     decide: allow
-  - args:
+  - options:
       context: /^(?!sandbox)/
     pos: top
     decide: allow
-  - args:
+  - options:
       context: /^(?!sandbox)/
     pos: version
     decide: allow
-  - args:
+  - options:
       context: /^(?!sandbox)/
     pos: cluster-info
     decide: allow
 
   # Any non-sandbox context: deny known-destructive operations
-  - args:
+  - options:
       context: /^(?!sandbox)/
     pos: delete
     decide: deny
     reason: kubectl delete blocked outside sandbox
-  - args:
+  - options:
       context: /^(?!sandbox)/
     pos: apply
     decide: deny
     reason: Applying manifests blocked outside sandbox
-  - args:
+  - options:
       context: /^(?!sandbox)/
     pos: exec
     decide: deny
     reason: Pod shell access blocked outside sandbox
-  - args:
+  - options:
       context: /^(?!sandbox)/
     pos: scale
     decide: deny
     reason: Scaling blocked outside sandbox
 
   # Non-sandbox catch-all: ask for anything not explicitly denied above
-  - args:
+  - options:
       context: /^(?!sandbox)/
     decide: ask
     reason: Confirm kubectl operation outside sandbox

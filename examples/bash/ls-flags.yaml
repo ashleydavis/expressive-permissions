@@ -2,7 +2,7 @@ command: "ls -la /tmp"
 ast:
   type: command
   binary: ls
-  args:
+  options:
     l: true
     a: true
   pos: /tmp

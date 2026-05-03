@@ -8,7 +8,7 @@ ast:
   ast:
     type: command
     binary: cmd
-    args: {}
+    options: {}
     pos: []
     envPrefix: {}
     redirects:

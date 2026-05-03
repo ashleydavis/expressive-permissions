@@ -8,7 +8,7 @@ ast:
   ast:
     type: command
     binary: node
-    args: {}
+    options: {}
     pos: index.js
     envPrefix:
       FOO: bar

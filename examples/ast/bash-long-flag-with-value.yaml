@@ -8,7 +8,7 @@ ast:
   ast:
     type: command
     binary: git
-    args:
+    options:
       remote: origin
     pos: push
     envPrefix: {}

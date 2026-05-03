@@ -8,7 +8,7 @@ ast:
   ast:
     type: command
     binary: rm
-    args:
+    options:
       recursive: true
       force: /tmp
     pos: []

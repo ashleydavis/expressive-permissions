@@ -9,19 +9,19 @@ input:
 rules:
   bash:
     kubectl:
-      - args:
+      - options:
           context: sandbox-*
         decide: allow
-      - args:
+      - options:
           context: /^(?!sandbox)/
         pos: get
         decide: allow
-      - args:
+      - options:
           context: /^(?!sandbox)/
         pos: delete
         decide: deny
         reason: kubectl delete blocked outside sandbox
-      - args:
+      - options:
           context: /^(?!sandbox)/
         decide: ask
         reason: Confirm kubectl operation outside sandbox

@@ -1,17 +1,17 @@
 import type { Command, ToolCall, Environment } from "../types";
 
-// Builds a named-args record for use in makeCommand.
-export function makeArgs(named: Record<string, string | boolean>): Record<string, string | boolean> {
+// Builds a named-options record for use in makeCommand.
+export function makeOptions(named: Record<string, string | boolean>): Record<string, string | boolean> {
     return named;
 }
 
 // Builds a Command leaf node as the parser would produce.
-export function makeCommand(binary: string, args: Record<string, string | boolean>, pos: string | string[], envPrefix: Record<string, string>): Command {
+export function makeCommand(binary: string, options: Record<string, string | boolean>, pos: string | string[], envPrefix: Record<string, string>): Command {
     const posArray = Array.isArray(pos) ? pos : [pos];
     return {
         type: "command",
         binary,
-        args,
+        options,
         pos,
         envPrefix,
         redirects: [],

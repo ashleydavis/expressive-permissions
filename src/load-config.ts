@@ -19,9 +19,9 @@ export interface IYamlEntry {
     // OR form of pos: any positional from posOffset onwards matches any listed pattern
     "pos-in"?: string[];
     // Flag matcher: all listed flag alias groups must be present (AND); object values may be string patterns or boolean true (presence check)
-    args?: string[] | Record<string, string | boolean>;
-    // OR form of args: any listed flag alias group must be present
-    "args-in"?: string[];
+    options?: string[] | Record<string, string | boolean>;
+    // OR form of options: any listed flag alias group must be present
+    "options-in"?: string[];
     // Glob pattern matched against env.cwd
     cwd?: string;
     // OR form of cwd: cwd matches any listed pattern
@@ -67,7 +67,7 @@ export interface IYamlConfig {
 }
 
 // Fields that are matcher/control fields and NOT subcommand keys
-const KNOWN_FIELDS = new Set(["decide", "reason", "pos", "pos-in", "args", "args-in", "cwd", "cwd-in", "cwd_resolved", "env", "path", "path-in", "host", "host-in", "tool", "tool-in"]);
+const KNOWN_FIELDS = new Set(["decide", "reason", "pos", "pos-in", "options", "options-in", "cwd", "cwd-in", "cwd_resolved", "env", "path", "path-in", "host", "host-in", "tool", "tool-in"]);
 
 // Normalises a YAML section value: plain object → single-entry list; array → as-is
 function normalizeToList(value: IYamlEntry | IYamlEntry[]): IYamlEntry[] {
@@ -149,45 +149,45 @@ function expandAliases(aliasExpr: string): string[] {
     return aliasExpr.split("|");
 }
 
-// Returns true when any alias in the aliasExpr is present as a key in namedArgs
-function flagPresent(aliasExpr: string, namedArgs: Record<string, string | boolean>): boolean {
-    return expandAliases(aliasExpr).some((alias: string) => alias in namedArgs);
+// Returns true when any alias in the aliasExpr is present as a key in namedOptions
+function flagPresent(aliasExpr: string, namedOptions: Record<string, string | boolean>): boolean {
+    return expandAliases(aliasExpr).some((alias: string) => alias in namedOptions);
 }
 
-// Returns the value of the first matching alias key in namedArgs, or undefined if none found
-function flagValue(aliasExpr: string, namedArgs: Record<string, string | boolean>): string | boolean | undefined {
+// Returns the value of the first matching alias key in namedOptions, or undefined if none found
+function flagValue(aliasExpr: string, namedOptions: Record<string, string | boolean>): string | boolean | undefined {
     for (const alias of expandAliases(aliasExpr)) {
-        if (alias in namedArgs) {
-            return namedArgs[alias];
+        if (alias in namedOptions) {
+            return namedOptions[alias];
         }
     }
     return undefined;
 }
 
-// Returns true when the args/args-in entry fields match the given Command node's flags
-function matchesArgs(entry: IYamlEntry, node: Command): boolean {
-    if (entry["args-in"] !== undefined) {
-        return entry["args-in"].some((aliasExpr: string) => flagPresent(aliasExpr, node.args));
+// Returns true when the options/options-in entry fields match the given Command node's flags
+function matchesOptions(entry: IYamlEntry, node: Command): boolean {
+    if (entry["options-in"] !== undefined) {
+        return entry["options-in"].some((aliasExpr: string) => flagPresent(aliasExpr, node.options));
     }
 
-    if (entry.args === undefined) {
+    if (entry.options === undefined) {
         return true;
     }
 
-    if (Array.isArray(entry.args)) {
+    if (Array.isArray(entry.options)) {
         // All listed flags must be present (AND semantics)
-        return entry.args.every((aliasExpr: string) => flagPresent(aliasExpr, node.args));
+        return entry.options.every((aliasExpr: string) => flagPresent(aliasExpr, node.options));
     }
 
     // Object: flag-value matching; all keys must match their value pattern (or boolean true means presence check)
-    for (const [aliasExpr, pattern] of Object.entries(entry.args)) {
+    for (const [aliasExpr, pattern] of Object.entries(entry.options)) {
         if (typeof pattern !== "string") {
-            if (!flagPresent(aliasExpr, node.args)) {
+            if (!flagPresent(aliasExpr, node.options)) {
                 return false;
             }
         }
         else {
-            const val = flagValue(aliasExpr, node.args);
+            const val = flagValue(aliasExpr, node.options);
             if (val === undefined) {
                 return false;
             }
@@ -274,7 +274,7 @@ function buildBashRule(binary: string, subcommandPath: string[], entry: IYamlEnt
         if (!matchesPos(entry, node, posOffset)) {
             return ABSTAIN;
         }
-        if (!matchesArgs(entry, node)) {
+        if (!matchesOptions(entry, node)) {
             return ABSTAIN;
         }
         if (entry.host !== undefined || entry["host-in"] !== undefined) {

@@ -11,7 +11,7 @@ ast:
     left:
       type: command
       binary: git
-      args: {}
+      options: {}
       pos: status
       envPrefix: {}
       redirects: []
@@ -19,7 +19,7 @@ ast:
     right:
       type: command
       binary: grep
-      args: {}
+      options: {}
       pos: modified
       envPrefix: {}
       redirects: []

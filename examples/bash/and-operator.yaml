@@ -5,7 +5,7 @@ ast:
   left:
     type: command
     binary: cd
-    args: {}
+    options: {}
     pos: /tmp
     envPrefix: {}
     redirects: []
@@ -13,7 +13,7 @@ ast:
   right:
     type: command
     binary: rm
-    args:
+    options:
       r: true
       f: true
     pos: "*"

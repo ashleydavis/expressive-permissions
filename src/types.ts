@@ -60,8 +60,8 @@ export interface Command {
     type: "command";
     // The command binary (e.g. "ls", "rm", "cd")
     binary: string;
-    // Named arguments: boolean for standalone flags (--watch, -f), string for value flags (--reporter=spec)
-    args: Record<string, string | boolean>;
+    // Named options: boolean for standalone flags (--watch, -f), string for value flags (--reporter=spec)
+    options: Record<string, string | boolean>;
     // Positional arguments: a single string when there is one, an array when there are zero or multiple
     pos: string | string[];
     // Environment variable assignments prefixed before the command (e.g. FOO=bar cmd)

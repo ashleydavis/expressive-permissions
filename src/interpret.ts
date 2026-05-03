@@ -44,12 +44,12 @@ export function expandToken(token: string, vars: Record<string, string>): string
     );
 }
 
-// expandCommandArgs clones a Command node with binary, flag values, and positionals expanded
+// expandCommandOptions clones a Command node with binary, flag values, and positionals expanded
 // against the provided vars dict. The raw field is preserved unchanged.
-export function expandCommandArgs(node: Command, vars: Record<string, string>): Command {
-    const expandedArgs: Record<string, string | boolean> = {};
-    for (const [key, value] of Object.entries(node.args)) {
-        expandedArgs[key] = typeof value === "string" ? expandToken(value, vars) : value;
+export function expandCommandOptions(node: Command, vars: Record<string, string>): Command {
+    const expandedOptions: Record<string, string | boolean> = {};
+    for (const [key, value] of Object.entries(node.options)) {
+        expandedOptions[key] = typeof value === "string" ? expandToken(value, vars) : value;
     }
 
     let expandedPos: string | string[];
@@ -62,7 +62,7 @@ export function expandCommandArgs(node: Command, vars: Record<string, string>): 
     return {
         ...node,
         binary: expandToken(node.binary, vars),
-        args: expandedArgs,
+        options: expandedOptions,
         pos: expandedPos,
     };
 }
@@ -88,7 +88,7 @@ export function isLeaf(node: AstNode): boolean {
 }
 
 // runRules iterates the registered rule list at a single node with deny-short-circuit and
-// strictest-wins semantics. Before each rule at a Command node, args are expanded against
+// strictest-wins semantics. Before each rule at a Command node, options are expanded against
 // the current runningEnv. Persistent (env) and scoped (scopedEnv) updates are threaded
 // through runningEnv so later rules at the same node see earlier rules' env changes.
 // Scoped changes do not escape this function; only persistent changes are captured in envUpdate.
@@ -100,7 +100,7 @@ function runRules(node: AstNode, env: Environment, call: ToolCall, logger: IAudi
     for (const rule of rules) {
         const effectiveNode: AstNode =
             node.type === "command"
-                ? expandCommandArgs(node, runningEnv.env)
+                ? expandCommandOptions(node, runningEnv.env)
                 : node;
 
         const outcome = rule(effectiveNode, runningEnv, call);

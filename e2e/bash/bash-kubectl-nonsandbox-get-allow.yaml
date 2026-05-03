@@ -9,14 +9,14 @@ input:
 rules:
   bash:
     kubectl:
-      - args:
+      - options:
           context: sandbox-*
         decide: allow
-      - args:
+      - options:
           context: /^(?!sandbox)/
         pos: get
         decide: allow
-      - args:
+      - options:
           context: /^(?!sandbox)/
         pos: delete
         decide: deny

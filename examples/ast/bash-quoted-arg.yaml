@@ -8,7 +8,7 @@ ast:
   ast:
     type: command
     binary: echo
-    args: {}
+    options: {}
     pos: hello world
     envPrefix: {}
     redirects: []
