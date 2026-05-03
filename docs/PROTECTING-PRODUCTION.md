@@ -10,7 +10,7 @@ These are starting points. Take what is useful and extend it with the specific s
 
 The AWS CLI follows the pattern `aws <service> <operation>`. Most read-only operations consistently use `describe-*`, `list-*`, or `get-*` prefixes, which makes broad rules practical.
 
-`cmd` matches positional arguments -- the words of the command in order, excluding flags. A space-separated string like `"* delete-*"` matches any service followed by any operation starting with `delete-`; a single word like `"delete-*"` matches only the first positional argument. An array like `["*", "delete-*"]` is equivalent to the space-separated string form.
+`cmd` matches positional arguments, the words of the command in order, excluding flags. A space-separated string like `"* delete-*"` matches any service followed by any operation starting with `delete-`; a single word like `"delete-*"` matches only the first positional argument. 
 
 ### Allow read-only operations
 

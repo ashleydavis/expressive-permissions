@@ -333,6 +333,19 @@ function buildBashRule(binary: string, subcommandPath: string[], entry: IYamlEnt
     return rule;
 }
 
+// Runs each sub-rule in order, aggregating outcomes strictest-wins; stops early on deny
+function runSubRules(subRules: Rule[], node: AstNode, env: Environment, call: ToolCall): RuleOutcome {
+    let result: RuleOutcome = ABSTAIN;
+    for (const subRule of subRules) {
+        const outcome = subRule(node, env, call);
+        result = aggregateOutcomes(result, outcome);
+        if (result.decision.action === "deny") {
+            break;
+        }
+    }
+    return result;
+}
+
 // Builds a scoped bash rule: checks parent conditions, then aggregates sub-rules without consuming positionals
 export function buildBashScopedRule(binary: string, subcommandPath: string[], entry: IYamlEntry): Rule {
     const subRules = compileBashBinary(binary, entry.rules!, subcommandPath);
@@ -369,15 +382,7 @@ export function buildBashScopedRule(binary: string, subcommandPath: string[], en
             return ABSTAIN;
         }
 
-        let result: RuleOutcome = ABSTAIN;
-        for (const subRule of subRules) {
-            const outcome = subRule(node, env, call);
-            result = aggregateOutcomes(result, outcome);
-            if (result.decision.action === "deny") {
-                break;
-            }
-        }
-        return result;
+        return runSubRules(subRules, node, env, call);
     };
 
     Object.defineProperty(rule, "name", { value: ruleName });
@@ -429,34 +434,39 @@ function matchesPath(entry: IYamlEntry, filePath: string): boolean {
     return true;
 }
 
+// Returns true when the node and entry conditions all match for a file-based tool rule
+function matchesFileEntry(nodeType: string, entry: IYamlEntry, node: AstNode, env: Environment): boolean {
+    if (node.type !== nodeType) {
+        return false;
+    }
+    if (!("file_path" in node)) {
+        return false;
+    }
+    const filePath = (node as { file_path: string }).file_path;
+    if (!matchesPath(entry, filePath)) {
+        return false;
+    }
+    if (!matchesCwd(entry, env)) {
+        return false;
+    }
+    if (!matchesCwdResolved(entry, env)) {
+        return false;
+    }
+    if (!matchesEnvVars(entry, env)) {
+        return false;
+    }
+    return true;
+}
+
 // Compiles one rule for a file-path-based tool (read/write/edit/multiedit)
 function buildFileRule(nodeType: string, entry: IYamlEntry): Rule {
     const decision = mapDecision(entry.decide as DecideValue, entry.reason);
     const ruleName = `yaml:${nodeType}:${entry.decide}`;
 
     const rule: Rule = function(node: AstNode, env: Environment, _call: ToolCall): RuleOutcome {
-        if (node.type !== nodeType) {
+        if (!matchesFileEntry(nodeType, entry, node, env)) {
             return ABSTAIN;
         }
-        if (!("file_path" in node)) {
-            return ABSTAIN;
-        }
-
-        const filePath = (node as { file_path: string }).file_path;
-
-        if (!matchesPath(entry, filePath)) {
-            return ABSTAIN;
-        }
-        if (!matchesCwd(entry, env)) {
-            return ABSTAIN;
-        }
-        if (!matchesCwdResolved(entry, env)) {
-            return ABSTAIN;
-        }
-        if (!matchesEnvVars(entry, env)) {
-            return ABSTAIN;
-        }
-
         return { decision };
     };
 
@@ -473,43 +483,74 @@ function extractHost(url: string): string {
     }
 }
 
+// Returns true when the node and entry conditions all match for a webfetch rule
+function matchesWebFetchEntry(entry: IYamlEntry, node: AstNode, env: Environment): boolean {
+    if (node.type !== "other" || node.tool_name !== "WebFetch") {
+        return false;
+    }
+    const url = typeof node.tool_input["url"] === "string" ? node.tool_input["url"] : "";
+    const hostname = extractHost(url);
+    if (entry.host !== undefined && !matchesPattern(entry.host, hostname)) {
+        return false;
+    }
+    if (entry["host-in"] !== undefined) {
+        const hostIn = entry["host-in"] as string[];
+        if (!hostIn.some((pattern: string) => matchesPattern(pattern, hostname))) {
+            return false;
+        }
+    }
+    if (!matchesCwd(entry, env)) {
+        return false;
+    }
+    if (!matchesCwdResolved(entry, env)) {
+        return false;
+    }
+    if (!matchesEnvVars(entry, env)) {
+        return false;
+    }
+    return true;
+}
+
 // Compiles one rule for a webfetch entry
 function buildWebFetchRule(entry: IYamlEntry): Rule {
     const decision = mapDecision(entry.decide as DecideValue, entry.reason);
     const ruleName = `yaml:webfetch:${entry.decide}`;
 
     const rule: Rule = function(node: AstNode, env: Environment, _call: ToolCall): RuleOutcome {
-        if (node.type !== "other" || node.tool_name !== "WebFetch") {
+        if (!matchesWebFetchEntry(entry, node, env)) {
             return ABSTAIN;
         }
-
-        const url = typeof node.tool_input["url"] === "string" ? node.tool_input["url"] : "";
-        const hostname = extractHost(url);
-
-        if (entry.host !== undefined && !matchesPattern(entry.host, hostname)) {
-            return ABSTAIN;
-        }
-        if (entry["host-in"] !== undefined) {
-            const hostIn = entry["host-in"] as string[];
-            if (!hostIn.some((pattern: string) => matchesPattern(pattern, hostname))) {
-                return ABSTAIN;
-            }
-        }
-        if (!matchesCwd(entry, env)) {
-            return ABSTAIN;
-        }
-        if (!matchesCwdResolved(entry, env)) {
-            return ABSTAIN;
-        }
-        if (!matchesEnvVars(entry, env)) {
-            return ABSTAIN;
-        }
-
         return { decision };
     };
 
     Object.defineProperty(rule, "name", { value: ruleName });
     return rule;
+}
+
+// Returns true when the node and entry conditions all match for an MCP tool rule
+function matchesMcpEntry(entry: IYamlEntry, node: AstNode, env: Environment): boolean {
+    if (node.type !== "other") {
+        return false;
+    }
+    if (entry["tool-in"] !== undefined) {
+        const toolIn = entry["tool-in"] as string[];
+        if (!toolIn.some((pattern: string) => matchesPattern(pattern, node.tool_name))) {
+            return false;
+        }
+    }
+    if (entry.tool !== undefined && !matchesPattern(entry.tool, node.tool_name)) {
+        return false;
+    }
+    if (!matchesCwd(entry, env)) {
+        return false;
+    }
+    if (!matchesCwdResolved(entry, env)) {
+        return false;
+    }
+    if (!matchesEnvVars(entry, env)) {
+        return false;
+    }
+    return true;
 }
 
 // Compiles one rule for an MCP tool entry
@@ -518,29 +559,9 @@ function buildMcpRule(entry: IYamlEntry): Rule {
     const ruleName = `yaml:mcp:${entry.decide}`;
 
     const rule: Rule = function(node: AstNode, env: Environment, _call: ToolCall): RuleOutcome {
-        if (node.type !== "other") {
+        if (!matchesMcpEntry(entry, node, env)) {
             return ABSTAIN;
         }
-
-        if (entry["tool-in"] !== undefined) {
-            const toolIn = entry["tool-in"] as string[];
-            if (!toolIn.some((pattern: string) => matchesPattern(pattern, node.tool_name))) {
-                return ABSTAIN;
-            }
-        }
-        if (entry.tool !== undefined && !matchesPattern(entry.tool, node.tool_name)) {
-            return ABSTAIN;
-        }
-        if (!matchesCwd(entry, env)) {
-            return ABSTAIN;
-        }
-        if (!matchesCwdResolved(entry, env)) {
-            return ABSTAIN;
-        }
-        if (!matchesEnvVars(entry, env)) {
-            return ABSTAIN;
-        }
-
         return { decision };
     };
 
@@ -548,18 +569,23 @@ function buildMcpRule(entry: IYamlEntry): Rule {
     return rule;
 }
 
-// Compiles sub-entries for a file scoped rule, dispatching to scoped or plain builder
-export function compileFileEntries(nodeType: string, entries: IYamlEntry[]): Rule[] {
+// Compiles a list of entries into rules, dispatching each to the leaf or scoped builder
+function compileEntries(entries: IYamlEntry[], buildLeaf: (entry: IYamlEntry) => Rule, buildScoped: (entry: IYamlEntry) => Rule): Rule[] {
     const compiledRules: Rule[] = [];
     for (const entry of entries) {
         if (entry.rules !== undefined) {
-            compiledRules.push(buildFileScopedRule(nodeType, entry));
+            compiledRules.push(buildScoped(entry));
         }
         else if (typeof entry.decide === "string") {
-            compiledRules.push(buildFileRule(nodeType, entry));
+            compiledRules.push(buildLeaf(entry));
         }
     }
     return compiledRules;
+}
+
+// Compiles sub-entries for a file scoped rule, dispatching to scoped or plain builder
+export function compileFileEntries(nodeType: string, entries: IYamlEntry[]): Rule[] {
+    return compileEntries(entries, (entry) => buildFileRule(nodeType, entry), (entry) => buildFileScopedRule(nodeType, entry));
 }
 
 // Builds a scoped file rule: checks parent conditions, then aggregates sub-rules
@@ -568,37 +594,10 @@ export function buildFileScopedRule(nodeType: string, entry: IYamlEntry): Rule {
     const ruleName = `yaml:${nodeType}:scoped`;
 
     const rule: Rule = function(node: AstNode, env: Environment, call: ToolCall): RuleOutcome {
-        if (node.type !== nodeType) {
+        if (!matchesFileEntry(nodeType, entry, node, env)) {
             return ABSTAIN;
         }
-        if (!("file_path" in node)) {
-            return ABSTAIN;
-        }
-
-        const filePath = (node as { file_path: string }).file_path;
-
-        if (!matchesPath(entry, filePath)) {
-            return ABSTAIN;
-        }
-        if (!matchesCwd(entry, env)) {
-            return ABSTAIN;
-        }
-        if (!matchesCwdResolved(entry, env)) {
-            return ABSTAIN;
-        }
-        if (!matchesEnvVars(entry, env)) {
-            return ABSTAIN;
-        }
-
-        let result: RuleOutcome = ABSTAIN;
-        for (const subRule of subRules) {
-            const outcome = subRule(node, env, call);
-            result = aggregateOutcomes(result, outcome);
-            if (result.decision.action === "deny") {
-                break;
-            }
-        }
-        return result;
+        return runSubRules(subRules, node, env, call);
     };
 
     Object.defineProperty(rule, "name", { value: ruleName });
@@ -607,16 +606,7 @@ export function buildFileScopedRule(nodeType: string, entry: IYamlEntry): Rule {
 
 // Compiles sub-entries for a webfetch scoped rule
 export function compileWebFetchEntries(entries: IYamlEntry[]): Rule[] {
-    const compiledRules: Rule[] = [];
-    for (const entry of entries) {
-        if (entry.rules !== undefined) {
-            compiledRules.push(buildWebFetchScopedRule(entry));
-        }
-        else if (typeof entry.decide === "string") {
-            compiledRules.push(buildWebFetchRule(entry));
-        }
-    }
-    return compiledRules;
+    return compileEntries(entries, buildWebFetchRule, buildWebFetchScopedRule);
 }
 
 // Builds a scoped webfetch rule: checks parent conditions, then aggregates sub-rules
@@ -625,41 +615,10 @@ export function buildWebFetchScopedRule(entry: IYamlEntry): Rule {
     const ruleName = `yaml:webfetch:scoped`;
 
     const rule: Rule = function(node: AstNode, env: Environment, call: ToolCall): RuleOutcome {
-        if (node.type !== "other" || node.tool_name !== "WebFetch") {
+        if (!matchesWebFetchEntry(entry, node, env)) {
             return ABSTAIN;
         }
-
-        const url = typeof node.tool_input["url"] === "string" ? node.tool_input["url"] : "";
-        const hostname = extractHost(url);
-
-        if (entry.host !== undefined && !matchesPattern(entry.host, hostname)) {
-            return ABSTAIN;
-        }
-        if (entry["host-in"] !== undefined) {
-            const hostIn = entry["host-in"] as string[];
-            if (!hostIn.some((pattern: string) => matchesPattern(pattern, hostname))) {
-                return ABSTAIN;
-            }
-        }
-        if (!matchesCwd(entry, env)) {
-            return ABSTAIN;
-        }
-        if (!matchesCwdResolved(entry, env)) {
-            return ABSTAIN;
-        }
-        if (!matchesEnvVars(entry, env)) {
-            return ABSTAIN;
-        }
-
-        let result: RuleOutcome = ABSTAIN;
-        for (const subRule of subRules) {
-            const outcome = subRule(node, env, call);
-            result = aggregateOutcomes(result, outcome);
-            if (result.decision.action === "deny") {
-                break;
-            }
-        }
-        return result;
+        return runSubRules(subRules, node, env, call);
     };
 
     Object.defineProperty(rule, "name", { value: ruleName });
@@ -668,16 +627,7 @@ export function buildWebFetchScopedRule(entry: IYamlEntry): Rule {
 
 // Compiles sub-entries for an MCP scoped rule
 export function compileMcpEntries(entries: IYamlEntry[]): Rule[] {
-    const compiledRules: Rule[] = [];
-    for (const entry of entries) {
-        if (entry.rules !== undefined) {
-            compiledRules.push(buildMcpScopedRule(entry));
-        }
-        else if (typeof entry.decide === "string") {
-            compiledRules.push(buildMcpRule(entry));
-        }
-    }
-    return compiledRules;
+    return compileEntries(entries, buildMcpRule, buildMcpScopedRule);
 }
 
 // Builds a scoped MCP rule: checks parent conditions, then aggregates sub-rules
@@ -686,38 +636,10 @@ export function buildMcpScopedRule(entry: IYamlEntry): Rule {
     const ruleName = `yaml:mcp:scoped`;
 
     const rule: Rule = function(node: AstNode, env: Environment, call: ToolCall): RuleOutcome {
-        if (node.type !== "other") {
+        if (!matchesMcpEntry(entry, node, env)) {
             return ABSTAIN;
         }
-
-        if (entry["tool-in"] !== undefined) {
-            const toolIn = entry["tool-in"] as string[];
-            if (!toolIn.some((pattern: string) => matchesPattern(pattern, node.tool_name))) {
-                return ABSTAIN;
-            }
-        }
-        if (entry.tool !== undefined && !matchesPattern(entry.tool, node.tool_name)) {
-            return ABSTAIN;
-        }
-        if (!matchesCwd(entry, env)) {
-            return ABSTAIN;
-        }
-        if (!matchesCwdResolved(entry, env)) {
-            return ABSTAIN;
-        }
-        if (!matchesEnvVars(entry, env)) {
-            return ABSTAIN;
-        }
-
-        let result: RuleOutcome = ABSTAIN;
-        for (const subRule of subRules) {
-            const outcome = subRule(node, env, call);
-            result = aggregateOutcomes(result, outcome);
-            if (result.decision.action === "deny") {
-                break;
-            }
-        }
-        return result;
+        return runSubRules(subRules, node, env, call);
     };
 
     Object.defineProperty(rule, "name", { value: ruleName });
