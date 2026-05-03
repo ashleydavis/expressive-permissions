@@ -184,11 +184,68 @@ git:
 
 This matches only when `git push --remote origin` is called with `CI=true` set and the working directory is under `/projects/`.
 
+## Nested rules
+
+Use a `rules:` key to group a set of rules under a shared set of matching fields. The sub-rules only run when the parent fields match -- any combination of `cmd`, `options`, `env`, `cwd`, or `path` can be used. This avoids repeating the same fields on every rule.
+
+```yaml
+aws:
+  # Only evaluate the sub-rules when the profile is not sandbox
+  - env:
+      AWS_PROFILE: /^(?!sandbox$)/
+    rules:
+      - cmd: "* delete-*"
+        decide: deny
+        reason: Deletes on non-sandbox profiles risk permanent data loss.
+      - cmd: "* create-*"
+        decide: deny
+        reason: Creates on non-sandbox profiles may incur unexpected costs.
+      - decide: ask
+        reason: Confirm AWS operation on non-sandbox profile
+```
+
+The parent block contributes no `decide` of its own -- it is a pure filter. All normal matching fields (`cmd`, `options`, `env`, `cwd`, `path`) are supported.
+
+Sub-rules are evaluated exactly like top-level rules: strictest-wins applies within the `rules:` list, and the winning outcome from the block propagates up and competes with any other rules at the outer level.
+
+Nesting can go as deep as needed:
+
+```yaml
+aws:
+  - env:
+      AWS_PROFILE: /^(?!sandbox$)/
+    rules:
+      - cmd: "iam *"
+        rules:
+          - options:
+              - create-role
+              - attach-role-policy
+            decide: deny
+            reason: Role changes require a change-control ticket.
+          - decide: ask
+            reason: Confirm IAM operation on non-sandbox profile
+      - decide: ask
+        reason: Confirm AWS operation on non-sandbox profile
+```
+
+Nested `rules:` blocks also work on non-binary tools. For example, to gate file-tool rules on a working directory:
+
+```yaml
+write:
+  - cwd: /projects/production/**
+    rules:
+      - path: "**/*.env"
+        decide: deny
+        reason: Env files in production are managed by the secrets pipeline.
+      - decide: ask
+        reason: Confirm write inside production project
+```
+
 ## Positional argument matching
 
-Use `cmd` to match positional arguments (non-flag values on the command line). 
+Use `cmd` to match positional arguments (non-flag values on the command line). Each word in the string is tested against the positional argument at the same index. Extra positional arguments beyond the pattern are ignored.
 
-A single-word string matches the first positional argument:
+A single word tests only the first positional argument:
 
 ```yaml
 curl:
@@ -196,7 +253,7 @@ curl:
   decide: allow
 ```
 
-A space-separated string matches multiple positional arguments in order. Each word is tested against the argument at the same position:
+A space-separated string tests each word against the argument at the same position:
 
 ```yaml
 mv:
@@ -218,7 +275,7 @@ mv:
   reason: Confirm moving files from src to dist
 ```
 
-Each word can be any pattern -- including a regex:
+Each word can be any pattern, including a regex:
 
 ```yaml
 curl:

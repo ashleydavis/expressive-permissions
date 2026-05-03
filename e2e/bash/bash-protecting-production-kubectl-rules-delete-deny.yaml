@@ -1,0 +1,32 @@
+description: "protecting-production: kubectl rules: non-sandbox context + delete → deny"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "kubectl delete pod mypod --context prod-cluster"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    kubectl:
+      - options:
+          context: sandbox-*
+        decide: allow
+      - options:
+          context: /^(?!sandbox)/
+        rules:
+          - cmd: get
+            decide: allow
+            reason: Read-only resource listing.
+          - cmd: describe
+            decide: allow
+            reason: Read-only resource inspection.
+          - cmd: delete
+            decide: deny
+            reason: Deleted resources outside sandbox may not be recoverable.
+          - decide: ask
+            reason: Confirm kubectl operation outside sandbox
+
+expected:
+  decision: deny
+  reason: Deleted resources outside sandbox may not be recoverable.

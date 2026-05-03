@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync, rmSync } from "fs";
 import { join } from "path";
-import { loadConfigRules, resolveCwdPattern, resolveEntryCwdPatterns, resolveRelativeCwdPatterns, IYamlEntry, IYamlConfig } from "../load-config";
-import { Rule, AstNode, Environment, ToolCall, Command } from "../types";
+import { loadConfigRules, resolveCwdPattern, resolveEntryCwdPatterns, resolveRelativeCwdPatterns, aggregateOutcomes, buildBashScopedRule, buildFileScopedRule, IYamlEntry, IYamlConfig } from "../load-config";
+import { Rule, RuleOutcome, AstNode, Environment, ToolCall, Command } from "../types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -2521,4 +2521,191 @@ test("resolveRelativeCwdPatterns: absolute patterns in all sections left unchang
     resolveRelativeCwdPatterns(config, "/base");
     expect((config.bash!["rm"] as IYamlEntry).cwd).toBe("/etc/**");
     expect((config.read as IYamlEntry).cwd).toBe("/secrets/**");
+});
+
+// ---------------------------------------------------------------------------
+// aggregateOutcomes
+// ---------------------------------------------------------------------------
+
+test("aggregateOutcomes: deny beats ask", () => {
+    const deny: RuleOutcome = { decision: { action: "deny" } };
+    const ask: RuleOutcome = { decision: { action: "ask" } };
+    expect(aggregateOutcomes(deny, ask).decision.action).toBe("deny");
+    expect(aggregateOutcomes(ask, deny).decision.action).toBe("deny");
+});
+
+test("aggregateOutcomes: deny beats allow", () => {
+    const deny: RuleOutcome = { decision: { action: "deny" } };
+    const allow: RuleOutcome = { decision: { action: "allow" } };
+    expect(aggregateOutcomes(deny, allow).decision.action).toBe("deny");
+    expect(aggregateOutcomes(allow, deny).decision.action).toBe("deny");
+});
+
+test("aggregateOutcomes: deny beats abstain", () => {
+    const deny: RuleOutcome = { decision: { action: "deny" } };
+    const abstain: RuleOutcome = { decision: { action: "abstain" } };
+    expect(aggregateOutcomes(deny, abstain).decision.action).toBe("deny");
+    expect(aggregateOutcomes(abstain, deny).decision.action).toBe("deny");
+});
+
+test("aggregateOutcomes: ask beats allow", () => {
+    const ask: RuleOutcome = { decision: { action: "ask" } };
+    const allow: RuleOutcome = { decision: { action: "allow" } };
+    expect(aggregateOutcomes(ask, allow).decision.action).toBe("ask");
+    expect(aggregateOutcomes(allow, ask).decision.action).toBe("ask");
+});
+
+test("aggregateOutcomes: ask beats abstain", () => {
+    const ask: RuleOutcome = { decision: { action: "ask" } };
+    const abstain: RuleOutcome = { decision: { action: "abstain" } };
+    expect(aggregateOutcomes(ask, abstain).decision.action).toBe("ask");
+    expect(aggregateOutcomes(abstain, ask).decision.action).toBe("ask");
+});
+
+test("aggregateOutcomes: allow beats abstain", () => {
+    const allow: RuleOutcome = { decision: { action: "allow" } };
+    const abstain: RuleOutcome = { decision: { action: "abstain" } };
+    expect(aggregateOutcomes(allow, abstain).decision.action).toBe("allow");
+    expect(aggregateOutcomes(abstain, allow).decision.action).toBe("allow");
+});
+
+test("aggregateOutcomes: abstain + abstain → abstain", () => {
+    const abstain: RuleOutcome = { decision: { action: "abstain" } };
+    expect(aggregateOutcomes(abstain, abstain).decision.action).toBe("abstain");
+});
+
+// ---------------------------------------------------------------------------
+// buildBashScopedRule
+// ---------------------------------------------------------------------------
+
+test("buildBashScopedRule: parent env no match → ABSTAIN", () => {
+    const entry: IYamlEntry = {
+        env: { AWS_PROFILE: "sandbox" },
+        rules: [{ decide: "deny" }],
+    };
+    const rule = buildBashScopedRule("aws", [], entry);
+    const node = makeCommand("aws", ["ec2", "delete-vpc"]);
+    const env = makeEnv("/project", true, { AWS_PROFILE: "prod" });
+    expect(rule(node, env, dummyCall).decision.action).toBe("abstain");
+});
+
+test("buildBashScopedRule: empty rules list, parent matches → ABSTAIN", () => {
+    const entry: IYamlEntry = {
+        env: { AWS_PROFILE: "prod" },
+        rules: [],
+    };
+    const rule = buildBashScopedRule("aws", [], entry);
+    const node = makeCommand("aws", ["ec2", "delete-vpc"]);
+    const env = makeEnv("/project", true, { AWS_PROFILE: "prod" });
+    expect(rule(node, env, dummyCall).decision.action).toBe("abstain");
+});
+
+test("buildBashScopedRule: 1 deny sub-rule, parent env matches → deny", () => {
+    const entry: IYamlEntry = {
+        env: { AWS_PROFILE: "/^(?!sandbox$)/" },
+        rules: [{ cmd: "* delete-*", decide: "deny" }],
+    };
+    const rule = buildBashScopedRule("aws", [], entry);
+    const node = makeCommand("aws", ["ec2", "delete-vpc"]);
+    const env = makeEnv("/project", true, { AWS_PROFILE: "prod" });
+    expect(rule(node, env, dummyCall).decision.action).toBe("deny");
+});
+
+test("buildBashScopedRule: allow+ask+deny sub-rules all match → deny wins", () => {
+    const entry: IYamlEntry = {
+        rules: [
+            { cmd: "s3 ls", decide: "allow" },
+            { decide: "ask" },
+            { cmd: "* delete-*", decide: "deny" },
+        ],
+    };
+    const rule = buildBashScopedRule("aws", [], entry);
+    const node = makeCommand("aws", ["ec2", "delete-vpc"]);
+    expect(rule(node, makeEnv(), dummyCall).decision.action).toBe("deny");
+});
+
+test("buildBashScopedRule: multi-level nesting, innermost deny → deny", () => {
+    const yaml = `
+bash:
+  aws:
+    - env:
+        AWS_PROFILE: "/^(?!sandbox$)/"
+      rules:
+        - env:
+            AWS_REGION: us-east-1
+          rules:
+            - cmd: "* delete-*"
+              decide: deny
+            - decide: ask
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const env = makeEnv("/project", true, { AWS_PROFILE: "prod", AWS_REGION: "us-east-1" });
+        const node = makeCommand("aws", ["ec2", "delete-vpc"]);
+        const actions = rules.map((rule) => rule(node, env, dummyCall).decision.action);
+        expect(actions).toContain("deny");
+        expect(actions).not.toContain("allow");
+    });
+});
+
+test("buildBashScopedRule: multi-level, inner env no-match → outer catch-all ask fires", () => {
+    const yaml = `
+bash:
+  aws:
+    - env:
+        AWS_PROFILE: "/^(?!sandbox$)/"
+      rules:
+        - env:
+            AWS_REGION: us-east-1
+          rules:
+            - cmd: "* delete-*"
+              decide: deny
+        - decide: ask
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const env = makeEnv("/project", true, { AWS_PROFILE: "prod", AWS_REGION: "eu-west-1" });
+        const node = makeCommand("aws", ["ec2", "delete-vpc"]);
+        const nonAbstain = rules
+            .map((rule) => rule(node, env, dummyCall).decision.action)
+            .filter((action) => action !== "abstain");
+        expect(nonAbstain).toContain("ask");
+        expect(nonAbstain).not.toContain("deny");
+    });
+});
+
+// ---------------------------------------------------------------------------
+// buildFileScopedRule
+// ---------------------------------------------------------------------------
+
+test("buildFileScopedRule: parent cwd match + sub-rule path match → deny", () => {
+    const entry: IYamlEntry = {
+        cwd: "/projects/production/**",
+        rules: [{ path: "**/.env", decide: "deny" }],
+    };
+    const rule = buildFileScopedRule("write", entry);
+    const node: AstNode = { type: "write", file_path: "/projects/production/app/.env", content: "" };
+    const env = makeEnv("/projects/production/app");
+    expect(rule(node, env, dummyCall).decision.action).toBe("deny");
+});
+
+test("buildFileScopedRule: parent cwd no-match → ABSTAIN", () => {
+    const entry: IYamlEntry = {
+        cwd: "/projects/production/**",
+        rules: [{ path: "**/.env", decide: "deny" }],
+    };
+    const rule = buildFileScopedRule("write", entry);
+    const node: AstNode = { type: "write", file_path: "/projects/staging/app/.env", content: "" };
+    const env = makeEnv("/projects/staging/app");
+    expect(rule(node, env, dummyCall).decision.action).toBe("abstain");
+});
+
+// ---------------------------------------------------------------------------
+// resolveEntryCwdPatterns: rules: sub-entries
+// ---------------------------------------------------------------------------
+
+test("resolveEntryCwdPatterns: ./relative cwd inside rules: block is resolved", () => {
+    const entry: IYamlEntry = {
+        rules: [{ cwd: "./src", decide: "deny" }],
+    };
+    resolveEntryCwdPatterns(entry, "/base");
+    expect(entry.rules![0].cwd).toBe("/base/src");
 });

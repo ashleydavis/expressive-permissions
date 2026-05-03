@@ -46,9 +46,7 @@ aws:
 
 I'd like `switch` or `if` statement that says, "if sandbox, do this, otherwise do that".
 
----
-
-How to implement nested rules? Sub rules that match when an env var, cwd, file precences, file content or command rules is matched?
+Be good to have an else block.
 
 ---
 
@@ -123,3 +121,12 @@ program:
         not: sandbox
 ```
 
+---
+
+Why so many `buildXXXScopedRule` functions?
+
+Duplicate code.
+
+---
+
+Make sure all functions are exported and unit tested.

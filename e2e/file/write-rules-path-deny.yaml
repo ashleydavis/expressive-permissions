@@ -1,0 +1,22 @@
+description: "file rules: write in production cwd + .env path → deny"
+
+input:
+  tool_name: Write
+  tool_input:
+    file_path: /projects/production/app/.env
+    content: "SECRET=leaked"
+  cwd: /projects/production/app
+
+rules:
+  write:
+    - cwd: "/projects/production/**"
+      rules:
+        - path: "**/.env"
+          decide: deny
+          reason: Env files in production are protected.
+        - decide: ask
+          reason: Confirm write to production directory.
+
+expected:
+  decision: deny
+  reason: Env files in production are protected.

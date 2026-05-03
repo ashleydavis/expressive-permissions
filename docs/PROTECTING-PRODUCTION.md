@@ -18,21 +18,21 @@ The AWS CLI follows the pattern `aws <service> <operation>`. Most read-only oper
 aws:
   - cmd: "* describe-*"
     decide: allow
-    reason: Read-only describe operation
+    reason: describe-* operations are read-only and do not modify resources.
   - cmd: "* list-*"
     decide: allow
-    reason: Read-only list operation
+    reason: list-* operations are read-only and do not modify resources.
   - cmd: "* get-*"
     decide: allow
-    reason: Read-only get operation
+    reason: get-* operations are read-only and do not modify resources.
 
   # aws s3 high-level commands use short names rather than the verb-* convention
   - cmd: "s3 ls"
     decide: allow
-    reason: S3 list
+    reason: Lists S3 buckets or objects without modifying anything.
   - cmd: "s3 presign"
     decide: allow
-    reason: S3 presign is read-only
+    reason: Generates a pre-signed URL for an existing object without modifying it.
 ```
 
 ### Block all write operations
@@ -200,16 +200,22 @@ Allow known safe read-only subcommands explicitly and let the catch-all `ask` su
 kubectl:
   - get:
       decide: allow
+      reason: Read-only resource listing.
   - describe:
       decide: allow
+      reason: Read-only resource inspection.
   - logs:
       decide: allow
+      reason: Read-only log access.
   - top:
       decide: allow
+      reason: Read-only resource usage metrics.
   - version:
       decide: allow
+      reason: Read-only version check.
   - cluster-info:
       decide: allow
+      reason: Read-only cluster information.
   - decide: ask
     reason: Confirm kubectl operation
 ```
@@ -264,41 +270,32 @@ aws:
       AWS_PROFILE: sandbox
     decide: allow
 
-  # Any non-sandbox profile: deny known-destructive operations
+  # Any non-sandbox profile: apply these rules
   - env:
       AWS_PROFILE: /^(?!sandbox$)/
-    cmd: "* delete-*"
-    decide: deny
-    reason: Destructive deletes on non-sandbox profiles risk permanent data loss.
-  - env:
-      AWS_PROFILE: /^(?!sandbox$)/
-    cmd: "* terminate-*"
-    decide: deny
-    reason: Terminating instances on non-sandbox profiles causes irreversible downtime.
-  - env:
-      AWS_PROFILE: /^(?!sandbox$)/
-    cmd: "* create-*"
-    decide: deny
-    reason: Creating resources on non-sandbox profiles may incur unexpected costs.
-  - env:
-      AWS_PROFILE: /^(?!sandbox$)/
-    cmd: "* modify-*"
-    decide: deny
-    reason: Modifying resources on non-sandbox profiles risks service disruptions.
-  - env:
-      AWS_PROFILE: /^(?!sandbox$)/
-    cmd: "iam *"
-    decide: deny
-    reason: IAM changes on non-sandbox profiles can compromise the entire account's security.
+    rules:
+      - cmd: "* delete-*"
+        decide: deny
+        reason: Destructive deletes on non-sandbox profiles risk permanent data loss.
+      - cmd: "* terminate-*"
+        decide: deny
+        reason: Terminating instances on non-sandbox profiles causes irreversible downtime.
+      - cmd: "* create-*"
+        decide: deny
+        reason: Creating resources on non-sandbox profiles may incur unexpected costs.
+      - cmd: "* modify-*"
+        decide: deny
+        reason: Modifying resources on non-sandbox profiles risks service disruptions.
+      - cmd: "iam *"
+        decide: deny
+        reason: IAM changes on non-sandbox profiles can compromise the entire account's security.
 
-  # Non-sandbox catch-all: ask for anything not explicitly denied above
-  - env:
-      AWS_PROFILE: /^(?!sandbox$)/
-    decide: ask
-    reason: Confirm AWS operation on non-sandbox profile
+      # Catch-all: ask for anything not explicitly denied above
+      - decide: ask
+        reason: Confirm AWS operation on non-sandbox profile
 ```
 
-`/^(?!sandbox$)/` matches any profile name except `sandbox` exactly. The `deny` rules and the catch-all `ask` both match destructive operations on non-sandbox profiles -- deny wins because it is stricter. The `ask` only takes effect when no `deny` rule matches, which covers operations like `describe-*` and `list-*`.
+`/^(?!sandbox$)/` matches any profile name except `sandbox` exactly. The `rules:` block only runs when the parent `env` condition matches, so the profile check is written once rather than repeated on every rule. Inside the block, strictest-wins still applies: `deny` beats `ask`, so the catch-all `ask` only fires when no `deny` rule matches (e.g. for `describe-*` or `list-*` operations).
 
 > **Note on `allow` vs `ask`:** Because `ask` beats `allow` in the strictest-wins ordering, adding explicit `allow` rules for reads (e.g. `cmd: ["*", "describe-*"], decide: allow`) would have no effect -- the catch-all `ask` would still win. If you want reads to pass through silently on production, remove the catch-all `ask` and enumerate only the operations you want to deny. Anything not covered by an explicit rule falls through to the default behavior.
 
@@ -313,59 +310,47 @@ kubectl:
       context: sandbox-*
     decide: allow
 
-  # Any non-sandbox context: allow read-only operations
+  # Any non-sandbox context: apply these rules
   - options:
       context: /^(?!sandbox)/
-    cmd: get
-    decide: allow
-  - options:
-      context: /^(?!sandbox)/
-    cmd: describe
-    decide: allow
-  - options:
-      context: /^(?!sandbox)/
-    cmd: logs
-    decide: allow
-  - options:
-      context: /^(?!sandbox)/
-    cmd: top
-    decide: allow
-  - options:
-      context: /^(?!sandbox)/
-    cmd: version
-    decide: allow
-  - options:
-      context: /^(?!sandbox)/
-    cmd: cluster-info
-    decide: allow
+    rules:
+      # Allow read-only operations
+      - cmd: get
+        decide: allow
+        reason: Read-only resource listing.
+      - cmd: describe
+        decide: allow
+        reason: Read-only resource inspection.
+      - cmd: logs
+        decide: allow
+        reason: Read-only log access.
+      - cmd: top
+        decide: allow
+        reason: Read-only resource usage metrics.
+      - cmd: version
+        decide: allow
+        reason: Read-only version check.
+      - cmd: cluster-info
+        decide: allow
+        reason: Read-only cluster information.
 
-  # Any non-sandbox context: deny known-destructive operations
-  - options:
-      context: /^(?!sandbox)/
-    cmd: delete
-    decide: deny
-    reason: Deleted resources outside sandbox may not be recoverable -- use your deployment pipeline.
-  - options:
-      context: /^(?!sandbox)/
-    cmd: apply
-    decide: deny
-    reason: Direct applies outside sandbox bypass the deployment pipeline and change tracking.
-  - options:
-      context: /^(?!sandbox)/
-    cmd: exec
-    decide: deny
-    reason: Pod shell access outside sandbox bypasses audit logging and security controls.
-  - options:
-      context: /^(?!sandbox)/
-    cmd: scale
-    decide: deny
-    reason: Manual scaling outside sandbox bypasses capacity planning -- use your deployment pipeline.
+      # Deny known-destructive operations
+      - cmd: delete
+        decide: deny
+        reason: Deleted resources outside sandbox may not be recoverable -- use your deployment pipeline.
+      - cmd: apply
+        decide: deny
+        reason: Direct applies outside sandbox bypass the deployment pipeline and change tracking.
+      - cmd: exec
+        decide: deny
+        reason: Pod shell access outside sandbox bypasses audit logging and security controls.
+      - cmd: scale
+        decide: deny
+        reason: Manual scaling outside sandbox bypasses capacity planning -- use your deployment pipeline.
 
-  # Non-sandbox catch-all: ask for anything not explicitly denied above
-  - options:
-      context: /^(?!sandbox)/
-    decide: ask
-    reason: Confirm kubectl operation outside sandbox
+      # Catch-all: ask for anything not explicitly covered above
+      - decide: ask
+        reason: Confirm kubectl operation outside sandbox
 ```
 
 This matches when `--context` is passed explicitly, which is common in scripts and pipelines. If the active context was set with `kubectl config use-context` and commands run without the flag, these rules will not match -- for that case, a custom TypeScript rule can call `kubectl config current-context` to detect the active context automatically.

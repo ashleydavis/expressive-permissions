@@ -1,0 +1,27 @@
+description: "bash rules: three sub-rules (allow+allow+deny), deny wins"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "AWS_PROFILE=prod aws ec2 delete-vpc --vpc-id vpc-123"
+  cwd: /home/user/project
+  env:
+    AWS_PROFILE: prod
+
+rules:
+  bash:
+    aws:
+      - env:
+          AWS_PROFILE: "/^(?!sandbox$)/"
+        rules:
+          - cmd: "s3 ls"
+            decide: allow
+          - cmd: "* describe-*"
+            decide: allow
+          - cmd: "* delete-*"
+            decide: deny
+            reason: Destructive deletes blocked
+
+expected:
+  decision: deny
+  reason: Destructive deletes blocked
