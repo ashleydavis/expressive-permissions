@@ -14,7 +14,7 @@ type IEntryValue = string | boolean | string[] | Record<string, string> | IYamlE
 export interface IYamlEntry {
     // The decision to return when this entry matches
     decide?: string;
-    // Positional arg matcher (cmd): single string matches cmd[cmdOffset], array matches cmd[cmdOffset+i] per index (AND)
+    // Positional arg matcher (cmd): string is split on whitespace, each token matches cmd[cmdOffset+i] in order (AND); array matches cmd[cmdOffset+i] per index (AND)
     cmd?: string | string[];
     // OR form of cmd: any positional from cmdOffset onwards matches any listed pattern
     "cmd-in"?: string[];
@@ -214,25 +214,22 @@ function matchesCmd(entry: IYamlEntry, node: Command, cmdOffset: number): boolea
     }
 
     if (entry.cmd !== undefined) {
-        if (Array.isArray(entry.cmd)) {
-            // Each element matches cmd[cmdOffset + index] — AND across indices
-            for (let idx = 0; idx < entry.cmd.length; idx++) {
-                const target = cmdArray[cmdOffset + idx];
-                if (target === undefined) {
-                    return false;
-                }
-                if (!matchesPattern(entry.cmd[idx] as string, target)) {
-                    return false;
-                }
+        // Normalise to an array: an array is used as-is; a string is split on whitespace
+        // so "* describe-*" matches cmd[offset] against "*" and cmd[offset+1] against "describe-*".
+        const patterns: string[] = Array.isArray(entry.cmd)
+            ? entry.cmd
+            : (entry.cmd as string).trim().split(/\s+/);
+
+        for (let idx = 0; idx < patterns.length; idx++) {
+            const target = cmdArray[cmdOffset + idx];
+            if (target === undefined) {
+                return false;
             }
-            return true;
+            if (!matchesPattern(patterns[idx], target)) {
+                return false;
+            }
         }
-        // String: matches cmd[cmdOffset]
-        const target = cmdArray[cmdOffset];
-        if (target === undefined) {
-            return false;
-        }
-        return matchesPattern(entry.cmd as string, target);
+        return true;
     }
 
     return true;

@@ -188,7 +188,7 @@ This matches only when `git push --remote origin` is called with `CI=true` set a
 
 Use `cmd` to match positional arguments (non-flag values on the command line). 
 
-A single string matches the first positional argument:
+A single-word string matches the first positional argument:
 
 ```yaml
 curl:
@@ -196,16 +196,18 @@ curl:
   decide: allow
 ```
 
-You can also use a regex to match multiple values against the first positional argument:
+A space-separated string matches multiple positional arguments in order. Each word is tested against the argument at the same position:
 
 ```yaml
-curl:
-  cmd: "/(http|ftp):/"
-  decide: deny
-  reason: Only HTTPS allowed
+mv:
+  cmd: "src/** dist/**"
+  decide: ask
+  reason: Confirm moving files from src to dist
 ```
 
-Use an array or list to match multiple positional arguments in order. Each pattern is tested against the argument at the same index:
+This matches when the first argument matches `src/**` and the second matches `dist/**`, for example `mv src/main.ts dist/main.ts`.
+
+You can also use an array to match multiple positional arguments -- it is equivalent to the space-separated string form:
 
 ```yaml
 mv:
@@ -216,7 +218,14 @@ mv:
   reason: Confirm moving files from src to dist
 ```
 
-This matches when the first argument matches `src/**` and the second matches `dist/**`, for example `mv src/main.ts dist/main.ts`.
+Each word can be any pattern -- including a regex:
+
+```yaml
+curl:
+  cmd: "/(http|ftp):/"
+  decide: deny
+  reason: Only HTTPS allowed
+```
 
 ## Matching field values with OR
 
@@ -316,7 +325,7 @@ docker:
       reason: docker compose up is not allowed
 ```
 
-When a `cmd` matcher appears inside a deeply-nested rule, it addresses the positional arguments that come after the subcommand path tokens. For example, in the rule above, `cmd: "0"` would match the first argument after `docker compose build`, not `compose` or `build` themselves.
+When a `cmd` matcher appears inside a deeply-nested rule, it addresses the positional arguments that come after the subcommand path words. For example, in the rule above, `cmd: "0"` would match the first argument after `docker compose build`, not `compose` or `build` themselves.
 
 ### Mixing subcommand rules and a flat rule for the same binary
 
@@ -557,8 +566,8 @@ Every field follows this unified pattern:
 
 | Field | Type | Applies to | Behavior |
 |---|---|---|---|
-| `cmd` | string | Bash | Matches `cmd[0]` against the pattern. |
-| `cmd` | array | Bash | Each pattern matches `cmd[index]` in order (AND). |
+| `cmd` | string | Bash | Words match `cmd[0]`, `cmd[1]`, ... in order (AND). A single word matches only `cmd[0]`. |
+| `cmd` | array | Bash | Each pattern matches `cmd[index]` in order (AND). Equivalent to a space-separated string. |
 | `cmd-in` | array | Bash | Matches when any positional argument matches any entry (OR). |
 | `options` | array | Bash | All listed flags must be present (AND). |
 | `options-in` | array | Bash | Any listed flag must be present (OR). |

@@ -238,6 +238,24 @@ bash:
     });
 });
 
+test("bash cmd string with spaces: matches multiple positionals in order", () => {
+    const yaml = `
+bash:
+  aws:
+    cmd: "* describe-*"
+    decide: allow
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        // both positionals match → allow
+        expect(decide(rules[0], makeCommand("aws", ["ec2", "describe-instances"]))).toBe("allow");
+        expect(decide(rules[0], makeCommand("aws", ["s3", "describe-bucket"]))).toBe("allow");
+        // second positional doesn't match describe-* → abstain
+        expect(decide(rules[0], makeCommand("aws", ["ec2", "delete-instance"]))).toBe("abstain");
+        // only one positional → abstain (second missing)
+        expect(decide(rules[0], makeCommand("aws", "ec2"))).toBe("abstain");
+    });
+});
+
 // ---------------------------------------------------------------------------
 // Bash: positional OR semantics (cmd-in)
 // ---------------------------------------------------------------------------

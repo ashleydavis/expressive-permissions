@@ -9,13 +9,9 @@ input:
 rules:
   bash:
     aws:
-      - cmd:
-          - "*"
-          - describe-*
+      - cmd: "* describe-*"
         decide: allow
-      - cmd:
-          - "*"
-          - delete-*
+      - cmd: "* delete-*"
         decide: deny
         reason: Deletion blocked
 

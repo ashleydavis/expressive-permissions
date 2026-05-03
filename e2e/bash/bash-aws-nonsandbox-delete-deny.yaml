@@ -14,9 +14,7 @@ rules:
         decide: allow
       - env:
           AWS_PROFILE: /^(?!sandbox$)/
-        cmd:
-          - "*"
-          - delete-*
+        cmd: "* delete-*"
         decide: deny
         reason: Destructive deletes blocked on this profile
 

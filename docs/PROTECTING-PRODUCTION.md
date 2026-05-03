@@ -10,7 +10,7 @@ These are starting points. Take what is useful and extend it with the specific s
 
 The AWS CLI follows the pattern `aws <service> <operation>`. Most read-only operations consistently use `describe-*`, `list-*`, or `get-*` prefixes, which makes broad rules practical.
 
-`cmd` matches positional arguments -- the words of the command in order, excluding flags. A list like `["*", "delete-*"]` matches any service followed by any operation starting with `delete-`; a single string like `"delete-*"` matches the first positional argument.
+`cmd` matches positional arguments -- the words of the command in order, excluding flags. A space-separated string like `"* delete-*"` matches any service followed by any operation starting with `delete-`; a single word like `"delete-*"` matches only the first positional argument. An array like `["*", "delete-*"]` is equivalent to the space-separated string form.
 
 ### Allow read-only operations
 
@@ -19,18 +19,18 @@ aws:
   - cmd: "* describe-*"
     decide: allow
     reason: Read-only describe operation
-  - cmd: ["*", list-*]
+  - cmd: "* list-*"
     decide: allow
     reason: Read-only list operation
-  - cmd: ["*", get-*]
+  - cmd: "* get-*"
     decide: allow
     reason: Read-only get operation
 
   # aws s3 high-level commands use short names rather than the verb-* convention
-  - cmd: [s3, ls]
+  - cmd: "s3 ls"
     decide: allow
     reason: S3 list
-  - cmd: [s3, presign]
+  - cmd: "s3 presign"
     decide: allow
     reason: S3 presign is read-only
 ```
@@ -40,118 +40,118 @@ aws:
 ```yaml
 aws:
   # CRUD and state mutation
-  - cmd: ["*", create-*]
+  - cmd: "* create-*"
     decide: deny
     reason: Creation blocked
-  - cmd: ["*", update-*]
+  - cmd: "* update-*"
     decide: deny
     reason: Updates blocked
-  - cmd: ["*", modify-*]
+  - cmd: "* modify-*"
     decide: deny
     reason: Modifications blocked
-  - cmd: ["*", delete-*]
+  - cmd: "* delete-*"
     decide: deny
     reason: Deletion blocked
-  - cmd: ["*", terminate-*]
+  - cmd: "* terminate-*"
     decide: deny
     reason: Termination blocked
-  - cmd: ["*", remove-*]
+  - cmd: "* remove-*"
     decide: deny
     reason: Remove blocked
-  - cmd: ["*", replace-*]
+  - cmd: "* replace-*"
     decide: deny
     reason: Replace blocked
-  - cmd: ["*", reset-*]
+  - cmd: "* reset-*"
     decide: deny
     reason: Reset blocked
 
   # Lifecycle
-  - cmd: ["*", start-*]
+  - cmd: "* start-*"
     decide: deny
     reason: Start blocked
-  - cmd: ["*", stop-*]
+  - cmd: "* stop-*"
     decide: deny
     reason: Stop blocked
-  - cmd: ["*", reboot-*]
+  - cmd: "* reboot-*"
     decide: deny
     reason: Reboot blocked
-  - cmd: ["*", run-*]
+  - cmd: "* run-*"
     decide: deny
     reason: Run blocked
 
   # Configuration
-  - cmd: ["*", put-*]
+  - cmd: "* put-*"
     decide: deny
     reason: Put blocked
-  - cmd: ["*", set-*]
+  - cmd: "* set-*"
     decide: deny
     reason: Set blocked
-  - cmd: ["*", add-*]
+  - cmd: "* add-*"
     decide: deny
     reason: Add blocked
-  - cmd: ["*", enable-*]
+  - cmd: "* enable-*"
     decide: deny
     reason: Enable blocked
-  - cmd: ["*", disable-*]
+  - cmd: "* disable-*"
     decide: deny
     reason: Disable blocked
-  - cmd: ["*", tag-*]
+  - cmd: "* tag-*"
     decide: deny
     reason: Tagging blocked
-  - cmd: ["*", untag-*]
+  - cmd: "* untag-*"
     decide: deny
     reason: Untagging blocked
 
   # Attachment and association
-  - cmd: ["*", attach-*]
+  - cmd: "* attach-*"
     decide: deny
     reason: Attach blocked
-  - cmd: ["*", detach-*]
+  - cmd: "* detach-*"
     decide: deny
     reason: Detach blocked
-  - cmd: ["*", associate-*]
+  - cmd: "* associate-*"
     decide: deny
     reason: Associate blocked
-  - cmd: ["*", disassociate-*]
+  - cmd: "* disassociate-*"
     decide: deny
     reason: Disassociate blocked
-  - cmd: ["*", register-*]
+  - cmd: "* register-*"
     decide: deny
     reason: Register blocked
-  - cmd: ["*", deregister-*]
+  - cmd: "* deregister-*"
     decide: deny
     reason: Deregister blocked
 
   # Access control
-  - cmd: ["*", authorize-*]
+  - cmd: "* authorize-*"
     decide: deny
     reason: Authorize blocked
-  - cmd: ["*", revoke-*]
+  - cmd: "* revoke-*"
     decide: deny
     reason: Revoke blocked
 
   # Data operations
-  - cmd: ["*", import-*]
+  - cmd: "* import-*"
     decide: deny
     reason: Import blocked
-  - cmd: ["*", restore-*]
+  - cmd: "* restore-*"
     decide: deny
     reason: Restore blocked
-  - cmd: ["*", copy-*]
+  - cmd: "* copy-*"
     decide: deny
     reason: Copy blocked
 
   # aws s3 high-level commands
-  - cmd: [s3, cp]
+  - cmd: "s3 cp"
     decide: deny
     reason: S3 copy blocked
-  - cmd: [s3, mv]
+  - cmd: "s3 mv"
     decide: deny
     reason: S3 move blocked
-  - cmd: [s3, rm]
+  - cmd: "s3 rm"
     decide: deny
     reason: S3 remove blocked
-  - cmd: [s3, sync]
+  - cmd: "s3 sync"
     decide: deny
     reason: S3 sync blocked
 
@@ -170,16 +170,16 @@ Add targeted `deny` rules for services where the blast radius is highest. These 
 
 ```yaml
 aws:
-  - cmd: [iam, "*"]
+  - cmd: "iam *"
     decide: deny
     reason: All IAM changes require manual approval
-  - cmd: [rds, delete-*]
+  - cmd: "rds delete-*"
     decide: deny
     reason: RDS deletion blocked -- contact the DBA team
-  - cmd: [cloudformation, delete-stack]
+  - cmd: "cloudformation delete-stack"
     decide: deny
     reason: CloudFormation stack deletion blocked
-  - cmd: [cloudformation, deploy]
+  - cmd: "cloudformation deploy"
     decide: ask
     reason: Confirm CloudFormation deployment
 ```
@@ -265,27 +265,27 @@ aws:
   # Any non-sandbox profile: deny known-destructive operations
   - env:
       AWS_PROFILE: /^(?!sandbox$)/
-    cmd: ["*", delete-*]
+    cmd: "* delete-*"
     decide: deny
     reason: Destructive deletes blocked on this profile
   - env:
       AWS_PROFILE: /^(?!sandbox$)/
-    cmd: ["*", terminate-*]
+    cmd: "* terminate-*"
     decide: deny
     reason: Termination blocked on this profile
   - env:
       AWS_PROFILE: /^(?!sandbox$)/
-    cmd: ["*", create-*]
+    cmd: "* create-*"
     decide: deny
     reason: Resource creation blocked on this profile
   - env:
       AWS_PROFILE: /^(?!sandbox$)/
-    cmd: ["*", modify-*]
+    cmd: "* modify-*"
     decide: deny
     reason: Modifications blocked on this profile
   - env:
       AWS_PROFILE: /^(?!sandbox$)/
-    cmd: [iam, "*"]
+    cmd: "iam *"
     decide: deny
     reason: All IAM operations blocked on this profile
 
