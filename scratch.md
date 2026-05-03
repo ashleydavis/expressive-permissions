@@ -1,61 +1,4 @@
 
-Need to make I can susinctly match
-
-rm -rf 
-rm -f --recursive
-rm --force -r
-rm --force --recursive
-
-I though I had an elegant way to do this but I'm not sure now.
-
-Would this even work?
-
-`cmd`: `rm -r|recursive&f|force`
-
-
---- 
-
-We need to incorporate all env vars that claude knows about.
-
-Need to be able to block AWS edit commands when the env var is set to PRODUCTION!
-
---- 
-
-Simplification?
-
-Old:
-
-```yaml
-aws:
-  - pos: ["*", describe-*]
-    decide: allow
-```
-
-New:
-
-```yaml
-aws:
-  - pos: "* describe-*"
-    decide: allow
-```
-
-
----
-
-I really hate `pos`, but `args` is already taken.
-
-Any solution to this?
-
-
-Could just paper over it by having `cmd` that is a string that is parsed:
-
-```yaml
-aws:
-  - cmd: "* describe-*"
-    decide: allow
-```
-
-
 ---
 
 I need a way to nest rules so the production part of this isn't repeated:
@@ -180,8 +123,3 @@ program:
         not: sandbox
 ```
 
----
-
-cmd to a string... parse out position arguments.
-
-not "first positional"

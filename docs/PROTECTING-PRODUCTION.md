@@ -42,124 +42,124 @@ aws:
   # CRUD and state mutation
   - cmd: "* create-*"
     decide: deny
-    reason: Creation blocked
+    reason: Creating resources may incur unexpected costs or alter infrastructure state.
   - cmd: "* update-*"
     decide: deny
-    reason: Updates blocked
+    reason: Updating resources can cause configuration drift or service disruptions.
   - cmd: "* modify-*"
     decide: deny
-    reason: Modifications blocked
+    reason: Modifying resources can cause configuration drift or service disruptions.
   - cmd: "* delete-*"
     decide: deny
-    reason: Deletion blocked
+    reason: Deleting resources is irreversible and can cause data loss or service outages.
   - cmd: "* terminate-*"
     decide: deny
-    reason: Termination blocked
+    reason: Terminating instances is irreversible and causes immediate downtime.
   - cmd: "* remove-*"
     decide: deny
-    reason: Remove blocked
+    reason: Removing resources may be irreversible and can cause service disruptions.
   - cmd: "* replace-*"
     decide: deny
-    reason: Replace blocked
+    reason: Replacing resources causes downtime and bypasses change control.
   - cmd: "* reset-*"
     decide: deny
-    reason: Reset blocked
+    reason: Resetting resources can cause data loss or service interruptions.
 
   # Lifecycle
   - cmd: "* start-*"
     decide: deny
-    reason: Start blocked
+    reason: Starting resources may incur unexpected costs or alter cluster state.
   - cmd: "* stop-*"
     decide: deny
-    reason: Stop blocked
+    reason: Stopping resources causes downtime.
   - cmd: "* reboot-*"
     decide: deny
-    reason: Reboot blocked
+    reason: Rebooting resources causes downtime and should be coordinated.
   - cmd: "* run-*"
     decide: deny
-    reason: Run blocked
+    reason: Running new instances may incur unexpected costs.
 
   # Configuration
   - cmd: "* put-*"
     decide: deny
-    reason: Put blocked
+    reason: Overwriting configuration can break dependent services.
   - cmd: "* set-*"
     decide: deny
-    reason: Set blocked
+    reason: Changing settings can break dependent services.
   - cmd: "* add-*"
     decide: deny
-    reason: Add blocked
+    reason: Adding resources or permissions may violate least-privilege principles.
   - cmd: "* enable-*"
     decide: deny
-    reason: Enable blocked
+    reason: Enabling features may expose infrastructure or incur unexpected costs.
   - cmd: "* disable-*"
     decide: deny
-    reason: Disable blocked
+    reason: Disabling features can cause service degradation.
   - cmd: "* tag-*"
     decide: deny
-    reason: Tagging blocked
+    reason: Changing tags can affect cost allocation or tag-based access policies.
   - cmd: "* untag-*"
     decide: deny
-    reason: Untagging blocked
+    reason: Removing tags can affect cost allocation or tag-based access policies.
 
   # Attachment and association
   - cmd: "* attach-*"
     decide: deny
-    reason: Attach blocked
+    reason: Attaching resources can change network topology or security boundaries.
   - cmd: "* detach-*"
     decide: deny
-    reason: Detach blocked
+    reason: Detaching resources can cause connectivity loss or service interruptions.
   - cmd: "* associate-*"
     decide: deny
-    reason: Associate blocked
+    reason: Associating resources can change routing or security group boundaries.
   - cmd: "* disassociate-*"
     decide: deny
-    reason: Disassociate blocked
+    reason: Disassociating resources can cause connectivity loss.
   - cmd: "* register-*"
     decide: deny
-    reason: Register blocked
+    reason: Registering targets changes load balancer or service discovery routing.
   - cmd: "* deregister-*"
     decide: deny
-    reason: Deregister blocked
+    reason: Deregistering targets removes them from load balancers and causes traffic loss.
 
   # Access control
   - cmd: "* authorize-*"
     decide: deny
-    reason: Authorize blocked
+    reason: Granting access can expand the attack surface.
   - cmd: "* revoke-*"
     decide: deny
-    reason: Revoke blocked
+    reason: Revoking access can break dependent services.
 
   # Data operations
   - cmd: "* import-*"
     decide: deny
-    reason: Import blocked
+    reason: Importing data can overwrite existing resources.
   - cmd: "* restore-*"
     decide: deny
-    reason: Restore blocked
+    reason: Restoring from backup overwrites current data and may be irreversible.
   - cmd: "* copy-*"
     decide: deny
-    reason: Copy blocked
+    reason: Copying resources may incur costs or duplicate sensitive data.
 
   # aws s3 high-level commands
   - cmd: "s3 cp"
     decide: deny
-    reason: S3 copy blocked
+    reason: Copying S3 objects may overwrite existing data or duplicate sensitive content.
   - cmd: "s3 mv"
     decide: deny
-    reason: S3 move blocked
+    reason: Moving S3 objects is irreversible and can break services that depend on object paths.
   - cmd: "s3 rm"
     decide: deny
-    reason: S3 remove blocked
+    reason: Deleting S3 objects is irreversible and can cause permanent data loss.
   - cmd: "s3 sync"
     decide: deny
-    reason: S3 sync blocked
+    reason: S3 sync can overwrite or delete production data in bulk.
 
   # Safety flag
   - options-in:
       - force
     decide: deny
-    reason: --force flag blocked
+    reason: The --force flag bypasses safety checks and confirmation prompts.
 ```
 
 When combined with the allow rules above, reads resolve to `allow` (no deny rule matches), writes resolve to `deny`, and any operation not covered by either section falls through to the system default.
@@ -175,16 +175,16 @@ aws:
     reason: All IAM changes require manual approval
   - cmd: "rds delete-*"
     decide: deny
-    reason: RDS deletion blocked -- contact the DBA team
+    reason: RDS data is irreplaceable -- contact the DBA team to approve deletions.
   - cmd: "cloudformation delete-stack"
     decide: deny
-    reason: CloudFormation stack deletion blocked
+    reason: Stack deletion removes all managed resources and is irreversible.
   - cmd: "cloudformation deploy"
     decide: ask
     reason: Confirm CloudFormation deployment
 ```
 
-IAM is denied entirely -- any change to roles, policies, or users is high-risk enough that no automated action should be allowed.
+IAM is denied entirely, any change to roles, policies, or users is high-risk enough that no automated action should be allowed.
 
 ---
 
@@ -220,29 +220,29 @@ These rules can stand alone or be merged into the combined example below.
 kubectl:
   - delete:
       decide: deny
-      reason: kubectl delete is blocked -- use your deployment pipeline
+      reason: Deleted resources may not be recoverable -- use your deployment pipeline.
   - apply:
       decide: deny
-      reason: Applying manifests directly is blocked
+      reason: Direct applies bypass the deployment pipeline and change tracking.
   - patch:
       decide: deny
-      reason: Direct patching is blocked
+      reason: Direct patches bypass change tracking and code review.
   - scale:
       decide: deny
-      reason: Scaling is blocked -- use your deployment pipeline
+      reason: Manual scaling bypasses capacity planning -- use your deployment pipeline.
   - exec:
       decide: deny
-      reason: Shell access into pods is blocked
+      reason: Direct pod shell access bypasses audit logging and security controls.
   - drain:
       decide: deny
-      reason: Node draining is blocked
+      reason: Draining nodes evicts running workloads and must be coordinated with the ops team.
   - cordon:
       decide: deny
-      reason: Node cordoning is blocked
+      reason: Cordoning prevents scheduling on a node and must be coordinated with the ops team.
   - rollout:
       restart:
         decide: deny
-        reason: Rolling restarts are blocked
+        reason: Rolling restarts cause temporary service disruption and should go through the deployment pipeline.
 ```
 
 ---
@@ -267,27 +267,27 @@ aws:
       AWS_PROFILE: /^(?!sandbox$)/
     cmd: "* delete-*"
     decide: deny
-    reason: Destructive deletes blocked on this profile
+    reason: Destructive deletes on non-sandbox profiles risk permanent data loss.
   - env:
       AWS_PROFILE: /^(?!sandbox$)/
     cmd: "* terminate-*"
     decide: deny
-    reason: Termination blocked on this profile
+    reason: Terminating instances on non-sandbox profiles causes irreversible downtime.
   - env:
       AWS_PROFILE: /^(?!sandbox$)/
     cmd: "* create-*"
     decide: deny
-    reason: Resource creation blocked on this profile
+    reason: Creating resources on non-sandbox profiles may incur unexpected costs.
   - env:
       AWS_PROFILE: /^(?!sandbox$)/
     cmd: "* modify-*"
     decide: deny
-    reason: Modifications blocked on this profile
+    reason: Modifying resources on non-sandbox profiles risks service disruptions.
   - env:
       AWS_PROFILE: /^(?!sandbox$)/
     cmd: "iam *"
     decide: deny
-    reason: All IAM operations blocked on this profile
+    reason: IAM changes on non-sandbox profiles can compromise the entire account's security.
 
   # Non-sandbox catch-all: ask for anything not explicitly denied above
   - env:
@@ -342,22 +342,22 @@ kubectl:
       context: /^(?!sandbox)/
     cmd: delete
     decide: deny
-    reason: kubectl delete blocked outside sandbox
+    reason: Deleted resources outside sandbox may not be recoverable -- use your deployment pipeline.
   - options:
       context: /^(?!sandbox)/
     cmd: apply
     decide: deny
-    reason: Applying manifests blocked outside sandbox
+    reason: Direct applies outside sandbox bypass the deployment pipeline and change tracking.
   - options:
       context: /^(?!sandbox)/
     cmd: exec
     decide: deny
-    reason: Pod shell access blocked outside sandbox
+    reason: Pod shell access outside sandbox bypasses audit logging and security controls.
   - options:
       context: /^(?!sandbox)/
     cmd: scale
     decide: deny
-    reason: Scaling blocked outside sandbox
+    reason: Manual scaling outside sandbox bypasses capacity planning -- use your deployment pipeline.
 
   # Non-sandbox catch-all: ask for anything not explicitly denied above
   - options:
