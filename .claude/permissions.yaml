@@ -1,0 +1,8 @@
+bash:
+  echo:
+    - decide: deny
+      pos: foobar
+      reason: Echo foobar is blocked
+    - decide: allow
+      pos: dogears
+      reason: Echo dogears is allowed

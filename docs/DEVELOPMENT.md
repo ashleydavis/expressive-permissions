@@ -35,7 +35,15 @@ bun bundle && /reload-plugins
 
 ## How to test the plugin is working
 
-Once Claude is running with the plugin loaded, ask it to run a command that has no matching rule — for example `echo hello`. With no rule covering `echo`, the plugin defaults to `ask` and you should see a confirmation prompt. If the command runs silently without any prompt, the plugin is not intercepting calls.
+The repo ships two `echo` rules in `.claude/permissions.yaml` that, together with the plugin's default behaviour, cover all three outcomes:
+
+| Command | Expected outcome |
+|---|---|
+| `echo foobar` | **Denied** — a deny rule matches `pos: foobar` |
+| `echo dogears` | **Allowed silently** — an allow rule matches `pos: dogears` |
+| `echo hello` | **Prompt** — no rule matches, plugin defaults to `ask` |
+
+Run each of those commands after loading the plugin and verify you see the expected behaviour.
 
 To confirm the plugin itself loaded without errors, check the Claude startup output for a line referencing the hook, or run:
 
