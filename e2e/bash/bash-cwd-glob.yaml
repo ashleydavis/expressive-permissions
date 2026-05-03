@@ -1,0 +1,17 @@
+description: "bash: cwd glob match"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "npm install"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    npm:
+      install:
+        cwd: "/home/**"
+        decide: allow
+
+expected:
+  decision: allow

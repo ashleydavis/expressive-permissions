@@ -1,0 +1,9 @@
+command: ""
+ast:
+  type: command
+  binary: ""
+  args: {}
+  pos: []
+  envPrefix: {}
+  redirects: []
+  raw: ""

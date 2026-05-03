@@ -1,0 +1,27 @@
+tool_call:
+  tool_name: Bash
+  tool_input:
+    command: "test -f foo.txt || echo missing"
+ast:
+  type: bash
+  raw: "test -f foo.txt || echo missing"
+  ast:
+    type: binop
+    op: "||"
+    left:
+      type: command
+      binary: test
+      args:
+        f: true
+      pos: foo.txt
+      envPrefix: {}
+      redirects: []
+      raw: "test -f foo.txt"
+    right:
+      type: command
+      binary: echo
+      args: {}
+      pos: missing
+      envPrefix: {}
+      redirects: []
+      raw: "echo missing"

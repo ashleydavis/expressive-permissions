@@ -1,0 +1,17 @@
+description: "bash: cmd1 && cmd2 both allow → allow"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "ls && pwd"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    ls:
+      decide: allow
+    pwd:
+      decide: allow
+
+expected:
+  decision: allow

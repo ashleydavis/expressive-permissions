@@ -1,0 +1,20 @@
+description: "bash: flag value glob --message=wip* triggers deny"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "git commit --message=wip-some-change"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    git:
+      commit:
+        args:
+          message: "wip*"
+        decide: deny
+        reason: "no wip commits"
+
+expected:
+  decision: deny
+  reason: "no wip commits"

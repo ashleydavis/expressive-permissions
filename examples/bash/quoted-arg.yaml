@@ -1,0 +1,9 @@
+command: 'echo "hello world"'
+ast:
+  type: command
+  binary: echo
+  args: {}
+  pos: "hello world"
+  envPrefix: {}
+  redirects: []
+  raw: 'echo "hello world"'

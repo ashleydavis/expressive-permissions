@@ -1,0 +1,10 @@
+command: "$(which sudo) -i"
+ast:
+  type: command
+  binary: "$(which sudo)"
+  args:
+    i: true
+  pos: []
+  envPrefix: {}
+  redirects: []
+  raw: "$(which sudo) -i"

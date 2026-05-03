@@ -1,0 +1,16 @@
+description: "bash: single positional glob match"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "cp file.ts dest/"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    cp:
+      pos: "*.ts"
+      decide: allow
+
+expected:
+  decision: allow

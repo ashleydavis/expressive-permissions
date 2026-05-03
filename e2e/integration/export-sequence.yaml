@@ -1,0 +1,19 @@
+description: "integration: export FOO=bar; cmd — export visible downstream"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "export FOO=bar; ls"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    export:
+      decide: allow
+    ls:
+      env:
+        FOO: bar
+      decide: allow
+
+expected:
+  decision: allow

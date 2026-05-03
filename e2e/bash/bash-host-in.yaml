@@ -1,0 +1,18 @@
+description: "bash: host-in OR list"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "curl https://cdn.example.com/file.js"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    curl:
+      host-in:
+        - "api.example.com"
+        - "cdn.example.com"
+      decide: allow
+
+expected:
+  decision: allow

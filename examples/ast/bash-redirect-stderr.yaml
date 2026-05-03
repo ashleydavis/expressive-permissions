@@ -1,0 +1,17 @@
+tool_call:
+  tool_name: Bash
+  tool_input:
+    command: "cmd 2> err.txt"
+ast:
+  type: bash
+  raw: "cmd 2> err.txt"
+  ast:
+    type: command
+    binary: cmd
+    args: {}
+    pos: []
+    envPrefix: {}
+    redirects:
+      - op: "2>"
+        target: err.txt
+    raw: "cmd 2> err.txt"

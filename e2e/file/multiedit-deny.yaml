@@ -1,0 +1,20 @@
+description: "file: multi_edit path deny"
+
+input:
+  tool_name: MultiEdit
+  tool_input:
+    file_path: /etc/nginx/nginx.conf
+    edits:
+      - old_string: worker_processes 1
+        new_string: worker_processes 4
+  cwd: /home/user/project
+
+rules:
+  multi_edit:
+    path: "/etc/**"
+    decide: deny
+    reason: "system config denied"
+
+expected:
+  decision: deny
+  reason: "system config denied"

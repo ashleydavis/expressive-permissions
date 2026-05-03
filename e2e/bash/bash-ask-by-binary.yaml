@@ -1,0 +1,17 @@
+description: "bash: ask rule with reason"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "curl https://example.com"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    curl:
+      decide: ask
+      reason: "network access requires approval"
+
+expected:
+  decision: ask
+  reason: "network access requires approval"

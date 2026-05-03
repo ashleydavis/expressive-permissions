@@ -1,0 +1,11 @@
+command: "ls -la /tmp"
+ast:
+  type: command
+  binary: ls
+  args:
+    l: true
+    a: true
+  pos: /tmp
+  envPrefix: {}
+  redirects: []
+  raw: "ls -la /tmp"

@@ -1,0 +1,16 @@
+description: "bash: unmatched subcommand falls back to ask"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "git fetch"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    git:
+      push:
+        decide: deny
+
+expected:
+  decision: ask

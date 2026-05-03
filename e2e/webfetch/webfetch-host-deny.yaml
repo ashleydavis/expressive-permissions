@@ -1,0 +1,17 @@
+description: "webfetch: exact hostname deny with reason"
+
+input:
+  tool_name: WebFetch
+  tool_input:
+    url: "https://malicious.com/data"
+  cwd: /home/user/project
+
+rules:
+  webfetch:
+    host: "malicious.com"
+    decide: deny
+    reason: "blocked site"
+
+expected:
+  decision: deny
+  reason: "blocked site"

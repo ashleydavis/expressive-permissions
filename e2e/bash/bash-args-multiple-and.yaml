@@ -1,0 +1,20 @@
+description: "bash: multiple flags all required (AND)"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "rm -r -f dir"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    rm:
+      args:
+        - r
+        - f
+      decide: deny
+      reason: "rm -rf denied"
+
+expected:
+  decision: deny
+  reason: "rm -rf denied"

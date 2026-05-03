@@ -1,0 +1,19 @@
+description: "file: read path-in OR list deny"
+
+input:
+  tool_name: Read
+  tool_input:
+    file_path: /etc/passwd
+  cwd: /home/user/project
+
+rules:
+  read:
+    path-in:
+      - "/etc/**"
+      - "/sys/**"
+    decide: deny
+    reason: "system files denied"
+
+expected:
+  decision: deny
+  reason: "system files denied"

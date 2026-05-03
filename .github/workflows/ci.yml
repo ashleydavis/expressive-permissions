@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Compile
+        run: bun run compile
+
+      - name: Test
+        run: bun run test
+
+      - name: Smoke tests
+        run: bash scripts/smoke-tests.sh
+
+      - name: Smoke tests (bash parser)
+        run: bash smoke-tests-bash-parser.sh

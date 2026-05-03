@@ -1,0 +1,17 @@
+description: "file: edit **/*.ts allow"
+
+input:
+  tool_name: Edit
+  tool_input:
+    file_path: /home/user/project/src/index.ts
+    old_string: foo
+    new_string: bar
+  cwd: /home/user/project
+
+rules:
+  edit:
+    path: "**/*.ts"
+    decide: allow
+
+expected:
+  decision: allow

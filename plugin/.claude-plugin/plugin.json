@@ -1,0 +1,6 @@
+{
+    "name": "claude-permissions",
+    "description": "Intercepts every tool call via PreToolUse and decides allow, deny, or ask based on configurable rules.",
+    "version": "0.1.0",
+    "author": "Ashley Davis"
+}

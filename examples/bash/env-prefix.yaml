@@ -1,0 +1,10 @@
+command: "FOO=bar cmd"
+ast:
+  type: command
+  binary: cmd
+  args: {}
+  pos: []
+  envPrefix:
+    FOO: bar
+  redirects: []
+  raw: "FOO=bar cmd"

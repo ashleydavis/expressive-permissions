@@ -1,0 +1,26 @@
+tool_call:
+  tool_name: Bash
+  tool_input:
+    command: "echo a; echo b"
+ast:
+  type: bash
+  raw: "echo a; echo b"
+  ast:
+    type: binop
+    op: ";"
+    left:
+      type: command
+      binary: echo
+      args: {}
+      pos: a
+      envPrefix: {}
+      redirects: []
+      raw: "echo a"
+    right:
+      type: command
+      binary: echo
+      args: {}
+      pos: b
+      envPrefix: {}
+      redirects: []
+      raw: "echo b"

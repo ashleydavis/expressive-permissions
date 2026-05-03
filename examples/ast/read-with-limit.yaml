@@ -1,0 +1,9 @@
+tool_call:
+  tool_name: Read
+  tool_input:
+    file_path: /etc/hosts
+    limit: 50
+ast:
+  type: read
+  file_path: /etc/hosts
+  limit: 50

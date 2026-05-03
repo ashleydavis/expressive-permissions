@@ -1,0 +1,16 @@
+description: "bash: host pattern for curl-like commands"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "curl https://api.example.com/data"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    curl:
+      host: "api.example.com"
+      decide: allow
+
+expected:
+  decision: allow

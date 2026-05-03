@@ -1,0 +1,17 @@
+description: "bash: positional checked after subcommand offset"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "git log src/index.ts"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    git:
+      log:
+        pos: "src/**"
+        decide: allow
+
+expected:
+  decision: allow

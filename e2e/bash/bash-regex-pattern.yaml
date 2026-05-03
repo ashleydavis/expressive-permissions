@@ -1,0 +1,18 @@
+description: "bash: /regex/ pattern in pos field"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "rm important_data_backup.tar.gz"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    rm:
+      pos: "/.*backup.*/"
+      decide: deny
+      reason: "backup files protected"
+
+expected:
+  decision: deny
+  reason: "backup files protected"

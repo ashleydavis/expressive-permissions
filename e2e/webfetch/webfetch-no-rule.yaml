@@ -1,0 +1,12 @@
+description: "webfetch: no rule defaults to ask"
+
+input:
+  tool_name: WebFetch
+  tool_input:
+    url: "https://example.com/data"
+  cwd: /home/user/project
+
+rules: {}
+
+expected:
+  decision: ask

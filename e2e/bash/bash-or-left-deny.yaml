@@ -1,0 +1,19 @@
+description: "bash: cmd1 || cmd2 left deny → deny"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "rm file.txt || ls"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    rm:
+      decide: deny
+      reason: "rm is not allowed"
+    ls:
+      decide: allow
+
+expected:
+  decision: deny
+  reason: "rm is not allowed"

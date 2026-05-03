@@ -1,0 +1,20 @@
+command: "git status | grep modified"
+ast:
+  type: binop
+  op: "|"
+  left:
+    type: command
+    binary: git
+    args: {}
+    pos: status
+    envPrefix: {}
+    redirects: []
+    raw: "git status"
+  right:
+    type: command
+    binary: grep
+    args: {}
+    pos: modified
+    envPrefix: {}
+    redirects: []
+    raw: "grep modified"

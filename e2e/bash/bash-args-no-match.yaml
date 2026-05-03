@@ -1,0 +1,17 @@
+description: "bash: flag absent causes rule to abstain → ask"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "rm dir"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    rm:
+      args:
+        - r
+      decide: deny
+
+expected:
+  decision: ask

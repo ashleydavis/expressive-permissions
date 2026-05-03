@@ -1,0 +1,20 @@
+description: "bash: any of listed flags triggers (OR)"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "rm -r dir"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    rm:
+      args-in:
+        - r
+        - f
+      decide: deny
+      reason: "rm -r or -f denied"
+
+expected:
+  decision: deny
+  reason: "rm -r or -f denied"

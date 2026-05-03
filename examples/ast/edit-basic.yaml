@@ -1,0 +1,11 @@
+tool_call:
+  tool_name: Edit
+  tool_input:
+    file_path: /tmp/foo.ts
+    old_string: "foo"
+    new_string: "bar"
+ast:
+  type: edit
+  file_path: /tmp/foo.ts
+  old_string: foo
+  new_string: bar

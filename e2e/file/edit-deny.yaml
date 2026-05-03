@@ -1,0 +1,19 @@
+description: "file: edit /etc/** deny"
+
+input:
+  tool_name: Edit
+  tool_input:
+    file_path: /etc/nginx/nginx.conf
+    old_string: worker_processes 1
+    new_string: worker_processes 4
+  cwd: /home/user/project
+
+rules:
+  edit:
+    path: "/etc/**"
+    decide: deny
+    reason: "system config denied"
+
+expected:
+  decision: deny
+  reason: "system config denied"

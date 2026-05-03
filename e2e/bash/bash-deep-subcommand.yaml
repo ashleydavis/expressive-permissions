@@ -1,0 +1,17 @@
+description: "bash: docker compose up 3-level hierarchy"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "docker compose up"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    docker:
+      compose:
+        up:
+          decide: allow
+
+expected:
+  decision: allow

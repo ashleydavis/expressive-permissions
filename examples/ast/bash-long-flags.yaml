@@ -1,0 +1,17 @@
+tool_call:
+  tool_name: Bash
+  tool_input:
+    command: "rm --recursive --force /tmp"
+ast:
+  type: bash
+  raw: "rm --recursive --force /tmp"
+  ast:
+    type: command
+    binary: rm
+    args:
+      recursive: true
+      force: true
+    pos: /tmp
+    envPrefix: {}
+    redirects: []
+    raw: "rm --recursive --force /tmp"

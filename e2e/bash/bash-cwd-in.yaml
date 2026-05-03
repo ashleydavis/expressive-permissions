@@ -1,0 +1,19 @@
+description: "bash: cwd-in OR list match"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "npm install"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    npm:
+      install:
+        cwd-in:
+          - "/home/**"
+          - "/tmp/**"
+        decide: allow
+
+expected:
+  decision: allow

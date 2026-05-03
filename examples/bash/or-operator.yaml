@@ -1,0 +1,20 @@
+command: "a || b"
+ast:
+  type: binop
+  op: "||"
+  left:
+    type: command
+    binary: a
+    args: {}
+    pos: []
+    envPrefix: {}
+    redirects: []
+    raw: a
+  right:
+    type: command
+    binary: b
+    args: {}
+    pos: []
+    envPrefix: {}
+    redirects: []
+    raw: b

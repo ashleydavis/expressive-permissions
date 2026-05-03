@@ -1,0 +1,12 @@
+description: "file: read with no rule defaults to ask"
+
+input:
+  tool_name: Read
+  tool_input:
+    file_path: /home/user/project/README.md
+  cwd: /home/user/project
+
+rules: {}
+
+expected:
+  decision: ask

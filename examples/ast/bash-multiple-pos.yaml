@@ -1,0 +1,17 @@
+tool_call:
+  tool_name: Bash
+  tool_input:
+    command: "mv src/main.ts dist/main.ts"
+ast:
+  type: bash
+  raw: "mv src/main.ts dist/main.ts"
+  ast:
+    type: command
+    binary: mv
+    args: {}
+    pos:
+      - src/main.ts
+      - dist/main.ts
+    envPrefix: {}
+    redirects: []
+    raw: "mv src/main.ts dist/main.ts"

@@ -1,0 +1,20 @@
+description: "bash: any positional matches (OR)"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "rm config.json"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    rm:
+      pos-in:
+        - "*.json"
+        - "*.yaml"
+      decide: deny
+      reason: "config files protected"
+
+expected:
+  decision: deny
+  reason: "config files protected"

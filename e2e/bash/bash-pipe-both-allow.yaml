@@ -1,0 +1,17 @@
+description: "bash: cmd1 | cmd2 both allow → allow"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "ls | grep foo"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    ls:
+      decide: allow
+    grep:
+      decide: allow
+
+expected:
+  decision: allow

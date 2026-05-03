@@ -1,0 +1,13 @@
+{
+    "name": "ash-tools",
+    "owner": {
+        "name": "Ashley Davis"
+    },
+    "plugins": [
+        {
+            "name": "claude-permissions",
+            "description": "Intercepts every tool call via PreToolUse and decides allow, deny, or ask based on configurable rules.",
+            "source": "./plugin"
+        }
+    ]
+}

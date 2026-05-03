@@ -1,0 +1,17 @@
+description: "file: read **/.env* deny with reason"
+
+input:
+  tool_name: Read
+  tool_input:
+    file_path: /home/user/project/.env.production
+  cwd: /home/user/project
+
+rules:
+  read:
+    path: "**/.env*"
+    decide: deny
+    reason: "env files are sensitive"
+
+expected:
+  decision: deny
+  reason: "env files are sensitive"

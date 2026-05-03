@@ -1,0 +1,16 @@
+tool_call:
+  tool_name: Bash
+  tool_input:
+    command: "git push --force-with-lease"
+ast:
+  type: bash
+  raw: "git push --force-with-lease"
+  ast:
+    type: command
+    binary: git
+    args:
+      force-with-lease: true
+    pos: push
+    envPrefix: {}
+    redirects: []
+    raw: "git push --force-with-lease"

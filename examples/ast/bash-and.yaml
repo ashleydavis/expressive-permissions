@@ -1,0 +1,28 @@
+tool_call:
+  tool_name: Bash
+  tool_input:
+    command: "cd /tmp && rm -rf *"
+ast:
+  type: bash
+  raw: "cd /tmp && rm -rf *"
+  ast:
+    type: binop
+    op: "&&"
+    left:
+      type: command
+      binary: cd
+      args: {}
+      pos: /tmp
+      envPrefix: {}
+      redirects: []
+      raw: "cd /tmp"
+    right:
+      type: command
+      binary: rm
+      args:
+        r: true
+        f: true
+      pos: "*"
+      envPrefix: {}
+      redirects: []
+      raw: "rm -rf *"

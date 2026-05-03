@@ -1,0 +1,18 @@
+description: "bash: positional array AND match"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "cp file.ts dest.ts"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    cp:
+      pos:
+        - "*.ts"
+        - "*.ts"
+      decide: allow
+
+expected:
+  decision: allow

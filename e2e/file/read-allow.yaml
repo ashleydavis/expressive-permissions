@@ -1,0 +1,15 @@
+description: "file: read path glob allow"
+
+input:
+  tool_name: Read
+  tool_input:
+    file_path: /home/user/project/src/index.ts
+  cwd: /home/user/project
+
+rules:
+  read:
+    path: "**/*.ts"
+    decide: allow
+
+expected:
+  decision: allow

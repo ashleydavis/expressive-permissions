@@ -1,0 +1,15 @@
+description: "bash: allow ls by binary name"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "ls -la"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    ls:
+      decide: allow
+
+expected:
+  decision: allow

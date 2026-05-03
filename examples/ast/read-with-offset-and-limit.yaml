@@ -1,0 +1,11 @@
+tool_call:
+  tool_name: Read
+  tool_input:
+    file_path: /etc/hosts
+    offset: 5
+    limit: 100
+ast:
+  type: read
+  file_path: /etc/hosts
+  offset: 5
+  limit: 100

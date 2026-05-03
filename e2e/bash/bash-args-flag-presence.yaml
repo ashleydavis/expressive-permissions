@@ -1,0 +1,19 @@
+description: "bash: flag present (-r) triggers deny"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "rm -r dir"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    rm:
+      args:
+        - r
+      decide: deny
+      reason: "recursive rm denied"
+
+expected:
+  decision: deny
+  reason: "recursive rm denied"

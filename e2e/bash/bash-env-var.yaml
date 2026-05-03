@@ -1,0 +1,20 @@
+description: "bash: env var match after export"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "export NODE_ENV=test; npm test"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    export:
+      decide: allow
+    npm:
+      test:
+        env:
+          NODE_ENV: test
+        decide: allow
+
+expected:
+  decision: allow

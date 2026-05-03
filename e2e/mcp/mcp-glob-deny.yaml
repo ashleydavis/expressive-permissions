@@ -1,0 +1,16 @@
+description: "mcp: broad glob deny"
+
+input:
+  tool_name: mcp__dangerous__delete_all
+  tool_input: {}
+  cwd: /home/user/project
+
+rules:
+  mcp:
+    tool: "mcp__dangerous__*"
+    decide: deny
+    reason: "dangerous tools blocked"
+
+expected:
+  decision: deny
+  reason: "dangerous tools blocked"

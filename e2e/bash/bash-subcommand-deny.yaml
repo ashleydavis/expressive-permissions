@@ -1,0 +1,18 @@
+description: "bash: git push subcommand deny"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "git push"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    git:
+      push:
+        decide: deny
+        reason: "no remote pushes"
+
+expected:
+  decision: deny
+  reason: "no remote pushes"

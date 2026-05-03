@@ -1,0 +1,11 @@
+command: "A=1 B=2 cmd"
+ast:
+  type: command
+  binary: cmd
+  args: {}
+  pos: []
+  envPrefix:
+    A: "1"
+    B: "2"
+  redirects: []
+  raw: "A=1 B=2 cmd"

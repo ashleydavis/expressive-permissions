@@ -1,0 +1,12 @@
+description: "bash: no matching rule defaults to ask"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "grep foo file.txt"
+  cwd: /home/user/project
+
+rules: {}
+
+expected:
+  decision: ask

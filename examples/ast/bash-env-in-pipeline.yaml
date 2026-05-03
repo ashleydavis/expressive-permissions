@@ -1,0 +1,28 @@
+tool_call:
+  tool_name: Bash
+  tool_input:
+    command: "cd /restricted && SECRET=1 some-tool --flag"
+ast:
+  type: bash
+  raw: "cd /restricted && SECRET=1 some-tool --flag"
+  ast:
+    type: binop
+    op: "&&"
+    left:
+      type: command
+      binary: cd
+      args: {}
+      pos: /restricted
+      envPrefix: {}
+      redirects: []
+      raw: "cd /restricted"
+    right:
+      type: command
+      binary: some-tool
+      args:
+        flag: true
+      pos: []
+      envPrefix:
+        SECRET: "1"
+      redirects: []
+      raw: "SECRET=1 some-tool --flag"

@@ -1,0 +1,18 @@
+description: "integration: cd /foo/bar; cmd — cwd rule fires with new cwd"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "cd /tmp; ls"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    cd:
+      decide: allow
+    ls:
+      cwd: "/tmp"
+      decide: allow
+
+expected:
+  decision: allow

@@ -1,0 +1,19 @@
+description: "integration: FOO=bar; cmd — standalone assignment visible downstream"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "FOO=bar; ls"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    "":
+      decide: allow
+    ls:
+      env:
+        FOO: bar
+      decide: allow
+
+expected:
+  decision: allow

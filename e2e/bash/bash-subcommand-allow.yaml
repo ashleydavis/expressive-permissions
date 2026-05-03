@@ -1,0 +1,16 @@
+description: "bash: git status subcommand allow"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "git status"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    git:
+      status:
+        decide: allow
+
+expected:
+  decision: allow

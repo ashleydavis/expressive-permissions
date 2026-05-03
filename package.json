@@ -1,0 +1,31 @@
+{
+    "name": "claude-permissions",
+    "version": "1.0.0",
+    "type": "module",
+    "scripts": {
+        "bundle": "bun build src/hook.ts --outfile plugin/dist/hook.js --target bun",
+        "b": "bun run bundle",
+        "compile": "tsc --noEmit",
+        "c": "bun run compile",
+        "test": "jest --passWithNoTests",
+        "t": "bun run test",
+        "test:watch": "jest --watch",
+        "tw": "bun run test:watch",
+        "smoke": "bash scripts/smoke-tests.sh",
+        "test:all": "bun run test && bash smoke-tests-bash-parser.sh && bash scripts/hook-smoke-tests.sh && bash scripts/smoke-tests.sh",
+        "dev": "claude --plugin-dir /home/ash/projects/claude-permissions",
+        "d": "bun run dev"
+    },
+    "dependencies": {
+        "picomatch": "^4.0.2",
+        "shell-quote": "^1.8.1",
+        "yaml": "^2.7.0"
+    },
+    "devDependencies": {
+        "@types/jest": "^29.5.14",
+        "@types/shell-quote": "^1.7.5",
+        "jest": "^29.7.0",
+        "ts-jest": "^29.3.2",
+        "typescript": "^5.8.3"
+    }
+}

@@ -1,0 +1,19 @@
+description: "bash: flag alias --recursive matches r|recursive"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "rm --recursive dir"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    rm:
+      args:
+        - "r|recursive"
+      decide: deny
+      reason: "recursive rm denied"
+
+expected:
+  decision: deny
+  reason: "recursive rm denied"

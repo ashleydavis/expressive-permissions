@@ -1,0 +1,18 @@
+description: "bash: allow + deny → deny (strictest wins)"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "rm file.txt"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    rm:
+      - decide: allow
+      - decide: deny
+        reason: "rm is blocked"
+
+expected:
+  decision: deny
+  reason: "rm is blocked"
