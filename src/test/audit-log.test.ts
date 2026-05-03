@@ -3,13 +3,17 @@ import { join } from "path";
 import { tmpdir } from "os";
 import {
     resolveLogBaseDir,
-    resolveLogPath,
+    resolveJsonLogPath,
+    resolveTextLogPath,
+    formatTextEntry,
     cleanupOldMonths,
     FileAuditLogger,
     NullAuditLogger,
     toLocalISOString,
     IFinalDecisionEntry,
     IToolRequestEntry,
+    IRuleMatchEntry,
+    IAggregationEntry,
 } from "../audit-log";
 
 // makeDate builds a local-time Date from explicit year/month(1-based)/day/hour components.
@@ -27,25 +31,37 @@ test("resolveLogBaseDir returns path with .claude/permissions-log suffix", () =>
     expect(result).toBe("/home/user/project/.claude/permissions-log");
 });
 
-test("resolveLogPath returns correct YYYY-MM/DD/HH.log path for a known date", () => {
+test("resolveJsonLogPath returns correct YYYY-MM/DD/HH.json path for a known date", () => {
     const baseDir = "/some/base";
     const date = makeDate(2025, 11, 15, 9);
-    const result = resolveLogPath(baseDir, date);
+    const result = resolveJsonLogPath(baseDir, date);
+    expect(result).toBe("/some/base/2025-11/15/09.json");
+});
+
+test("resolveJsonLogPath zero-pads month, day, and hour", () => {
+    const baseDir = "/base";
+    const date = makeDate(2025, 3, 5, 7);
+    const result = resolveJsonLogPath(baseDir, date);
+    expect(result).toBe("/base/2025-03/05/07.json");
+});
+
+test("resolveJsonLogPath uses local time fields", () => {
+    const date = new Date(2025, 5, 1, 14, 0, 0, 0);
+    const result = resolveJsonLogPath("/base", date);
+    expect(result).toBe("/base/2025-06/01/14.json");
+});
+
+test("resolveTextLogPath returns correct YYYY-MM/DD/HH.log path for a known date", () => {
+    const date = makeDate(2025, 11, 15, 9);
+    const result = resolveTextLogPath("/some/base", date);
     expect(result).toBe("/some/base/2025-11/15/09.log");
 });
 
-test("resolveLogPath zero-pads month, day, and hour", () => {
-    const baseDir = "/base";
-    const date = makeDate(2025, 3, 5, 7);
-    const result = resolveLogPath(baseDir, date);
-    expect(result).toBe("/base/2025-03/05/07.log");
-});
-
-test("resolveLogPath uses local time fields", () => {
-    // Construct a local-time Date so getFullYear/getMonth/getDate/getHours are known.
-    const date = new Date(2025, 5, 1, 14, 0, 0, 0); // June 1, 2025 at 14:00 local
-    const result = resolveLogPath("/base", date);
-    expect(result).toBe("/base/2025-06/01/14.log");
+test("resolveTextLogPath uses same directory as resolveJsonLogPath", () => {
+    const date = makeDate(2025, 6, 15, 10);
+    const jsonPath = resolveJsonLogPath("/base", date);
+    const textPath = resolveTextLogPath("/base", date);
+    expect(jsonPath.replace(/\.json$/, "")).toBe(textPath.replace(/\.log$/, ""));
 });
 
 test("cleanupOldMonths does nothing when base dir does not exist", () => {
@@ -126,7 +142,7 @@ test("cleanupOldMonths ignores entries that do not match YYYY-MM pattern", () =>
     }
 });
 
-test("FileAuditLogger.log creates directory structure and writes a JSON line", () => {
+test("FileAuditLogger.log creates directory structure and writes a JSON line to .json file", () => {
     const tmpDir = makeTmpDir();
     try {
         const baseDir = join(tmpDir, "logs");
@@ -134,14 +150,36 @@ test("FileAuditLogger.log creates directory structure and writes a JSON line", (
         const logger = new FileAuditLogger(baseDir, now);
         const entry: IFinalDecisionEntry = {
             type: "final_decision",
-            timestamp: "2025-06-15T10:00:00.000Z",
+            timestamp: "2025-06-15T10:00:00.000+10:00",
             tool: "Bash",
             decision: "allow",
         };
         logger.log(entry);
-        const logPath = join(baseDir, "2025-06", "15", "10.log");
-        const contents = readFileSync(logPath, "utf-8");
+        const jsonPath = join(baseDir, "2025-06", "15", "10.json");
+        const contents = readFileSync(jsonPath, "utf-8");
         expect(contents.trim()).toBe(JSON.stringify(entry));
+    }
+    finally {
+        rmSync(tmpDir, { recursive: true, force: true });
+    }
+});
+
+test("FileAuditLogger.log writes a human-readable line to .log file", () => {
+    const tmpDir = makeTmpDir();
+    try {
+        const baseDir = join(tmpDir, "logs");
+        const now = makeDate(2025, 6, 15, 10);
+        const logger = new FileAuditLogger(baseDir, now);
+        const entry: IFinalDecisionEntry = {
+            type: "final_decision",
+            timestamp: "2025-06-15T10:23:01.000+10:00",
+            tool: "Bash",
+            decision: "allow",
+        };
+        logger.log(entry);
+        const textPath = join(baseDir, "2025-06", "15", "10.log");
+        const contents = readFileSync(textPath, "utf-8");
+        expect(contents.trim()).toBe(formatTextEntry(entry));
     }
     finally {
         rmSync(tmpDir, { recursive: true, force: true });
@@ -156,21 +194,21 @@ test("FileAuditLogger.log appends a second entry on a new line without overwriti
         const logger = new FileAuditLogger(baseDir, now);
         const entryA: IToolRequestEntry = {
             type: "tool_request",
-            timestamp: "2025-06-15T10:00:00.000Z",
+            timestamp: "2025-06-15T10:00:00.000+10:00",
             tool: "Bash",
             input: { command: "ls" },
             cwd: "/home/user",
         };
         const entryB: IFinalDecisionEntry = {
             type: "final_decision",
-            timestamp: "2025-06-15T10:00:00.001Z",
+            timestamp: "2025-06-15T10:00:00.001+10:00",
             tool: "Bash",
             decision: "allow",
         };
         logger.log(entryA);
         logger.log(entryB);
-        const logPath = join(baseDir, "2025-06", "15", "10.log");
-        const lines = readFileSync(logPath, "utf-8").split("\n").filter(Boolean);
+        const jsonPath = join(baseDir, "2025-06", "15", "10.json");
+        const lines = readFileSync(jsonPath, "utf-8").split("\n").filter(Boolean);
         expect(lines).toHaveLength(2);
         expect(JSON.parse(lines[0])).toEqual(entryA);
         expect(JSON.parse(lines[1])).toEqual(entryB);
@@ -189,6 +227,134 @@ test("NullAuditLogger.log does not throw and writes nothing", () => {
         decision: "deny",
     };
     expect(() => logger.log(entry)).not.toThrow();
+});
+
+// ---------------------------------------------------------------------------
+// formatTextEntry
+// ---------------------------------------------------------------------------
+
+test("formatTextEntry tool_request with command shows tool and command", () => {
+    const entry: IToolRequestEntry = {
+        type: "tool_request",
+        timestamp: "2025-06-15T10:23:01.000+10:00",
+        tool: "Bash",
+        input: { command: "ls -la" },
+        cwd: "/home/user",
+    };
+    expect(formatTextEntry(entry)).toBe("10:23:01  TOOL     Bash: ls -la");
+});
+
+test("formatTextEntry tool_request with file_path shows tool and path", () => {
+    const entry: IToolRequestEntry = {
+        type: "tool_request",
+        timestamp: "2025-06-15T10:23:01.000+10:00",
+        tool: "Read",
+        input: { file_path: "/project/src/main.ts" },
+        cwd: "/home/user",
+    };
+    expect(formatTextEntry(entry)).toBe("10:23:01  TOOL     Read: /project/src/main.ts");
+});
+
+test("formatTextEntry tool_request with unknown input falls back to JSON", () => {
+    const entry: IToolRequestEntry = {
+        type: "tool_request",
+        timestamp: "2025-06-15T10:23:01.000+10:00",
+        tool: "Other",
+        input: { foo: "bar" },
+        cwd: "/home/user",
+    };
+    expect(formatTextEntry(entry)).toBe('10:23:01  TOOL     Other: {"foo":"bar"}');
+});
+
+test("formatTextEntry rule_match allow with ruleName shows ALLOW and rule", () => {
+    const entry: IRuleMatchEntry = {
+        type: "rule_match",
+        timestamp: "2025-06-15T10:23:01.000+10:00",
+        nodeType: "command",
+        ruleName: "ls",
+        decision: "allow",
+    };
+    expect(formatTextEntry(entry)).toBe("10:23:01  ALLOW    rule:ls  node:command");
+});
+
+test("formatTextEntry rule_match deny with reason shows DENY, rule, and reason", () => {
+    const entry: IRuleMatchEntry = {
+        type: "rule_match",
+        timestamp: "2025-06-15T10:23:01.000+10:00",
+        nodeType: "command",
+        ruleName: "rm",
+        decision: "deny",
+        reason: "rm is not allowed",
+    };
+    expect(formatTextEntry(entry)).toBe('10:23:01  DENY     rule:rm  node:command  "rm is not allowed"');
+});
+
+test("formatTextEntry rule_match ask with reason shows ASK", () => {
+    const entry: IRuleMatchEntry = {
+        type: "rule_match",
+        timestamp: "2025-06-15T10:23:01.000+10:00",
+        nodeType: "command",
+        ruleName: "catch-all",
+        decision: "ask",
+        reason: "please confirm",
+    };
+    expect(formatTextEntry(entry)).toBe('10:23:01  ASK      rule:catch-all  node:command  "please confirm"');
+});
+
+test("formatTextEntry rule_match without ruleName omits rule: part", () => {
+    const entry: IRuleMatchEntry = {
+        type: "rule_match",
+        timestamp: "2025-06-15T10:23:01.000+10:00",
+        nodeType: "command",
+        decision: "allow",
+    };
+    expect(formatTextEntry(entry)).toBe("10:23:01  ALLOW    node:command");
+});
+
+test("formatTextEntry aggregation with op shows all fields", () => {
+    const entry: IAggregationEntry = {
+        type: "aggregation",
+        timestamp: "2025-06-15T10:23:01.000+10:00",
+        nodeType: "binop",
+        op: "&&",
+        childrenDecision: "deny",
+        ownDecision: "abstain",
+        combined: "deny",
+    };
+    expect(formatTextEntry(entry)).toBe("10:23:01  AGG      node:binop  op:&&  children:deny  own:abstain  → deny");
+});
+
+test("formatTextEntry aggregation without op omits op part", () => {
+    const entry: IAggregationEntry = {
+        type: "aggregation",
+        timestamp: "2025-06-15T10:23:01.000+10:00",
+        nodeType: "bash",
+        childrenDecision: "allow",
+        ownDecision: "abstain",
+        combined: "allow",
+    };
+    expect(formatTextEntry(entry)).toBe("10:23:01  AGG      node:bash  children:allow  own:abstain  → allow");
+});
+
+test("formatTextEntry final_decision without reason shows RESULT", () => {
+    const entry: IFinalDecisionEntry = {
+        type: "final_decision",
+        timestamp: "2025-06-15T10:23:01.000+10:00",
+        tool: "Bash",
+        decision: "allow",
+    };
+    expect(formatTextEntry(entry)).toBe("10:23:01  RESULT   Bash → ALLOW");
+});
+
+test("formatTextEntry final_decision with reason shows reason", () => {
+    const entry: IFinalDecisionEntry = {
+        type: "final_decision",
+        timestamp: "2025-06-15T10:23:01.000+10:00",
+        tool: "Bash",
+        decision: "deny",
+        reason: "rm is not allowed",
+    };
+    expect(formatTextEntry(entry)).toBe('10:23:01  RESULT   Bash → DENY  "rm is not allowed"');
 });
 
 // ---------------------------------------------------------------------------

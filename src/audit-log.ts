@@ -96,14 +96,55 @@ export function resolveLogBaseDir(projectDir: string): string {
     return join(projectDir, ".claude", "permissions-log");
 }
 
-// resolveLogPath returns the local-time-based log file path for the given base directory and timestamp.
-// Format: <baseDir>/YYYY-MM/DD/HH.log, all components zero-padded.
-export function resolveLogPath(baseDir: string, now: Date): string {
+// resolveJsonLogPath returns the machine-readable JSON Lines log file path.
+// Format: <baseDir>/YYYY-MM/DD/HH.json, all components zero-padded, local time.
+export function resolveJsonLogPath(baseDir: string, now: Date): string {
+    const year = now.getFullYear().toString();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    const hour = String(now.getHours()).padStart(2, "0");
+    return join(baseDir, `${year}-${month}`, day, `${hour}.json`);
+}
+
+// resolveTextLogPath returns the human-readable plain text log file path.
+// Format: <baseDir>/YYYY-MM/DD/HH.log, all components zero-padded, local time.
+export function resolveTextLogPath(baseDir: string, now: Date): string {
     const year = now.getFullYear().toString();
     const month = String(now.getMonth() + 1).padStart(2, "0");
     const day = String(now.getDate()).padStart(2, "0");
     const hour = String(now.getHours()).padStart(2, "0");
     return join(baseDir, `${year}-${month}`, day, `${hour}.log`);
+}
+
+// formatTextEntry formats a single audit log entry as a human-readable text line.
+// Columns: HH:MM:SS  LABEL    <details>
+// LABEL is padded to 9 characters. Only the time (HH:MM:SS) is shown, not the full timestamp.
+export function formatTextEntry(entry: IAuditLogEntry): string {
+    const time = entry.timestamp.slice(11, 19);
+
+    switch (entry.type) {
+        case "tool_request": {
+            const inputSummary =
+                typeof entry.input["command"] === "string" ? entry.input["command"] as string :
+                typeof entry.input["file_path"] === "string" ? entry.input["file_path"] as string :
+                JSON.stringify(entry.input);
+            return `${time}  ${"TOOL".padEnd(9)}${entry.tool}: ${inputSummary}`;
+        }
+        case "rule_match": {
+            const label = entry.decision.toUpperCase();
+            const rulePart = entry.ruleName ? `rule:${entry.ruleName}  ` : "";
+            const reasonPart = entry.reason ? `  "${entry.reason}"` : "";
+            return `${time}  ${label.padEnd(9)}${rulePart}node:${entry.nodeType}${reasonPart}`;
+        }
+        case "aggregation": {
+            const opPart = entry.op ? `  op:${entry.op}` : "";
+            return `${time}  ${"AGG".padEnd(9)}node:${entry.nodeType}${opPart}  children:${entry.childrenDecision}  own:${entry.ownDecision}  → ${entry.combined}`;
+        }
+        case "final_decision": {
+            const reasonPart = entry.reason ? `  "${entry.reason}"` : "";
+            return `${time}  ${"RESULT".padEnd(9)}${entry.tool} → ${entry.decision.toUpperCase()}${reasonPart}`;
+        }
+    }
 }
 
 // cleanupOldMonths removes month directories from baseDir whose month is more than 2
@@ -142,12 +183,12 @@ export class NullAuditLogger implements IAuditLogger {
     }
 }
 
-// FileAuditLogger writes each entry as a JSON line to the local-time-keyed log file,
-// creating directories as needed.
+// FileAuditLogger writes each entry to both a JSON Lines file (HH.json) and a
+// human-readable plain text file (HH.log), creating directories as needed.
 export class FileAuditLogger implements IAuditLogger {
-    // The base directory under which YYYY-MM/DD/HH.log files are written.
+    // The base directory under which YYYY-MM/DD/ files are written.
     private readonly baseDir: string;
-    // The timestamp used to derive the log file path for this invocation.
+    // The timestamp used to derive the log file paths for this invocation.
     private readonly now: Date;
 
     constructor(baseDir: string, now: Date) {
@@ -155,11 +196,13 @@ export class FileAuditLogger implements IAuditLogger {
         this.now = now;
     }
 
-    // log serialises entry as a JSON line and appends it to the current hour's log file.
+    // log appends entry to the JSON Lines file and its text representation to the plain text file.
     log(entry: IAuditLogEntry): void {
-        const logPath = resolveLogPath(this.baseDir, this.now);
-        mkdirSync(join(logPath, ".."), { recursive: true });
-        appendFileSync(logPath, JSON.stringify(entry) + "\n");
+        const jsonPath = resolveJsonLogPath(this.baseDir, this.now);
+        mkdirSync(join(jsonPath, ".."), { recursive: true });
+        appendFileSync(jsonPath, JSON.stringify(entry) + "\n");
+        const textPath = resolveTextLogPath(this.baseDir, this.now);
+        appendFileSync(textPath, formatTextEntry(entry) + "\n");
     }
 }
 

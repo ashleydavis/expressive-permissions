@@ -81,7 +81,7 @@ function findNewestLogFile(baseDir: string): string | null {
             if (stat.isDirectory()) {
                 walk(fullPath);
             }
-            else if (entry.endsWith(".log") && stat.mtimeMs > newestMtime) {
+            else if (entry.endsWith(".json") && stat.mtimeMs > newestMtime) {
                 newestMtime = stat.mtimeMs;
                 newestPath = fullPath;
             }

@@ -4,13 +4,14 @@ Every tool call processed by the permissions hook is recorded to an audit log so
 
 ## Location
 
-Log files are written to:
+Two files are written per hour to the same directory:
 
 ```
-<project-dir>/.claude/permissions-log/YYYY-MM/DD/HH.log
+<project-dir>/.claude/permissions-log/YYYY-MM/DD/HH.json   ← machine-readable
+<project-dir>/.claude/permissions-log/YYYY-MM/DD/HH.log    ← human-readable
 ```
 
-One file is created per local hour. The plugin uses `CLAUDE_PROJECT_DIR` to locate the project directory, which Claude Code always sets when invoking hooks.
+The plugin uses `CLAUDE_PROJECT_DIR` to locate the project directory, which Claude Code always sets when invoking hooks.
 
 ## Retention
 
@@ -18,9 +19,22 @@ On every hook invocation the plugin automatically removes month directories olde
 
 ## Format
 
-Each log file is [JSON Lines](https://jsonlines.org/) (NDJSON): one JSON object per line, newline-terminated, UTF-8 encoded. All timestamps use ISO 8601 format in local time with timezone offset.
+**`.json`** — [JSON Lines](https://jsonlines.org/) (NDJSON): one JSON object per line, newline-terminated, UTF-8 encoded. Intended for programmatic querying with tools like `jq`.
 
-### Entry types
+**`.log`** — plain text, one line per entry, intended for direct human reading. All timestamps use ISO 8601 format in local time with timezone offset.
+
+### Human-readable example (`.log`)
+
+```
+10:23:01  TOOL     Bash: ls && rm -rf /
+10:23:01  ALLOW    rule:ls  node:command
+10:23:01  DENY     rule:rm  node:command  "rm is not allowed"
+10:23:01  AGG      node:binop  op:&&  children:deny  own:abstain  → deny
+10:23:01  AGG      node:bash  children:deny  own:abstain  → deny
+10:23:01  RESULT   Bash → DENY  "rm is not allowed"
+```
+
+### JSON Lines entry types (`.json`)
 
 **`tool_request`** — logged once per hook invocation before any rule evaluation.
 
@@ -48,20 +62,20 @@ Each log file is [JSON Lines](https://jsonlines.org/) (NDJSON): one JSON object 
 
 ## Useful one-liners
 
-View all blocked commands:
-
-```sh
-grep '"decision":"deny"' .claude/permissions-log/**/*.log
-```
-
-View all approved commands:
-
-```sh
-grep '"decision":"allow"' .claude/permissions-log/**/*.log
-```
-
-Tail the current hour's log file (replace date/hour as needed):
+Tail the current hour's human-readable log:
 
 ```sh
 tail -f .claude/permissions-log/$(date +%Y-%m/%d/%H).log
+```
+
+View all blocked commands (JSON):
+
+```sh
+grep '"decision":"deny"' .claude/permissions-log/**/*.json
+```
+
+View all approved commands (JSON):
+
+```sh
+grep '"decision":"allow"' .claude/permissions-log/**/*.json
 ```
