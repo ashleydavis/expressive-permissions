@@ -11,7 +11,7 @@ ast:
     options:
       r: true
       f: true
-    pos: /tmp
+    cmd: /tmp
     envPrefix: {}
     redirects: []
     raw: "rm -r -f /tmp"

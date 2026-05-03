@@ -3,7 +3,7 @@ ast:
   type: command
   binary: cmd
   options: {}
-  pos: []
+  cmd: []
   envPrefix:
     A: "1"
     B: "2"

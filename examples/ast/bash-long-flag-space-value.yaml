@@ -10,7 +10,7 @@ ast:
     binary: kubectl
     options:
       context: prod-cluster
-    pos: delete
+    cmd: delete
     envPrefix: {}
     redirects: []
     raw: "kubectl delete --context prod-cluster"

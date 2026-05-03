@@ -6,16 +6,16 @@ export function makeOptions(named: Record<string, string | boolean>): Record<str
 }
 
 // Builds a Command leaf node as the parser would produce.
-export function makeCommand(binary: string, options: Record<string, string | boolean>, pos: string | string[], envPrefix: Record<string, string>): Command {
-    const posArray = Array.isArray(pos) ? pos : [pos];
+export function makeCommand(binary: string, options: Record<string, string | boolean>, cmd: string | string[], envPrefix: Record<string, string>): Command {
+    const cmdArray = Array.isArray(cmd) ? cmd : [cmd];
     return {
         type: "command",
         binary,
         options,
-        pos,
+        cmd,
         envPrefix,
         redirects: [],
-        raw: `${binary} ${posArray.join(" ")}`.trim(),
+        raw: `${binary} ${cmdArray.join(" ")}`.trim(),
     };
 }
 

@@ -16,8 +16,8 @@ function makeEnv(cwd: string = "/project", cwdResolved: boolean = true, envVars:
 const dummyCall: ToolCall = { tool_name: "Bash", tool_input: { command: "" }, cwd: "/project" };
 
 // Builds a Command node
-function makeCommand(binary: string, pos: string | string[], namedOptions: Record<string, string | boolean> = {}): Command {
-    return { type: "command", binary, options: namedOptions, pos, envPrefix: {}, redirects: [], raw: binary };
+function makeCommand(binary: string, cmd: string | string[], namedOptions: Record<string, string | boolean> = {}): Command {
+    return { type: "command", binary, options: namedOptions, cmd, envPrefix: {}, redirects: [], raw: binary };
 }
 
 // Runs the first rule and returns its decision action
@@ -225,11 +225,11 @@ bash:
 // Bash: positional match (string)
 // ---------------------------------------------------------------------------
 
-test("bash pos string: fires when pos[0] matches glob", () => {
+test("bash cmd string: fires when cmd[0] matches glob", () => {
     const yaml = `
 bash:
   cat:
-    pos: "*.ts"
+    cmd: "*.ts"
     decide: allow
 `;
     withYamlFixtures(null, yaml, (rules) => {
@@ -239,14 +239,14 @@ bash:
 });
 
 // ---------------------------------------------------------------------------
-// Bash: positional OR semantics (pos-in)
+// Bash: positional OR semantics (cmd-in)
 // ---------------------------------------------------------------------------
 
-test("bash pos-in: fires when any positional matches any pattern", () => {
+test("bash cmd-in: fires when any positional matches any pattern", () => {
     const yaml = `
 bash:
   curl:
-    pos-in:
+    cmd-in:
       - "http://*"
       - "ftp://*"
     decide: deny
@@ -467,16 +467,16 @@ bash:
 // Bash: multi-level subcommand with positional args offset
 // ---------------------------------------------------------------------------
 
-test("bash multi-level subcommand pos: pos offset by path length", () => {
+test("bash multi-level subcommand cmd: cmd offset by path length", () => {
     const yaml = `
 bash:
   git:
     add:
-      pos: "src/*"
+      cmd: "src/*"
       decide: allow
 `;
     withYamlFixtures(null, yaml, (rules) => {
-        // git add src/foo.ts → pos = ["add", "src/foo.ts"], path length = 1, pos checks pos[1]
+        // git add src/foo.ts → cmd = ["add", "src/foo.ts"], path length = 1, cmd checks cmd[1]
         expect(decide(rules[0], makeCommand("git", ["add", "src/foo.ts"]))).toBe("allow");
         expect(decide(rules[0], makeCommand("git", ["add", "test/foo.ts"]))).toBe("abstain");
         // Without enough positionals → abstain
@@ -696,7 +696,7 @@ bash:
     - options:
         - r|recursive
       decide: deny
-    - pos: "/**"
+    - cmd: "/**"
       decide: deny
     - decide: ask
   git:
@@ -722,7 +722,7 @@ bash:
       NODE_ENV: "prod*"
     decide: allow
   curl:
-    pos-in:
+    cmd-in:
       - "http://*"
       - "ftp://*"
     decide: deny
@@ -989,7 +989,7 @@ bash:
       - r|recursive
     decide: deny
   curl:
-    pos: "http://*"
+    cmd: "http://*"
     decide: deny
 `;
 
@@ -1071,15 +1071,15 @@ bash:
 });
 
 // ---------------------------------------------------------------------------
-// matchesPos: pos-in at subcommand level
+// matchesCmd: cmd-in at subcommand level
 // ---------------------------------------------------------------------------
 
-test("bash pos-in at subcommand level: abstains when no positional matches", () => {
+test("bash cmd-in at subcommand level: abstains when no positional matches", () => {
     const yaml = `
 bash:
   git:
     add:
-      pos-in:
+      cmd-in:
         - "src/*"
         - "test/*"
       decide: allow
@@ -1174,38 +1174,38 @@ bash:
 });
 
 // ---------------------------------------------------------------------------
-// pos + options combined (AND across fields)
+// cmd + options combined (AND across fields)
 // ---------------------------------------------------------------------------
 
-test("bash pos and options combined: both must match simultaneously", () => {
+test("bash cmd and options combined: both must match simultaneously", () => {
     const yaml = `
 bash:
   git:
     add:
-      pos: "*.ts"
+      cmd: "*.ts"
       options:
         - f
       decide: deny
 `;
     withYamlFixtures(null, yaml, (rules) => {
-        // pos[1] matches *.ts AND -f is present → deny
+        // cmd[1] matches *.ts AND -f is present → deny
         expect(decide(rules[0], makeCommand("git", ["add", "foo.ts"], { f: true }))).toBe("deny");
-        // pos[1] matches but -f absent → abstain
+        // cmd[1] matches but -f absent → abstain
         expect(decide(rules[0], makeCommand("git", ["add", "foo.ts"]))).toBe("abstain");
-        // -f present but pos[1] doesn't match → abstain
+        // -f present but cmd[1] doesn't match → abstain
         expect(decide(rules[0], makeCommand("git", ["add", "foo.js"], { f: true }))).toBe("abstain");
     });
 });
 
 // ---------------------------------------------------------------------------
-// pos as list (positional by index, AND)
+// cmd as list (positional by index, AND)
 // ---------------------------------------------------------------------------
 
-test("bash pos array: matches positional args by index (AND)", () => {
+test("bash cmd array: matches positional args by index (AND)", () => {
     const yaml = `
 bash:
   mv:
-    pos:
+    cmd:
       - "src/**"
       - "dist/**"
     decide: ask
@@ -1222,14 +1222,14 @@ bash:
 });
 
 // ---------------------------------------------------------------------------
-// pos-in scanning multiple positionals
+// cmd-in scanning multiple positionals
 // ---------------------------------------------------------------------------
 
-test("bash pos-in: fires when any positional from offset matches any pattern", () => {
+test("bash cmd-in: fires when any positional from offset matches any pattern", () => {
     const yaml = `
 bash:
   rm:
-    pos-in:
+    cmd-in:
       - "/etc/**"
       - "/usr/**"
     decide: deny
@@ -1247,11 +1247,11 @@ bash:
 // matchesPattern: regex patterns
 // ---------------------------------------------------------------------------
 
-test("bash pos regex: fires when positional matches regex", () => {
+test("bash cmd regex: fires when positional matches regex", () => {
     const yaml = `
 bash:
   curl:
-    pos: "/^ftp:/"
+    cmd: "/^ftp:/"
     decide: deny
 `;
     withYamlFixtures(null, yaml, (rules) => {
@@ -1593,15 +1593,15 @@ bash:
 });
 
 // ---------------------------------------------------------------------------
-// pos: "." literal exact match (README quick-start example)
+// cmd: "." literal exact match (README quick-start example)
 // ---------------------------------------------------------------------------
 
-test("bash pos literal dot: fires only on exact dot argument", () => {
+test("bash cmd literal dot: fires only on exact dot argument", () => {
     const yaml = `
 bash:
   git:
     add:
-      pos: "."
+      cmd: "."
       decide: deny
       reason: Use specific files instead of git add .
 `;
@@ -1674,15 +1674,15 @@ mcp:
 });
 
 // ---------------------------------------------------------------------------
-// USER-DEFINED-RULES.md: regex alternation in pos (/(http|ftp):/)
+// USER-DEFINED-RULES.md: regex alternation in cmd (/(http|ftp):/),
 // Replaces the broken /{http|ftp}://* glob example that was in the docs.
 // ---------------------------------------------------------------------------
 
-test("bash pos regex alternation: /(http|ftp):/ matches http and ftp but not https", () => {
+test("bash cmd regex alternation: /(http|ftp):/ matches http and ftp but not https", () => {
     const yaml = `
 bash:
   curl:
-    pos: "/(http|ftp):/"
+    cmd: "/(http|ftp):/"
     decide: deny
     reason: Only HTTPS allowed
 `;
@@ -1848,15 +1848,15 @@ bash:
 });
 
 // ---------------------------------------------------------------------------
-// USER-DEFINED-RULES: curl pos https → allow
-// Docs show: curl pos: "https://*" → allow
+// USER-DEFINED-RULES: curl cmd https → allow
+// Docs show: curl cmd: "https://*" → allow
 // ---------------------------------------------------------------------------
 
 test("USER-DEFINED-RULES: curl https → allow, other schemes → abstain", () => {
     const yaml = `
 bash:
   curl:
-    pos: "https://*"
+    cmd: "https://*"
     decide: allow
 `;
     withYamlFixtures(null, yaml, (rules) => {
@@ -2185,15 +2185,15 @@ bash:
 });
 
 // ---------------------------------------------------------------------------
-// USER-DEFINED-RULES: rm pos /etc/** → deny (absolute path glob in pos)
-// Docs show: rm pos: /etc/** → deny (No deleting from /etc)
+// USER-DEFINED-RULES: rm cmd /etc/** → deny (absolute path glob in cmd)
+// Docs show: rm cmd: /etc/** → deny (No deleting from /etc)
 // ---------------------------------------------------------------------------
 
-test("USER-DEFINED-RULES: rm pos absolute path glob /etc/** → deny", () => {
+test("USER-DEFINED-RULES: rm cmd absolute path glob /etc/** → deny", () => {
     const yaml = `
 bash:
   rm:
-    pos: "/etc/**"
+    cmd: "/etc/**"
     decide: deny
     reason: No deleting from /etc
 `;
@@ -2249,7 +2249,7 @@ bash:
 
 // ---------------------------------------------------------------------------
 // USER-DEFINED-RULES: strictest-wins with allow catch-all (not ask)
-// Docs show: git add [pos: "." → deny, decide: allow]
+// Docs show: git add [cmd: "." → deny, decide: allow]
 // A deny above should win even though allow catch-all matches
 // ---------------------------------------------------------------------------
 
@@ -2258,7 +2258,7 @@ test("USER-DEFINED-RULES: strictest-wins deny beats allow catch-all", () => {
 bash:
   git:
     add:
-      - pos: "."
+      - cmd: "."
         decide: deny
         reason: use specific files
       - decide: allow
@@ -2426,10 +2426,10 @@ test("resolveEntryCwdPatterns: array-form subcommand key recursed into", () => {
     expect(subEntries[1].cwd).toBeUndefined();
 });
 
-test("resolveEntryCwdPatterns: known fields (options, pos, env) not recursed into", () => {
-    const entry: IYamlEntry = { options: ["r"], pos: "./foo", decide: "deny" };
+test("resolveEntryCwdPatterns: known fields (options, cmd, env) not recursed into", () => {
+    const entry: IYamlEntry = { options: ["r"], cmd: "./foo", decide: "deny" };
     resolveEntryCwdPatterns(entry, "/base");
-    expect(entry.pos).toBe("./foo");
+    expect(entry.cmd).toBe("./foo");
 });
 
 // ---------------------------------------------------------------------------

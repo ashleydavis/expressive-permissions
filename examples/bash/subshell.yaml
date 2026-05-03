@@ -4,7 +4,7 @@ ast:
   binary: "$(which sudo)"
   options:
     i: true
-  pos: []
+  cmd: []
   envPrefix: {}
   redirects: []
   raw: "$(which sudo) -i"

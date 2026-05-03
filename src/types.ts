@@ -62,8 +62,8 @@ export interface Command {
     binary: string;
     // Named options: boolean for standalone flags (--watch, -f), string for value flags (--reporter=spec)
     options: Record<string, string | boolean>;
-    // Positional arguments: a single string when there is one, an array when there are zero or multiple
-    pos: string | string[];
+    // Positional arguments (cmd): a single string when there is one, an array when there are zero or multiple
+    cmd: string | string[];
     // Environment variable assignments prefixed before the command (e.g. FOO=bar cmd)
     envPrefix: Record<string, string>;
     // I/O redirections attached to this command

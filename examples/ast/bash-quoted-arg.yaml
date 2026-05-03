@@ -9,7 +9,7 @@ ast:
     type: command
     binary: echo
     options: {}
-    pos: hello world
+    cmd: hello world
     envPrefix: {}
     redirects: []
     raw: 'echo "hello world"'

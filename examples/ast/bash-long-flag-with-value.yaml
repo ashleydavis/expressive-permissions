@@ -10,7 +10,7 @@ ast:
     binary: git
     options:
       remote: origin
-    pos: push
+    cmd: push
     envPrefix: {}
     redirects: []
     raw: "git push --remote=origin"

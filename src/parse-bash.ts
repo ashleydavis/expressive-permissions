@@ -167,7 +167,7 @@ interface IArgvResult {
     // Named options: boolean for standalone flags, string for value flags
     options: Record<string, string | boolean>;
     // Positional (non-flag) tokens: string when exactly one, array otherwise
-    pos: string | string[];
+    cmd: string | string[];
 }
 
 // Converts a flat array of argument token strings into an IArgvResult.
@@ -211,8 +211,8 @@ function parseArgv(argTokens: string[]): IArgvResult {
         index++;
     }
 
-    const pos: string | string[] = positionals.length === 1 ? positionals[0] : positionals;
-    return { options, pos };
+    const cmd: string | string[] = positionals.length === 1 ? positionals[0] : positionals;
+    return { options, cmd };
 }
 
 // Returns the token at the current cursor position without advancing.
@@ -293,7 +293,7 @@ function parseCommand(state: IParserState): Command {
         binary,
         options: argv.options,
 
-        pos: argv.pos,
+        cmd: argv.cmd,
         envPrefix,
         redirects,
         raw,
@@ -353,7 +353,7 @@ function parseSequence(state: IParserState): BashAstNode {
 export function parseBash(raw: string): BashAstNode {
     const trimmed = raw.trim();
     if (trimmed.length === 0) {
-        return { type: "command", binary: "", options: {}, pos: [], envPrefix: {}, redirects: [], raw: "" };
+        return { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "" };
     }
 
     const tokens = lex(raw);

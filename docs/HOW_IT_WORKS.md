@@ -30,8 +30,8 @@ For `cd /etc && rm -rf /`:
 ```mermaid
 graph TD
   Bash["bash<br/>raw: cd /etc &amp;&amp; rm -rf /"] --> And["and"]
-  And --> Cd["command<br/>binary: cd<br/>pos: /etc"]
-  And --> Rm["command<br/>binary: rm<br/>options: { r: true, f: true }<br/>pos: /"]
+  And --> Cd["command<br/>binary: cd<br/>cmd: /etc"]
+  And --> Rm["command<br/>binary: rm<br/>options: { r: true, f: true }<br/>cmd: /"]
 ```
 
 For an `Edit` tool call - there is no Bash sub-tree; the AST is a single typed leaf:

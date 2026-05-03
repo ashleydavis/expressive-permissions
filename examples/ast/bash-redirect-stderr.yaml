@@ -9,7 +9,7 @@ ast:
     type: command
     binary: cmd
     options: {}
-    pos: []
+    cmd: []
     envPrefix: {}
     redirects:
       - op: "2>"

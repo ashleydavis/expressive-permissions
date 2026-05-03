@@ -13,7 +13,7 @@ ast:
       binary: test
       options:
         f: true
-      pos: foo.txt
+      cmd: foo.txt
       envPrefix: {}
       redirects: []
       raw: "test -f foo.txt"
@@ -21,7 +21,7 @@ ast:
       type: command
       binary: echo
       options: {}
-      pos: missing
+      cmd: missing
       envPrefix: {}
       redirects: []
       raw: "echo missing"

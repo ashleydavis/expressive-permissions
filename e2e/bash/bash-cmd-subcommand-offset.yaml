@@ -10,7 +10,7 @@ rules:
   bash:
     git:
       log:
-        pos: "src/**"
+        cmd: "src/**"
         decide: allow
 
 expected:

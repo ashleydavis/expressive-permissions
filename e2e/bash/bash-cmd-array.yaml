@@ -1,15 +1,17 @@
-description: "bash: single positional glob match"
+description: "bash: positional array AND match"
 
 input:
   tool_name: Bash
   tool_input:
-    command: "cp file.ts dest/"
+    command: "cp file.ts dest.ts"
   cwd: /home/user/project
 
 rules:
   bash:
     cp:
-      pos: "*.ts"
+      cmd:
+        - "*.ts"
+        - "*.ts"
       decide: allow
 
 expected:

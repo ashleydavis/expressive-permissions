@@ -10,7 +10,7 @@ ast:
     binary: git
     options:
       force-with-lease: true
-    pos: push
+    cmd: push
     envPrefix: {}
     redirects: []
     raw: "git push --force-with-lease"

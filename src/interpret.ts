@@ -52,18 +52,18 @@ export function expandCommandOptions(node: Command, vars: Record<string, string>
         expandedOptions[key] = typeof value === "string" ? expandToken(value, vars) : value;
     }
 
-    let expandedPos: string | string[];
-    if (typeof node.pos === "string") {
-        expandedPos = expandToken(node.pos, vars);
+    let expandedCmd: string | string[];
+    if (typeof node.cmd === "string") {
+        expandedCmd = expandToken(node.cmd, vars);
     } else {
-        expandedPos = node.pos.map((positional: string) => expandToken(positional, vars));
+        expandedCmd = node.cmd.map((positional: string) => expandToken(positional, vars));
     }
 
     return {
         ...node,
         binary: expandToken(node.binary, vars),
         options: expandedOptions,
-        pos: expandedPos,
+        cmd: expandedCmd,
     };
 }
 

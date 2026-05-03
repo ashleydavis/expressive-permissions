@@ -6,7 +6,7 @@ ast:
     type: command
     binary: a
     options: {}
-    pos: []
+    cmd: []
     envPrefix: {}
     redirects: []
     raw: a
@@ -14,7 +14,7 @@ ast:
     type: command
     binary: b
     options: {}
-    pos: []
+    cmd: []
     envPrefix: {}
     redirects: []
     raw: b

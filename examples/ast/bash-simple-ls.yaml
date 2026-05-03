@@ -11,7 +11,7 @@ ast:
     options:
       l: true
       a: true
-    pos: /tmp
+    cmd: /tmp
     envPrefix: {}
     redirects: []
     raw: "ls -la /tmp"

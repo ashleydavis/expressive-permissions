@@ -14,7 +14,7 @@ rules:
         decide: allow
       - env:
           AWS_PROFILE: /^(?!sandbox$)/
-        pos:
+        cmd:
           - "*"
           - delete-*
         decide: deny

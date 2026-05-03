@@ -10,25 +10,27 @@ These are starting points. Take what is useful and extend it with the specific s
 
 The AWS CLI follows the pattern `aws <service> <operation>`. Most read-only operations consistently use `describe-*`, `list-*`, or `get-*` prefixes, which makes broad rules practical.
 
+`cmd` matches positional arguments -- the words of the command in order, excluding flags. A list like `["*", "delete-*"]` matches any service followed by any operation starting with `delete-`; a single string like `"delete-*"` matches the first positional argument.
+
 ### Allow read-only operations
 
 ```yaml
 aws:
-  - pos: ["*", describe-*]
+  - cmd: "* describe-*"
     decide: allow
     reason: Read-only describe operation
-  - pos: ["*", list-*]
+  - cmd: ["*", list-*]
     decide: allow
     reason: Read-only list operation
-  - pos: ["*", get-*]
+  - cmd: ["*", get-*]
     decide: allow
     reason: Read-only get operation
 
   # aws s3 high-level commands use short names rather than the verb-* convention
-  - pos: [s3, ls]
+  - cmd: [s3, ls]
     decide: allow
     reason: S3 list
-  - pos: [s3, presign]
+  - cmd: [s3, presign]
     decide: allow
     reason: S3 presign is read-only
 ```
@@ -38,118 +40,118 @@ aws:
 ```yaml
 aws:
   # CRUD and state mutation
-  - pos: ["*", create-*]
+  - cmd: ["*", create-*]
     decide: deny
     reason: Creation blocked
-  - pos: ["*", update-*]
+  - cmd: ["*", update-*]
     decide: deny
     reason: Updates blocked
-  - pos: ["*", modify-*]
+  - cmd: ["*", modify-*]
     decide: deny
     reason: Modifications blocked
-  - pos: ["*", delete-*]
+  - cmd: ["*", delete-*]
     decide: deny
     reason: Deletion blocked
-  - pos: ["*", terminate-*]
+  - cmd: ["*", terminate-*]
     decide: deny
     reason: Termination blocked
-  - pos: ["*", remove-*]
+  - cmd: ["*", remove-*]
     decide: deny
     reason: Remove blocked
-  - pos: ["*", replace-*]
+  - cmd: ["*", replace-*]
     decide: deny
     reason: Replace blocked
-  - pos: ["*", reset-*]
+  - cmd: ["*", reset-*]
     decide: deny
     reason: Reset blocked
 
   # Lifecycle
-  - pos: ["*", start-*]
+  - cmd: ["*", start-*]
     decide: deny
     reason: Start blocked
-  - pos: ["*", stop-*]
+  - cmd: ["*", stop-*]
     decide: deny
     reason: Stop blocked
-  - pos: ["*", reboot-*]
+  - cmd: ["*", reboot-*]
     decide: deny
     reason: Reboot blocked
-  - pos: ["*", run-*]
+  - cmd: ["*", run-*]
     decide: deny
     reason: Run blocked
 
   # Configuration
-  - pos: ["*", put-*]
+  - cmd: ["*", put-*]
     decide: deny
     reason: Put blocked
-  - pos: ["*", set-*]
+  - cmd: ["*", set-*]
     decide: deny
     reason: Set blocked
-  - pos: ["*", add-*]
+  - cmd: ["*", add-*]
     decide: deny
     reason: Add blocked
-  - pos: ["*", enable-*]
+  - cmd: ["*", enable-*]
     decide: deny
     reason: Enable blocked
-  - pos: ["*", disable-*]
+  - cmd: ["*", disable-*]
     decide: deny
     reason: Disable blocked
-  - pos: ["*", tag-*]
+  - cmd: ["*", tag-*]
     decide: deny
     reason: Tagging blocked
-  - pos: ["*", untag-*]
+  - cmd: ["*", untag-*]
     decide: deny
     reason: Untagging blocked
 
   # Attachment and association
-  - pos: ["*", attach-*]
+  - cmd: ["*", attach-*]
     decide: deny
     reason: Attach blocked
-  - pos: ["*", detach-*]
+  - cmd: ["*", detach-*]
     decide: deny
     reason: Detach blocked
-  - pos: ["*", associate-*]
+  - cmd: ["*", associate-*]
     decide: deny
     reason: Associate blocked
-  - pos: ["*", disassociate-*]
+  - cmd: ["*", disassociate-*]
     decide: deny
     reason: Disassociate blocked
-  - pos: ["*", register-*]
+  - cmd: ["*", register-*]
     decide: deny
     reason: Register blocked
-  - pos: ["*", deregister-*]
+  - cmd: ["*", deregister-*]
     decide: deny
     reason: Deregister blocked
 
   # Access control
-  - pos: ["*", authorize-*]
+  - cmd: ["*", authorize-*]
     decide: deny
     reason: Authorize blocked
-  - pos: ["*", revoke-*]
+  - cmd: ["*", revoke-*]
     decide: deny
     reason: Revoke blocked
 
   # Data operations
-  - pos: ["*", import-*]
+  - cmd: ["*", import-*]
     decide: deny
     reason: Import blocked
-  - pos: ["*", restore-*]
+  - cmd: ["*", restore-*]
     decide: deny
     reason: Restore blocked
-  - pos: ["*", copy-*]
+  - cmd: ["*", copy-*]
     decide: deny
     reason: Copy blocked
 
   # aws s3 high-level commands
-  - pos: [s3, cp]
+  - cmd: [s3, cp]
     decide: deny
     reason: S3 copy blocked
-  - pos: [s3, mv]
+  - cmd: [s3, mv]
     decide: deny
     reason: S3 move blocked
-  - pos: [s3, rm]
+  - cmd: [s3, rm]
     decide: deny
     reason: S3 remove blocked
-  - pos: [s3, sync]
+  - cmd: [s3, sync]
     decide: deny
     reason: S3 sync blocked
 
@@ -168,16 +170,16 @@ Add targeted `deny` rules for services where the blast radius is highest. These 
 
 ```yaml
 aws:
-  - pos: [iam, "*"]
+  - cmd: [iam, "*"]
     decide: deny
     reason: All IAM changes require manual approval
-  - pos: [rds, delete-*]
+  - cmd: [rds, delete-*]
     decide: deny
     reason: RDS deletion blocked -- contact the DBA team
-  - pos: [cloudformation, delete-stack]
+  - cmd: [cloudformation, delete-stack]
     decide: deny
     reason: CloudFormation stack deletion blocked
-  - pos: [cloudformation, deploy]
+  - cmd: [cloudformation, deploy]
     decide: ask
     reason: Confirm CloudFormation deployment
 ```
@@ -263,27 +265,27 @@ aws:
   # Any non-sandbox profile: deny known-destructive operations
   - env:
       AWS_PROFILE: /^(?!sandbox$)/
-    pos: ["*", delete-*]
+    cmd: ["*", delete-*]
     decide: deny
     reason: Destructive deletes blocked on this profile
   - env:
       AWS_PROFILE: /^(?!sandbox$)/
-    pos: ["*", terminate-*]
+    cmd: ["*", terminate-*]
     decide: deny
     reason: Termination blocked on this profile
   - env:
       AWS_PROFILE: /^(?!sandbox$)/
-    pos: ["*", create-*]
+    cmd: ["*", create-*]
     decide: deny
     reason: Resource creation blocked on this profile
   - env:
       AWS_PROFILE: /^(?!sandbox$)/
-    pos: ["*", modify-*]
+    cmd: ["*", modify-*]
     decide: deny
     reason: Modifications blocked on this profile
   - env:
       AWS_PROFILE: /^(?!sandbox$)/
-    pos: [iam, "*"]
+    cmd: [iam, "*"]
     decide: deny
     reason: All IAM operations blocked on this profile
 
@@ -296,7 +298,7 @@ aws:
 
 `/^(?!sandbox$)/` matches any profile name except `sandbox` exactly. The `deny` rules and the catch-all `ask` both match destructive operations on non-sandbox profiles -- deny wins because it is stricter. The `ask` only takes effect when no `deny` rule matches, which covers operations like `describe-*` and `list-*`.
 
-> **Note on `allow` vs `ask`:** Because `ask` beats `allow` in the strictest-wins ordering, adding explicit `allow` rules for reads (e.g. `pos: ["*", "describe-*"], decide: allow`) would have no effect -- the catch-all `ask` would still win. If you want reads to pass through silently on production, remove the catch-all `ask` and enumerate only the operations you want to deny. Anything not covered by an explicit rule falls through to the default behavior.
+> **Note on `allow` vs `ask`:** Because `ask` beats `allow` in the strictest-wins ordering, adding explicit `allow` rules for reads (e.g. `cmd: ["*", "describe-*"], decide: allow`) would have no effect -- the catch-all `ask` would still win. If you want reads to pass through silently on production, remove the catch-all `ask` and enumerate only the operations you want to deny. Anything not covered by an explicit rule falls through to the default behavior.
 
 ### Kubectl: matching on the active context
 
@@ -312,48 +314,48 @@ kubectl:
   # Any non-sandbox context: allow read-only operations
   - options:
       context: /^(?!sandbox)/
-    pos: get
+    cmd: get
     decide: allow
   - options:
       context: /^(?!sandbox)/
-    pos: describe
+    cmd: describe
     decide: allow
   - options:
       context: /^(?!sandbox)/
-    pos: logs
+    cmd: logs
     decide: allow
   - options:
       context: /^(?!sandbox)/
-    pos: top
+    cmd: top
     decide: allow
   - options:
       context: /^(?!sandbox)/
-    pos: version
+    cmd: version
     decide: allow
   - options:
       context: /^(?!sandbox)/
-    pos: cluster-info
+    cmd: cluster-info
     decide: allow
 
   # Any non-sandbox context: deny known-destructive operations
   - options:
       context: /^(?!sandbox)/
-    pos: delete
+    cmd: delete
     decide: deny
     reason: kubectl delete blocked outside sandbox
   - options:
       context: /^(?!sandbox)/
-    pos: apply
+    cmd: apply
     decide: deny
     reason: Applying manifests blocked outside sandbox
   - options:
       context: /^(?!sandbox)/
-    pos: exec
+    cmd: exec
     decide: deny
     reason: Pod shell access blocked outside sandbox
   - options:
       context: /^(?!sandbox)/
-    pos: scale
+    cmd: scale
     decide: deny
     reason: Scaling blocked outside sandbox
 

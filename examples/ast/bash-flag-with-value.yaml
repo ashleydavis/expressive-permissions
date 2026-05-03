@@ -10,7 +10,7 @@ ast:
     binary: git
     options:
       m: wip
-    pos: commit
+    cmd: commit
     envPrefix: {}
     redirects: []
     raw: "git commit -m=wip"

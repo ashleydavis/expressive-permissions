@@ -9,7 +9,7 @@ input:
 rules:
   bash:
     rm:
-      pos-in:
+      cmd-in:
         - "*.json"
         - "*.yaml"
       decide: deny

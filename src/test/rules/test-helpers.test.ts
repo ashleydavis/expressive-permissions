@@ -36,14 +36,14 @@ test("makeCommand: options are set correctly", () => {
     expect(cmd.options).toEqual({ recursive: true });
 });
 
-test("makeCommand: pos as array is set correctly", () => {
+test("makeCommand: cmd as array is set correctly", () => {
     const cmd = makeCommand("cd", {}, ["/home/user"], {});
-    expect(cmd.pos).toEqual(["/home/user"]);
+    expect(cmd.cmd).toEqual(["/home/user"]);
 });
 
-test("makeCommand: pos as string is set correctly", () => {
+test("makeCommand: cmd as string is set correctly", () => {
     const cmd = makeCommand("cd", {}, "/home/user", {});
-    expect(cmd.pos).toBe("/home/user");
+    expect(cmd.cmd).toBe("/home/user");
 });
 
 test("makeCommand: envPrefix is set correctly", () => {
@@ -71,7 +71,7 @@ test("makeCommand: raw with empty positionals is just the binary", () => {
     expect(cmd.raw).toBe("ls");
 });
 
-test("makeCommand: raw with string pos treats it as single positional", () => {
+test("makeCommand: raw with string cmd treats it as single positional", () => {
     const cmd = makeCommand("cd", {}, "/var/log", {});
     expect(cmd.raw).toBe("cd /var/log");
 });

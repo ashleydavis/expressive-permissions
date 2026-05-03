@@ -9,7 +9,7 @@ export const exportRule: Rule = function exportRule(node: AstNode, env: Environm
         return ABSTAIN;
     }
 
-    const positionals = Array.isArray(node.pos) ? node.pos : (node.pos ? [node.pos] : []);
+    const positionals = Array.isArray(node.cmd) ? node.cmd : (node.cmd ? [node.cmd] : []);
     const updates: Record<string, string> = {};
 
     for (const token of positionals) {

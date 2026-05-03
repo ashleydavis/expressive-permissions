@@ -12,7 +12,7 @@ ast:
       type: command
       binary: cd
       options: {}
-      pos: /some/path
+      cmd: /some/path
       envPrefix: {}
       redirects: []
       raw: "cd /some/path"
@@ -23,7 +23,7 @@ ast:
         type: command
         binary: git
         options: {}
-        pos: status
+        cmd: status
         envPrefix: {}
         redirects: []
         raw: "git status"
@@ -31,7 +31,7 @@ ast:
         type: command
         binary: grep
         options: {}
-        pos: foo
+        cmd: foo
         envPrefix: {}
         redirects: []
         raw: "grep foo"

@@ -3,7 +3,7 @@ ast:
   type: command
   binary: ""
   options: {}
-  pos: []
+  cmd: []
   envPrefix: {}
   redirects: []
   raw: ""

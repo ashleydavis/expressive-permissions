@@ -1,16 +1,16 @@
 import { resolve } from "path";
 import { AstNode, Environment, Rule, RuleOutcome, ToolCall, ABSTAIN } from "../../types";
 
-// Extracts the cd target string from a Command node's pos field.
+// Extracts the cd target string from a Command node's cmd field.
 // Returns empty string when no positional was supplied.
-function getCdTarget(pos: string | string[]): string {
-    if (typeof pos === "string") {
-        return pos;
+function getCdTarget(cmd: string | string[]): string {
+    if (typeof cmd === "string") {
+        return cmd;
     }
-    if (pos.length === 0) {
+    if (cmd.length === 0) {
         return "";
     }
-    return pos[0];
+    return cmd[0];
 }
 
 // Returns true when the cd target cannot be resolved to an absolute path.
@@ -35,7 +35,7 @@ export const cdRule: Rule = function cdRule(node: AstNode, env: Environment, _ca
         return ABSTAIN;
     }
 
-    const target = getCdTarget(node.pos);
+    const target = getCdTarget(node.cmd);
 
     if (isUnresolvable(target)) {
         return {

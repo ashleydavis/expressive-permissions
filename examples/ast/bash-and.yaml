@@ -12,7 +12,7 @@ ast:
       type: command
       binary: cd
       options: {}
-      pos: /tmp
+      cmd: /tmp
       envPrefix: {}
       redirects: []
       raw: "cd /tmp"
@@ -22,7 +22,7 @@ ast:
       options:
         r: true
         f: true
-      pos: "*"
+      cmd: "*"
       envPrefix: {}
       redirects: []
       raw: "rm -rf *"

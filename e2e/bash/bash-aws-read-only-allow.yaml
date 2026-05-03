@@ -9,11 +9,11 @@ input:
 rules:
   bash:
     aws:
-      - pos:
+      - cmd:
           - "*"
           - describe-*
         decide: allow
-      - pos:
+      - cmd:
           - "*"
           - delete-*
         decide: deny

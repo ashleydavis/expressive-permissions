@@ -12,7 +12,7 @@ ast:
       type: command
       binary: echo
       options: {}
-      pos: a
+      cmd: a
       envPrefix: {}
       redirects: []
       raw: "echo a"
@@ -20,7 +20,7 @@ ast:
       type: command
       binary: echo
       options: {}
-      pos: b
+      cmd: b
       envPrefix: {}
       redirects: []
       raw: "echo b"

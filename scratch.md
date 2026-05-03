@@ -55,21 +55,6 @@ aws:
     decide: allow
 ```
 
---- 
-
-How do I add an allow for any "sandbox" commands?
-
-Or for particular kubectl contexts that I allow any kubectl commands?
-
-In certain situations you want to say something like:
-
-```yaml
-decide: allow!
-```
-
-The exclamation bumps the precedence level.
-
-Not sure if this the best thing to add, but it's pretty cool.
 
 ---
 
@@ -160,6 +145,11 @@ file:
 
 ```yaml
 file:
+    ~/.kube/config: "foobar" # <-- Exact file match.
+```
+
+```yaml
+file:
     ~/.kube/config:
         contains: "current-context: sandbox"
 ```
@@ -190,4 +180,8 @@ program:
         not: sandbox
 ```
 
+---
 
+cmd to a string... parse out position arguments.
+
+not "first positional"

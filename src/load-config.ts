@@ -14,10 +14,10 @@ type IEntryValue = string | boolean | string[] | Record<string, string> | IYamlE
 export interface IYamlEntry {
     // The decision to return when this entry matches
     decide?: string;
-    // Positional arg matcher: single string matches pos[posOffset], array matches pos[posOffset+i] per index (AND)
-    pos?: string | string[];
-    // OR form of pos: any positional from posOffset onwards matches any listed pattern
-    "pos-in"?: string[];
+    // Positional arg matcher (cmd): single string matches cmd[cmdOffset], array matches cmd[cmdOffset+i] per index (AND)
+    cmd?: string | string[];
+    // OR form of cmd: any positional from cmdOffset onwards matches any listed pattern
+    "cmd-in"?: string[];
     // Flag matcher: all listed flag alias groups must be present (AND); object values may be string patterns or boolean true (presence check)
     options?: string[] | Record<string, string | boolean>;
     // OR form of options: any listed flag alias group must be present
@@ -67,7 +67,7 @@ export interface IYamlConfig {
 }
 
 // Fields that are matcher/control fields and NOT subcommand keys
-const KNOWN_FIELDS = new Set(["decide", "reason", "pos", "pos-in", "options", "options-in", "cwd", "cwd-in", "cwd_resolved", "env", "path", "path-in", "host", "host-in", "tool", "tool-in"]);
+const KNOWN_FIELDS = new Set(["decide", "reason", "cmd", "cmd-in", "options", "options-in", "cwd", "cwd-in", "cwd_resolved", "env", "path", "path-in", "host", "host-in", "tool", "tool-in"]);
 
 // Normalises a YAML section value: plain object → single-entry list; array → as-is
 function normalizeToList(value: IYamlEntry | IYamlEntry[]): IYamlEntry[] {
@@ -202,49 +202,49 @@ function matchesOptions(entry: IYamlEntry, node: Command): boolean {
     return true;
 }
 
-// Returns true when the pos/pos-in entry fields match the positional arguments at the given offset
-function matchesPos(entry: IYamlEntry, node: Command, posOffset: number): boolean {
-    const posArray = Array.isArray(node.pos) ? node.pos : [node.pos];
+// Returns true when the cmd/cmd-in entry fields match the positional arguments at the given offset
+function matchesCmd(entry: IYamlEntry, node: Command, cmdOffset: number): boolean {
+    const cmdArray = Array.isArray(node.cmd) ? node.cmd : [node.cmd];
 
-    if (entry["pos-in"] !== undefined) {
-        const slice = posArray.slice(posOffset);
-        return entry["pos-in"].some((pattern: string) =>
+    if (entry["cmd-in"] !== undefined) {
+        const slice = cmdArray.slice(cmdOffset);
+        return entry["cmd-in"].some((pattern: string) =>
             slice.some((positional: string) => matchesPattern(pattern, positional))
         );
     }
 
-    if (entry.pos !== undefined) {
-        if (Array.isArray(entry.pos)) {
-            // Each element matches pos[posOffset + index] — AND across indices
-            for (let idx = 0; idx < entry.pos.length; idx++) {
-                const target = posArray[posOffset + idx];
+    if (entry.cmd !== undefined) {
+        if (Array.isArray(entry.cmd)) {
+            // Each element matches cmd[cmdOffset + index] — AND across indices
+            for (let idx = 0; idx < entry.cmd.length; idx++) {
+                const target = cmdArray[cmdOffset + idx];
                 if (target === undefined) {
                     return false;
                 }
-                if (!matchesPattern(entry.pos[idx], target)) {
+                if (!matchesPattern(entry.cmd[idx] as string, target)) {
                     return false;
                 }
             }
             return true;
         }
-        // String: matches pos[posOffset]
-        const target = posArray[posOffset];
+        // String: matches cmd[cmdOffset]
+        const target = cmdArray[cmdOffset];
         if (target === undefined) {
             return false;
         }
-        return matchesPattern(entry.pos, target);
+        return matchesPattern(entry.cmd as string, target);
     }
 
     return true;
 }
 
-// Returns true when posArray starts with every element of subcommandPath
-function matchesSubcommandPath(posArray: string[], subcommandPath: string[]): boolean {
-    if (posArray.length < subcommandPath.length) {
+// Returns true when cmdArray starts with every element of subcommandPath
+function matchesSubcommandPath(cmdArray: string[], subcommandPath: string[]): boolean {
+    if (cmdArray.length < subcommandPath.length) {
         return false;
     }
     for (let idx = 0; idx < subcommandPath.length; idx++) {
-        if (posArray[idx] !== subcommandPath[idx]) {
+        if (cmdArray[idx] !== subcommandPath[idx]) {
             return false;
         }
     }
@@ -256,7 +256,7 @@ function buildBashRule(binary: string, subcommandPath: string[], entry: IYamlEnt
     const decision = mapDecision(entry.decide as DecideValue, entry.reason);
     const pathLabel = subcommandPath.length > 0 ? `:${subcommandPath.join(":")}` : "";
     const ruleName = `yaml:${binary}${pathLabel}:${entry.decide}`;
-    const posOffset = subcommandPath.length;
+    const cmdOffset = subcommandPath.length;
 
     const rule: Rule = function(node: AstNode, env: Environment, _call: ToolCall): RuleOutcome {
         if (node.type !== "command") {
@@ -266,19 +266,19 @@ function buildBashRule(binary: string, subcommandPath: string[], entry: IYamlEnt
             return ABSTAIN;
         }
 
-        const posArray = Array.isArray(node.pos) ? node.pos : [node.pos];
+        const cmdArray = Array.isArray(node.cmd) ? node.cmd : [node.cmd];
 
-        if (!matchesSubcommandPath(posArray, subcommandPath)) {
+        if (!matchesSubcommandPath(cmdArray, subcommandPath)) {
             return ABSTAIN;
         }
-        if (!matchesPos(entry, node, posOffset)) {
+        if (!matchesCmd(entry, node, cmdOffset)) {
             return ABSTAIN;
         }
         if (!matchesOptions(entry, node)) {
             return ABSTAIN;
         }
         if (entry.host !== undefined || entry["host-in"] !== undefined) {
-            const urlArg = posArray[posOffset];
+            const urlArg = cmdArray[cmdOffset];
             const hostname = urlArg !== undefined ? extractHost(urlArg) : "";
             if (entry["host-in"] !== undefined) {
                 const hostIn = entry["host-in"] as string[];

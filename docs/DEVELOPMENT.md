@@ -40,8 +40,8 @@ The repo ships several `echo` rules in `.claude/permissions.yaml` that cover all
 | Command | Expected outcome |
 |---|---|
 | `echo hello` | **Prompt** — no rule matches, plugin defaults to `ask` |
-| `echo foobar` | **Denied** — a deny rule matches `pos: foobar` |
-| `echo dogears` | **Allowed silently** — an allow rule matches `pos: dogears` |
+| `echo foobar` | **Denied** — a deny rule matches `cmd: foobar` |
+| `echo dogears` | **Allowed silently** — an allow rule matches `cmd: dogears` |
 | `echo pipeblock && echo hello` | **Denied** — `echo pipeblock` is first in the pipeline, deny rule fires |
 | `echo hello && echo pipeblock` | **Denied** — `echo pipeblock` is second in the pipeline, deny rule still fires |
 | `cd /tmp && echo cwdblock` | **Denied** — `cd` changes cwd to `/tmp`, satisfying the `cwd: /tmp` rule |

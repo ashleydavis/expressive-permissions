@@ -12,7 +12,7 @@ ast:
       type: command
       binary: cd
       options: {}
-      pos: /restricted
+      cmd: /restricted
       envPrefix: {}
       redirects: []
       raw: "cd /restricted"
@@ -21,7 +21,7 @@ ast:
       binary: some-tool
       options:
         flag: true
-      pos: []
+      cmd: []
       envPrefix:
         SECRET: "1"
       redirects: []

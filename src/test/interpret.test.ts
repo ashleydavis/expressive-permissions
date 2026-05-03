@@ -308,7 +308,7 @@ test("scoped env with persistent env: scopedEnv visible at same node, persistent
 // $VAR expansion
 // ---------------------------------------------------------------------------
 
-test("$VAR expansion: FOO=bar; git add $FOO — rules at git add see pos === 'bar'", () => {
+test("$VAR expansion: FOO=bar; git add $FOO — rules at git add see cmd === 'bar'", () => {
     const capturedNodes: AstNode[] = [];
     rules.push(envSetRule);
     rules.push(function captureGitAdd(node: AstNode, _env: Environment): RuleOutcome {
@@ -321,11 +321,11 @@ test("$VAR expansion: FOO=bar; git add $FOO — rules at git add see pos === 'ba
     decide(makeBashCall("FOO=bar; git add $FOO"), new NullAuditLogger());
 
     expect(capturedNodes.length).toBeGreaterThan(0);
-    const gitNode = capturedNodes[0] as { pos?: string | string[] };
-    // After expansion, pos[1] should be "bar" (pos[0] is "add")
-    const pos = gitNode.pos;
-    const posArray = typeof pos === "string" ? [pos] : pos as string[];
-    expect(posArray).toContain("bar");
+    const gitNode = capturedNodes[0] as { cmd?: string | string[] };
+    // After expansion, cmd[1] should be "bar" (cmd[0] is "add")
+    const cmdVal = gitNode.cmd;
+    const cmdArray = typeof cmdVal === "string" ? [cmdVal] : cmdVal as string[];
+    expect(cmdArray).toContain("bar");
 });
 
 test("$VAR reversed: git add $FOO; FOO=bar — $FOO stays literal at git add time", () => {
@@ -341,10 +341,10 @@ test("$VAR reversed: git add $FOO; FOO=bar — $FOO stays literal at git add tim
     decide(makeBashCall("git add $FOO; FOO=bar"), new NullAuditLogger());
 
     expect(capturedNodes.length).toBeGreaterThan(0);
-    const gitNode = capturedNodes[0] as { pos?: string | string[] };
-    const pos = gitNode.pos;
-    const posArray = typeof pos === "string" ? [pos] : pos as string[];
-    expect(posArray).toContain("$FOO");
+    const gitNode = capturedNodes[0] as { cmd?: string | string[] };
+    const cmdVal = gitNode.cmd;
+    const cmdArray = typeof cmdVal === "string" ? [cmdVal] : cmdVal as string[];
+    expect(cmdArray).toContain("$FOO");
 });
 
 test("${VAR} brace syntax expanded: BAR=main; git checkout ${BAR}", () => {
@@ -360,13 +360,13 @@ test("${VAR} brace syntax expanded: BAR=main; git checkout ${BAR}", () => {
     decide(makeBashCall("BAR=main; git checkout ${BAR}"), new NullAuditLogger());
 
     expect(capturedNodes.length).toBeGreaterThan(0);
-    const gitNode = capturedNodes[0] as { pos?: string | string[] };
-    const pos = gitNode.pos;
-    const posArray = typeof pos === "string" ? [pos] : pos as string[];
-    expect(posArray).toContain("main");
+    const gitNode = capturedNodes[0] as { cmd?: string | string[] };
+    const cmdVal = gitNode.cmd;
+    const cmdArray = typeof cmdVal === "string" ? [cmdVal] : cmdVal as string[];
+    expect(cmdArray).toContain("main");
 });
 
-test("OS-level vars not expanded: git add $HOME — rules see pos '$HOME'", () => {
+test("OS-level vars not expanded: git add $HOME — rules see cmd '$HOME'", () => {
     const capturedNodes: AstNode[] = [];
     rules.push(function captureGit(node: AstNode, _env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "git") {
@@ -378,10 +378,10 @@ test("OS-level vars not expanded: git add $HOME — rules see pos '$HOME'", () =
     decide(makeBashCall("git add $HOME"), new NullAuditLogger());
 
     expect(capturedNodes.length).toBeGreaterThan(0);
-    const gitNode = capturedNodes[0] as { pos?: string | string[] };
-    const pos = gitNode.pos;
-    const posArray = typeof pos === "string" ? [pos] : pos as string[];
-    expect(posArray).toContain("$HOME");
+    const gitNode = capturedNodes[0] as { cmd?: string | string[] };
+    const cmdVal = gitNode.cmd;
+    const cmdArray = typeof cmdVal === "string" ? [cmdVal] : cmdVal as string[];
+    expect(cmdArray).toContain("$HOME");
 });
 
 // ---------------------------------------------------------------------------
@@ -624,12 +624,12 @@ test("status aggregation: cd /etc && rm -rf / → deny", () => {
             if (node.type !== "command") {
                 return false;
             }
-            const cmd = node as { binary?: string; options?: Record<string, string | boolean>; pos?: string | string[] };
+            const cmd = node as { binary?: string; options?: Record<string, string | boolean>; cmd?: string | string[] };
             if (cmd.binary !== "rm") {
                 return false;
             }
-            const posArray = typeof cmd.pos === "string" ? [cmd.pos] : cmd.pos as string[];
-            return (cmd.options?.r === true || cmd.options?.R === true) && posArray.includes("/");
+            const cmdArray = typeof cmd.cmd === "string" ? [cmd.cmd] : cmd.cmd as string[];
+            return (cmd.options?.r === true || cmd.options?.R === true) && cmdArray.includes("/");
         },
         { decision: { action: "deny", reason: "rm -rf / blocked" } }
     ));
@@ -644,12 +644,12 @@ test("status aggregation: git status → allow", () => {
             if (node.type !== "command") {
                 return false;
             }
-            const cmd = node as { binary?: string; pos?: string | string[] };
+            const cmd = node as { binary?: string; cmd?: string | string[] };
             if (cmd.binary !== "git") {
                 return false;
             }
-            const posArray = typeof cmd.pos === "string" ? [cmd.pos] : cmd.pos as string[];
-            return posArray[0] === "status";
+            const cmdArray = typeof cmd.cmd === "string" ? [cmd.cmd] : cmd.cmd as string[];
+            return cmdArray[0] === "status";
         },
         { decision: { action: "allow" } }
     ));
@@ -664,12 +664,12 @@ test("status aggregation: git status | wc -l → ask", () => {
             if (node.type !== "command") {
                 return false;
             }
-            const cmd = node as { binary?: string; pos?: string | string[] };
+            const cmd = node as { binary?: string; cmd?: string | string[] };
             if (cmd.binary !== "git") {
                 return false;
             }
-            const posArray = typeof cmd.pos === "string" ? [cmd.pos] : cmd.pos as string[];
-            return posArray[0] === "status";
+            const cmdArray = typeof cmd.cmd === "string" ? [cmd.cmd] : cmd.cmd as string[];
+            return cmdArray[0] === "status";
         },
         { decision: { action: "allow" } }
     ));
@@ -801,9 +801,9 @@ test("expandToken: string with no vars returned unchanged", () => {
 function makeCommand(
     binary: string,
     options: Record<string, string | boolean>,
-    pos: string | string[]
+    cmd: string | string[]
 ): import("../types").Command {
-    return { type: "command", binary, options, pos, envPrefix: {}, redirects: [], raw: binary };
+    return { type: "command", binary, options, cmd, envPrefix: {}, redirects: [], raw: binary };
 }
 
 test("expandCommandOptions: binary expanded", () => {
@@ -823,12 +823,12 @@ test("expandCommandOptions: boolean flag unchanged", () => {
 
 test("expandCommandOptions: positional string expanded", () => {
     const result = expandCommandOptions(makeCommand("git", {}, "$BRANCH"), { BRANCH: "main" });
-    expect(result.pos).toBe("main");
+    expect(result.cmd).toBe("main");
 });
 
 test("expandCommandOptions: positional array expanded", () => {
     const result = expandCommandOptions(makeCommand("git", {}, ["add", "$FILE"]), { FILE: "foo.ts" });
-    expect(result.pos).toEqual(["add", "foo.ts"]);
+    expect(result.cmd).toEqual(["add", "foo.ts"]);
 });
 
 test("expandCommandOptions: raw field preserved unchanged", () => {
@@ -840,7 +840,7 @@ test("expandCommandOptions: raw field preserved unchanged", () => {
 
 test("expandCommandOptions: unknown var in positional left as-is", () => {
     const result = expandCommandOptions(makeCommand("git", {}, "$UNKNOWN"), {});
-    expect(result.pos).toBe("$UNKNOWN");
+    expect(result.cmd).toBe("$UNKNOWN");
 });
 
 // ---------------------------------------------------------------------------
@@ -868,17 +868,17 @@ test("rank: deny returns 3", () => {
 // ---------------------------------------------------------------------------
 
 test("isLeaf: command node is a leaf", () => {
-    expect(isLeaf({ type: "command", binary: "ls", options: {}, pos: [], envPrefix: {}, redirects: [], raw: "ls" })).toBe(true);
+    expect(isLeaf({ type: "command", binary: "ls", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "ls" })).toBe(true);
 });
 
 test("isLeaf: binop node is not a leaf", () => {
-    const left = { type: "command" as const, binary: "a", options: {}, pos: [], envPrefix: {}, redirects: [], raw: "a" };
-    const right = { type: "command" as const, binary: "b", options: {}, pos: [], envPrefix: {}, redirects: [], raw: "b" };
+    const left = { type: "command" as const, binary: "a", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "a" };
+    const right = { type: "command" as const, binary: "b", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "b" };
     expect(isLeaf({ type: "binop", op: "&&", left, right })).toBe(false);
 });
 
 test("isLeaf: bash node is not a leaf", () => {
-    const cmd = { type: "command" as const, binary: "ls", options: {}, pos: [], envPrefix: {}, redirects: [], raw: "ls" };
+    const cmd = { type: "command" as const, binary: "ls", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "ls" };
     expect(isLeaf({ type: "bash", ast: cmd, raw: "ls" })).toBe(false);
 });
 

@@ -11,7 +11,7 @@ ast:
     options:
       recursive: true
       force: /tmp
-    pos: []
+    cmd: []
     envPrefix: {}
     redirects: []
     raw: "rm --recursive --force /tmp"

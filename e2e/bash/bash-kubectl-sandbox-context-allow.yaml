@@ -14,7 +14,7 @@ rules:
         decide: allow
       - options:
           context: /^(?!sandbox)/
-        pos: delete
+        cmd: delete
         decide: deny
         reason: kubectl delete blocked outside sandbox
 

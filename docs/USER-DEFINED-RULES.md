@@ -186,13 +186,13 @@ This matches only when `git push --remote origin` is called with `CI=true` set a
 
 ## Positional argument matching
 
-Use `pos` to match positional arguments (non-flag values on the command line). 
+Use `cmd` to match positional arguments (non-flag values on the command line). 
 
 A single string matches the first positional argument:
 
 ```yaml
 curl:
-  pos: "https://*"
+  cmd: "https://*"
   decide: allow
 ```
 
@@ -200,7 +200,7 @@ You can also use a regex to match multiple values against the first positional a
 
 ```yaml
 curl:
-  pos: "/(http|ftp):/"
+  cmd: "/(http|ftp):/"
   decide: deny
   reason: Only HTTPS allowed
 ```
@@ -209,7 +209,7 @@ Use an array or list to match multiple positional arguments in order. Each patte
 
 ```yaml
 mv:
-  pos:
+  cmd:
     - "src/**"
     - "dist/**"
   decide: ask
@@ -220,11 +220,11 @@ This matches when the first argument matches `src/**` and the second matches `di
 
 ## Matching field values with OR
 
-The `-in` form works for all fields. For positional arguments, `pos-in` matches when any positional argument matches any entry in the list:
+The `-in` form works for all fields. For positional arguments, `cmd-in` matches when any positional argument matches any entry in the list:
 
 ```yaml
 curl:
-  pos-in:
+  cmd-in:
     - http://*
     - ftp://*
   decide: deny
@@ -259,7 +259,7 @@ To match on any of several distinct cases, use a list of rules. The strictest ma
 ```yaml
 git:
   add:
-    - pos: .
+    - cmd: .
       decide: deny
       reason: Use specific files instead of git add .
     - cwd: /etc/**
@@ -316,7 +316,7 @@ docker:
       reason: docker compose up is not allowed
 ```
 
-When a `pos` matcher appears inside a deeply-nested rule, it addresses the positional arguments that come after the subcommand path tokens. For example, in the rule above, `pos: "0"` would match the first argument after `docker compose build`, not `compose` or `build` themselves.
+When a `cmd` matcher appears inside a deeply-nested rule, it addresses the positional arguments that come after the subcommand path tokens. For example, in the rule above, `cmd: "0"` would match the first argument after `docker compose build`, not `compose` or `build` themselves.
 
 ### Mixing subcommand rules and a flat rule for the same binary
 
@@ -501,7 +501,7 @@ Use absolute globs for system-wide restrictions:
 
 ```yaml
 rm:
-  pos: /etc/**
+  cmd: /etc/**
   decide: deny
   reason: No deleting from /etc
 ```
@@ -533,7 +533,7 @@ A `deny` from any matching rule always wins. An `ask` wins over `allow`. This me
 ```yaml
 git:
   add:
-    - pos: "."
+    - cmd: "."
       decide: deny
       reason: "use specific files"
     - decide: allow    # only matches when the deny above does NOT match
@@ -548,8 +548,8 @@ Every field follows this unified pattern:
 | Form | Semantics | Applies to |
 |---|---|---|
 | `field: X` | Matches the field value against pattern X (exact string, glob, or `/regex/`) | all fields |
-| `field: ["A", "B", "C"]` | AND: all patterns must match | multi-value fields only (`options`, `pos`) |
-| `field:`<br>`  - A`<br>`  - B`<br>`  - C` | AND: all patterns must match (list form) | multi-value fields only (`options`, `pos`) |
+| `field: ["A", "B", "C"]` | AND: all patterns must match | multi-value fields only (`options`, `cmd`) |
+| `field:`<br>`  - A`<br>`  - B`<br>`  - C` | AND: all patterns must match (list form) | multi-value fields only (`options`, `cmd`) |
 | `field-in: ["A", "B", "C"]` | OR: any pattern must match | all fields |
 | `field-in:`<br>`  - A`<br>`  - B`<br>`  - C` | OR: any pattern must match (list form) | all fields |
 
@@ -557,9 +557,9 @@ Every field follows this unified pattern:
 
 | Field | Type | Applies to | Behavior |
 |---|---|---|---|
-| `pos` | string | Bash | Matches `pos[0]` against the pattern. |
-| `pos` | array | Bash | Each pattern matches `pos[index]` in order (AND). |
-| `pos-in` | array | Bash | Matches when any positional argument matches any entry (OR). |
+| `cmd` | string | Bash | Matches `cmd[0]` against the pattern. |
+| `cmd` | array | Bash | Each pattern matches `cmd[index]` in order (AND). |
+| `cmd-in` | array | Bash | Matches when any positional argument matches any entry (OR). |
 | `options` | array | Bash | All listed flags must be present (AND). |
 | `options-in` | array | Bash | Any listed flag must be present (OR). |
 | `options` | object | Bash | All key/value pairs must match (AND). |

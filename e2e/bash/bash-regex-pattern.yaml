@@ -1,4 +1,4 @@
-description: "bash: /regex/ pattern in pos field"
+description: "bash: /regex/ pattern in cmd field"
 
 input:
   tool_name: Bash
@@ -9,7 +9,7 @@ input:
 rules:
   bash:
     rm:
-      pos: "/.*backup.*/"
+      cmd: "/.*backup.*/"
       decide: deny
       reason: "backup files protected"
 
