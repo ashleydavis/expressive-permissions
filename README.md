@@ -95,11 +95,7 @@ The plugin intercepts tool calls via a `PreToolUse` hook. When the plugin is ins
 
 > **Warning:** Only add the allow-all settings below after the plugin is installed and you have verified it is working (see [Verifying the plugin](#verifying-the-plugin)). Once the plugin is active, these settings are safe: every tool call is intercepted by the hook and evaluated against your `permissions.yaml` rules before anything runs, and any call with no matching rule defaults to `ask`. Without the plugin active, however, these settings remove all permission checks and Claude will run every tool call without prompting.
 
-There are two ways to configure Claude Code to allow all tools. Both cause the plugin's hook to be the sole decision-maker, but they differ in how they handle any `deny` rules you may have in other settings files.
-
-**Option 1: Explicit allow list (recommended)**
-
-Lists each tool explicitly. Any `deny` rules in other settings files are still respected.
+Add the following to your settings to allow all tools. This causes the plugin's hook to be the sole decision-maker while still respecting any `deny` rules in other settings files.
 
 ```json
 {
@@ -117,19 +113,7 @@ Lists each tool explicitly. Any `deny` rules in other settings files are still r
 }
 ```
 
-**Option 2: Bypass permissions mode**
-
-Bypasses Claude Code's entire permission system. Simpler, but ignores any `deny` rules in other settings files.
-
-```json
-{
-  "permissions": {
-    "defaultMode": "bypassPermissions"
-  }
-}
-```
-
-In both cases the plugin's PreToolUse hook still fires on every tool call and enforces your `permissions.yaml` rules.
+The plugin's PreToolUse hook fires on every tool call and enforces your `permissions.yaml` rules.
 
 ### Global configuration (applies to every project)
 

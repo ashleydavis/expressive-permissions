@@ -33,12 +33,20 @@ Then set Claude Code to allow all tools so the plugin is the sole decision-maker
 ```json
 {
   "permissions": {
-    "defaultMode": "bypassPermissions"
+    "allow": [
+      "Bash",
+      "Read",
+      "Write",
+      "Edit",
+      "MultiEdit",
+      "WebFetch",
+      "mcp__*"
+    ]
   }
 }
 ```
 
-See the [full documentation](https://github.com/ashleydavis/claude-permissions#configuration) for alternative configuration options.
+See the [full documentation](https://github.com/ashleydavis/claude-permissions#configuration) for more details.
 
 Run `/reload-plugins` after editing rules to pick up changes.
 
