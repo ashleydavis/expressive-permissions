@@ -272,7 +272,8 @@ aws:
 
   # Any non-sandbox profile: apply these rules
   - env:
-      AWS_PROFILE: /^(?!sandbox$)/
+      not:
+        AWS_PROFILE: sandbox
     rules:
       - cmd: "* delete-*"
         decide: deny
@@ -295,24 +296,70 @@ aws:
         reason: Confirm AWS operation on non-sandbox profile
 ```
 
-`/^(?!sandbox$)/` matches any profile name except `sandbox` exactly. The `rules:` block only runs when the parent `env` condition matches, so the profile check is written once rather than repeated on every rule. Inside the block, strictest-wins still applies: `deny` beats `ask`, so the catch-all `ask` only fires when no `deny` rule matches (e.g. for `describe-*` or `list-*` operations).
+The `not:` block inverts the match, so `not: AWS_PROFILE: sandbox` fires for any profile name except `sandbox`. The `rules:` block only runs when the parent `env` condition matches, so the profile check is written once rather than repeated on every rule. Inside the block, strictest-wins still applies: `deny` beats `ask`, so the catch-all `ask` only fires when no `deny` rule matches (e.g. for `describe-*` or `list-*` operations).
 
 > **Note on `allow` vs `ask`:** Because `ask` beats `allow` in the strictest-wins ordering, adding explicit `allow` rules for reads (e.g. `cmd: ["*", "describe-*"], decide: allow`) would have no effect -- the catch-all `ask` would still win. If you want reads to pass through silently on production, remove the catch-all `ask` and enumerate only the operations you want to deny. Anything not covered by an explicit rule falls through to the default behavior.
 
-### Kubectl: matching on the active context
+### Kubectl: matching on the current context via kubeconfig
 
-Match on the `--context` flag to scope rules to specific clusters:
+When the active context was set with `kubectl config use-context` and commands run without `--context`, the `options` condition won't match. A `file` condition reads `~/.kube/config` directly to detect the active context:
+
+```yaml
+kubectl:
+  # Sandbox context (detected via kubeconfig): allow everything without prompting
+  - file:
+      ~/.kube/config:
+        contains: "current-context: sandbox"
+    # Anything goes in the sandbox account
+    decide: allow
+
+  # Any non-sandbox context: apply these rules
+  - file:
+      ~/.kube/config:
+        not:
+          contains: "current-context: sandbox"
+    rules:
+      - cmd: get
+        decide: allow
+        reason: Read-only resource listing.
+      - cmd: describe
+        decide: allow
+        reason: Read-only resource inspection.
+      - cmd: logs
+        decide: allow
+        reason: Read-only log access.
+      - cmd: delete
+        decide: deny
+        reason: Deleted resources outside sandbox may not be recoverable -- use your deployment pipeline.
+      - cmd: apply
+        decide: deny
+        reason: Direct applies outside sandbox bypass the deployment pipeline and change tracking.
+      - cmd: exec
+        decide: deny
+        reason: Pod shell access outside sandbox bypasses audit logging and security controls.
+
+      # Catch-all: ask for anything not explicitly covered above
+      - decide: ask
+        reason: Confirm kubectl operation outside sandbox
+```
+
+The `not: contains:` condition matches when `~/.kube/config` is present but does not contain the given string. If the file is absent, neither condition matches and rules fall through to the default.
+
+### Kubectl: matching on the context argument
+
+Match on the `--context` argument to scope rules to specific clusters:
 
 ```yaml
 kubectl:
   # Sandbox: allow everything without prompting
   - options:
-      context: sandbox-*
+      context: sandbox
     decide: allow
 
   # Any non-sandbox context: apply these rules
   - options:
-      context: /^(?!sandbox)/
+      not:
+        context: sandbox
     rules:
       # Allow read-only operations
       - cmd: get
