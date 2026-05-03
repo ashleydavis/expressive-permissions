@@ -25,17 +25,14 @@ Can it log to claude chat output to explain what's is doing?
 
 ---
 
-
-Rolling audit log
-
----
-
 I'd like to support OR for matching commands likes `v|vi|vim` (for aliases). Please write it into the plan @docs/plans/new/add-pos-field.md and update the documentation to match so I can see how it sounds. 
 
 
 ---
 
 What a validation phase to check that rules are syntaxtically correct.
+
+I want to have examples that fail, smoke tests so I can check the errors that come out of it.
 
 
 ---
@@ -184,13 +181,3 @@ npx => bpx (or whatever)
 
 ---
 
-Maybe don't promote this configuration:
-
-```
-{
-    "permissions": {
-        "defaultMode": "bypassPermissions"
-    }
-}
-
-```
