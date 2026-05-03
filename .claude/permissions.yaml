@@ -6,3 +6,15 @@ bash:
     - decide: allow
       pos: dogears
       reason: Echo dogears is allowed
+    - decide: deny
+      pos: pipeblock
+      reason: Echo pipeblock is blocked wherever it appears in a pipeline
+    - decide: deny
+      pos: cwdblock
+      cwd: /tmp
+      reason: Echo cwdblock is blocked when cwd is /tmp
+    - decide: deny
+      pos: envblock
+      env:
+        BLOCK_ECHO: "true"
+      reason: Echo envblock is blocked when BLOCK_ECHO=true

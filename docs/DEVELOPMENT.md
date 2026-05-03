@@ -35,13 +35,17 @@ bun bundle && /reload-plugins
 
 ## How to test the plugin is working
 
-The repo ships two `echo` rules in `.claude/permissions.yaml` that, together with the plugin's default behaviour, cover all three outcomes:
+The repo ships several `echo` rules in `.claude/permissions.yaml` that cover all three outcomes as well as pipeline position, `cd`-based cwd changes, and env-var matching:
 
 | Command | Expected outcome |
 |---|---|
+| `echo hello` | **Prompt** — no rule matches, plugin defaults to `ask` |
 | `echo foobar` | **Denied** — a deny rule matches `pos: foobar` |
 | `echo dogears` | **Allowed silently** — an allow rule matches `pos: dogears` |
-| `echo hello` | **Prompt** — no rule matches, plugin defaults to `ask` |
+| `echo pipeblock && echo hello` | **Denied** — `echo pipeblock` is first in the pipeline, deny rule fires |
+| `echo hello && echo pipeblock` | **Denied** — `echo pipeblock` is second in the pipeline, deny rule still fires |
+| `cd /tmp && echo cwdblock` | **Denied** — `cd` changes cwd to `/tmp`, satisfying the `cwd: /tmp` rule |
+| `BLOCK_ECHO=true echo envblock` | **Denied** — env prefix sets `BLOCK_ECHO=true`, satisfying the `env` rule |
 
 Run each of those commands after loading the plugin and verify you see the expected behaviour.
 
