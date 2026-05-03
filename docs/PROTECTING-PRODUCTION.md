@@ -190,9 +190,11 @@ IAM is denied entirely, any change to roles, policies, or users is high-risk eno
 
 ## kubectl
 
-kubectl subcommands map cleanly to read vs. write. Use subcommand nesting for precise control, and a catch-all to surface anything not covered.
+kubectl subcommands map cleanly to read vs. write.
 
 ### Read-only access with a catch-all
+
+Allow known safe read-only subcommands explicitly and let the catch-all `ask` surface anything else for manual review.
 
 ```yaml
 kubectl:
@@ -214,7 +216,7 @@ kubectl:
 
 ### Block write and exec operations
 
-These rules can stand alone or be merged into the combined example below.
+Add these alongside the read-only rules above to block write and exec access while still permitting reads.
 
 ```yaml
 kubectl:
