@@ -4,20 +4,22 @@ A permissions system for Claude that actually works. Easily allow everything tha
 
 This is a plugin for Claude Code to handle permissions. You delegate all of Claude's permission requests to this plugin and then it will decide, through rules you have laid down in yaml configuration files, whether to allow or deny any particular tool use or command invocation.
 
-## Why?
-
-Claude Code's built-in permission system operates at the tool level: you can allow or deny entire tool categories by matching them against inflexible patterns, but it cannot make decisions based on individual commands within a pipeline, variable file paths in arguments, environment variables (whether set in the shell or inline in the command), the working directory (including `cd` calls mid-pipeline), or context-specific values like the active AWS profile or kubectl context.
-
-This plugin goes further: it converts each tool call into an abstract syntax tree (AST), threads a simulated environment (cwd + env vars) through the tree, and runs a user-defined registry of fine-grained rules at every node in the AST. You have fine-grained control over what Claude is allowed to do and an expressive system for defining permissions so that you don't have to keep repeating yourself for every combination of commands that Claude might come up with.
-
 This gives you permissions that work, even when:
 - Commands are embedded in a pipeline in a variable order.
 - Arbitrary (and usually hard to match) paths are included in command arguments (both positional and labelled).
 - The working directory or environment variables are changed within the pipeline.
 
-It's all about allowing Claude the freedom to do what it needs to do, without constantly interupting you for permissions, but at the same time protecting you from the most damaging things it can do. Rules can also be scoped by environment, so you can allow full read/write access in a sandbox AWS account or dev cluster while locking down production to read-only - or blocking writes entirely. See [docs/PROTECTING-PRODUCTION.md](docs/PROTECTING-PRODUCTION.md) for ready-to-use recipes covering AWS CLI and kubectl.
+## Why?
 
-All decisions are fully auditable. Every allow, deny, and ask is written to a structured JSON Lines log at `.claude/permissions-log/`. See [docs/AUDIT-LOG.md](docs/AUDIT-LOG.md) for the format and retention policy.
+Claude Code's built-in permission system operates at the tool level: you can allow or deny entire tool categories by matching them against inflexible patterns, but it cannot make decisions based on individual commands within a pipeline, variable file paths in arguments, environment variables (whether set in the shell or inline in the command), the working directory (including `cd` calls mid-pipeline), or context-specific values like the active AWS profile or kubectl context.
+
+This plugin goes further: it converts each tool call into an abstract syntax tree (AST), threads a simulated environment (cwd + env vars) through the tree, and runs your rules at every node in the AST. 
+
+You have fine-grained control over what Claude is allowed to do and an expressive system for defining permissions so that you don't have to keep repeating yourself for every combination of commands that Claude might come up with.
+
+It's all about allowing Claude the freedom to do what it needs to do, without constantly interupting you for permissions, but at the same time protecting you from the most damaging things it can do. Rules can also be scoped by environment, so you can allow full read/write access in a sandbox AWS account or dev cluster while locking down production to read-only - or blocking writes entirely. See [docs/PROTECTING-PRODUCTION.md](docs/PROTECTING-PRODUCTION.md) for recipes covering AWS CLI and kubectl.
+
+All decisions are fully auditable. Every allow, deny, and ask is written to a machine-readable JSON Lines file and a human-readable plain-text log, both under `.claude/permissions-log/`. See [docs/AUDIT-LOG.md](docs/AUDIT-LOG.md) for the format and retention policy.
 
 > **Safe by default:** if you add no rules, or if a tool call matches no rule, the plugin always falls back to `ask`. Claude will never run an unmatched command silently.
 
@@ -36,9 +38,11 @@ Some examples of rules you can write:
 | WebFetch to `docs.anthropic.com` | always **allow** |
 | WebFetch to an unknown host | **ask** |
 | `aws ... describe-*`, `list-*`, or `get-*` | always **allow** |
-| `aws ... delete-*`, `create-*`, or `modify-*` on a production profile | always **deny** |
+| `aws` anything when `AWS_PROFILE` is `sandbox` | always **allow** |
+| `aws ... delete-*`, `create-*`, or `modify-*` when `AWS_PROFILE` is not `sandbox` | always **deny** |
 | `kubectl get`, `describe`, or `logs` on any cluster | always **allow** |
-| `kubectl apply`, `delete`, or `exec` targeting a production cluster | always **deny** |
+| `kubectl` anything when kubeconfig `current-context` is `sandbox` | always **allow** |
+| `kubectl apply`, `delete`, or `exec` when kubeconfig context is not `sandbox` | always **deny** |
 
 ## Motivation
 

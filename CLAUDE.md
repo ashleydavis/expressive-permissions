@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - SMOKE TESTS ARE ALWAYS IMPLEMENTED THROUGH SHELL SCRIPTS + YAML FILES, SMOKE TESTS ARE NEVER TYPESCRIPT CODE.
 - THIS IS A BUN PROJECT, NOT NODE.JS
-- NEVER USE EM DASHES
+- NEVER USE EM DASHES OR DOUBLE HYPHENS
 - IT IS ALWAYS YOUR RESPONSIBILTY TO FIX COMPILE ERRORS AND FAILING TESTS. NEVER USE THE "PREEXISTING" EXCUSE.
 - Never use memory.
 - All Claude configuration goes in this repository only, not in the home directory.

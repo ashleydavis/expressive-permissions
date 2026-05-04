@@ -318,6 +318,51 @@ read:
   reason: Confirm before reading secrets
 ```
 
+## Inverting matches
+
+Use `not:` to invert a set of conditions. Any combination of rule fields (`cmd`, `env`, `options`, `cwd`, `path`, `file`) can appear under `not:`. The rule matches when the fields inside `not:` do **not** all match simultaneously.
+
+Invert an environment variable match:
+
+```yaml
+aws:
+  - not:
+      env:
+        AWS_PROFILE: sandbox
+    decide: deny
+    reason: AWS writes blocked outside sandbox
+```
+
+This matches any `aws` command where `AWS_PROFILE` is not `sandbox`.
+
+Invert a combination of fields:
+
+```yaml
+kubectl:
+  - not:
+      cmd: get
+      env:
+        KUBECONFIG: sandbox
+    decide: ask
+    reason: Confirm kubectl outside sandbox
+```
+
+This matches when it is not the case that both `cmd` is `get` and `KUBECONFIG` is `sandbox` simultaneously.
+
+Invert a file condition:
+
+```yaml
+kubectl:
+  - not:
+      file:
+        ~/.kube/config:
+          contains: "current-context: sandbox"
+    decide: ask
+    reason: Confirm kubectl outside sandbox context
+```
+
+This matches when `~/.kube/config` exists but does not contain the given string.
+
 ## Matching one of mulitple rules
 
 To match on any of several distinct cases, use a list of rules. The strictest matching decision wins across all rules that match (deny beats ask beats allow beats abstain):

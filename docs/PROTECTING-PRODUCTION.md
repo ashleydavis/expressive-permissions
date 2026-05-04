@@ -8,9 +8,7 @@ These are starting points. Take what is useful and extend it with the specific s
 
 ## AWS CLI
 
-The AWS CLI follows the pattern `aws <service> <operation>`. Most read-only operations consistently use `describe-*`, `list-*`, or `get-*` prefixes, which makes broad rules practical.
-
-`cmd` matches positional arguments, the words of the command in order, excluding flags. A space-separated string like `"* delete-*"` matches any service followed by any operation starting with `delete-`; a single word like `"delete-*"` matches only the first positional argument. 
+The examples below allow read-only AWS cli operations, but block updates, writes and deletes.
 
 ### Allow read-only operations
 
@@ -160,41 +158,25 @@ aws:
       - force
     decide: deny
     reason: The --force flag bypasses safety checks and confirmation prompts.
-```
 
-When combined with the allow rules above, reads resolve to `allow` (no deny rule matches), writes resolve to `deny`, and any operation not covered by either section falls through to the system default.
-
-### Lock down specific high-risk services
-
-Add targeted `deny` rules for services where the blast radius is highest. These combine with the cross-service rules above -- `deny` always wins.
-
-```yaml
-aws:
+  # High-risk services
   - cmd: "iam *"
     decide: deny
-    reason: All IAM changes require manual approval
-  - cmd: "rds delete-*"
-    decide: deny
-    reason: RDS data is irreplaceable -- contact the DBA team to approve deletions.
-  - cmd: "cloudformation delete-stack"
-    decide: deny
-    reason: Stack deletion removes all managed resources and is irreversible.
+    reason: All IAM changes require manual approval; any change to roles, policies, or users is high-risk enough that no automated action should be allowed.
   - cmd: "cloudformation deploy"
     decide: ask
-    reason: Confirm CloudFormation deployment
+    reason: Confirm CloudFormation deployment before proceeding.
 ```
 
-IAM is denied entirely, any change to roles, policies, or users is high-risk enough that no automated action should be allowed.
+When combined with the allow rules above, reads resolve to `allow`, writes resolve to `deny`, IAM is blocked entirely, and CloudFormation deployments pause for confirmation. Anything not covered falls through to the system default.
 
 ---
 
 ## kubectl
 
-kubectl subcommands map cleanly to read vs. write.
+The examples below allow read-only Kubectl CLI operations, surface unknown subcommands for manual review via a catch-all `ask`, and block writes and exec access unconditionally.
 
 ### Read-only access with a catch-all
-
-Allow known safe read-only subcommands explicitly and let the catch-all `ask` surface anything else for manual review.
 
 ```yaml
 kubectl:
@@ -222,13 +204,11 @@ kubectl:
 
 ### Block write and exec operations
 
-Add these alongside the read-only rules above to block write and exec access while still permitting reads.
-
 ```yaml
 kubectl:
   - delete:
       decide: deny
-      reason: Deleted resources may not be recoverable -- use your deployment pipeline.
+      reason: Deleted resources may not be recoverable; use your deployment pipeline.
   - apply:
       decide: deny
       reason: Direct applies bypass the deployment pipeline and change tracking.
@@ -237,7 +217,7 @@ kubectl:
       reason: Direct patches bypass change tracking and code review.
   - scale:
       decide: deny
-      reason: Manual scaling bypasses capacity planning -- use your deployment pipeline.
+      reason: Manual scaling bypasses capacity planning; use your deployment pipeline.
   - exec:
       decide: deny
       reason: Direct pod shell access bypasses audit logging and security controls.
@@ -257,23 +237,27 @@ kubectl:
 
 ## Scoping rules to production contexts
 
-The recipes above apply globally. Use `env` to match the active AWS profile, or `options` to match the kubectl `--context` flag, leaving the sandbox environment unrestricted.
+The recipes above apply to every command regardless of environment. The examples below scope the rules allowing for unrestricted operations on a "sandbox" account or context, but locking down tighter rules for non-sandbox (e.g. production) accounts and contexts.
 
 ### AWS: matching on the active profile
 
-Apply different policies per profile by adding an `env` condition to every rule in the set. Rules without an `env` condition apply to all profiles, so keeping the conditions consistent avoids unintended cross-profile matches.
+Apply different rules per AWS profile by adding an `env` match to every rule in the set. Rules without an `env` match apply to all profiles, so keeping the matches consistent avoids unintended cross-profile matches.
 
 ```yaml
 aws:
   # Sandbox: allow everything without prompting
   - env:
       AWS_PROFILE: sandbox
+
+    # Anything goes in sandbox.
     decide: allow
 
   # Any non-sandbox profile: apply these rules
-  - env:
-      not:
+  - not:
+      env:
         AWS_PROFILE: sandbox
+
+    # These rules apply to non-sandbox AWS profile (e.g. the production account).
     rules:
       - cmd: "* delete-*"
         decide: deny
@@ -296,13 +280,11 @@ aws:
         reason: Confirm AWS operation on non-sandbox profile
 ```
 
-The `not:` block inverts the match, so `not: AWS_PROFILE: sandbox` fires for any profile name except `sandbox`. The `rules:` block only runs when the parent `env` condition matches, so the profile check is written once rather than repeated on every rule. Inside the block, strictest-wins still applies: `deny` beats `ask`, so the catch-all `ask` only fires when no `deny` rule matches (e.g. for `describe-*` or `list-*` operations).
-
-> **Note on `allow` vs `ask`:** Because `ask` beats `allow` in the strictest-wins ordering, adding explicit `allow` rules for reads (e.g. `cmd: ["*", "describe-*"], decide: allow`) would have no effect -- the catch-all `ask` would still win. If you want reads to pass through silently on production, remove the catch-all `ask` and enumerate only the operations you want to deny. Anything not covered by an explicit rule falls through to the default behavior.
+The `not:` block inverts the match, so `not: env: AWS_PROFILE: sandbox` fires for any profile name except `sandbox`. The `rules:` block only runs when the parent `not:` matches, so the profile check is written once rather than repeated on every rule. Inside the block, strictest-wins still applies: `deny` beats `ask`, so the catch-all `ask` only fires when no `deny` rule matches (e.g. for `describe-*` or `list-*` operations).
 
 ### Kubectl: matching on the current context via kubeconfig
 
-When the active context was set with `kubectl config use-context` and commands run without `--context`, the `options` condition won't match. A `file` condition reads `~/.kube/config` directly to detect the active context:
+Match on the active kubectl context by reading `~/.kube/config` directly:
 
 ```yaml
 kubectl:
@@ -314,9 +296,9 @@ kubectl:
     decide: allow
 
   # Any non-sandbox context: apply these rules
-  - file:
-      ~/.kube/config:
-        not:
+  - not:
+      file:
+        ~/.kube/config:
           contains: "current-context: sandbox"
     rules:
       - cmd: get
@@ -330,7 +312,7 @@ kubectl:
         reason: Read-only log access.
       - cmd: delete
         decide: deny
-        reason: Deleted resources outside sandbox may not be recoverable -- use your deployment pipeline.
+        reason: Deleted resources outside sandbox may not be recoverable; use your deployment pipeline.
       - cmd: apply
         decide: deny
         reason: Direct applies outside sandbox bypass the deployment pipeline and change tracking.
@@ -343,11 +325,11 @@ kubectl:
         reason: Confirm kubectl operation outside sandbox
 ```
 
-The `not: contains:` condition matches when `~/.kube/config` is present but does not contain the given string. If the file is absent, neither condition matches and rules fall through to the default.
+`not: file: contains:` matches when `~/.kube/config` is present but does not contain the given string. If the file is absent, neither rule matches and rules fall through to the default.
 
 ### Kubectl: matching on the context argument
 
-Match on the `--context` argument to scope rules to specific clusters:
+Match on the active Kubectl context via the `--context` argument:
 
 ```yaml
 kubectl:
@@ -357,8 +339,8 @@ kubectl:
     decide: allow
 
   # Any non-sandbox context: apply these rules
-  - options:
-      not:
+  - not:
+      options:
         context: sandbox
     rules:
       # Allow read-only operations
@@ -384,7 +366,7 @@ kubectl:
       # Deny known-destructive operations
       - cmd: delete
         decide: deny
-        reason: Deleted resources outside sandbox may not be recoverable -- use your deployment pipeline.
+        reason: Deleted resources outside sandbox may not be recoverable; use your deployment pipeline.
       - cmd: apply
         decide: deny
         reason: Direct applies outside sandbox bypass the deployment pipeline and change tracking.
@@ -393,12 +375,12 @@ kubectl:
         reason: Pod shell access outside sandbox bypasses audit logging and security controls.
       - cmd: scale
         decide: deny
-        reason: Manual scaling outside sandbox bypasses capacity planning -- use your deployment pipeline.
+        reason: Manual scaling outside sandbox bypasses capacity planning; use your deployment pipeline.
 
       # Catch-all: ask for anything not explicitly covered above
       - decide: ask
         reason: Confirm kubectl operation outside sandbox
 ```
 
-This matches when `--context` is passed explicitly, which is common in scripts and pipelines. If the active context was set with `kubectl config use-context` and commands run without the flag, these rules will not match -- for that case, a custom TypeScript rule can call `kubectl config current-context` to detect the active context automatically.
+This matches when `--context` is passed explicitly, which is common in scripts and pipelines. If the active context was set with `kubectl config use-context` and commands run without the flag, these rules will not match; for that case, a custom TypeScript rule can call `kubectl config current-context` to detect the active context automatically.
 
