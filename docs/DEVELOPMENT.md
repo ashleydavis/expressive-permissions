@@ -20,6 +20,7 @@ For contributors and anyone who wants to write TypeScript rules, run tests, or p
 - [Bun](https://bun.sh) — runtime, bundler, and package manager
 
 ```bash
+cd ~
 git clone https://github.com/ashleydavis/claude-permissions
 cd claude-permissions
 bun install
@@ -37,7 +38,7 @@ claude --plugin-dir ./plugin
 Or from any other project directory:
 
 ```bash
-claude --plugin-dir /path/to/claude-permissions/plugin
+claude --plugin-dir ~/claude-permissions/plugin
 ```
 
 Note: `--plugin-dir` is a CLI flag and does not apply to Claude Code running inside IDE extensions (VS Code, JetBrains). Use the global hook approach below if you need the plugin active in those environments.
@@ -55,7 +56,7 @@ Add the hook directly to `~/.claude/settings.json`. This is equivalent to what t
         "hooks": [
           {
             "type": "command",
-            "command": "bun /path/to/claude-permissions/plugin/dist/hook.js"
+            "command": "bun ~/claude-permissions/plugin/dist/hook.js"
           }
         ]
       }
@@ -66,7 +67,7 @@ Add the hook directly to `~/.claude/settings.json`. This is equivalent to what t
         "hooks": [
           {
             "type": "command",
-            "command": "bun /path/to/claude-permissions/plugin/dist/post-hook.js"
+            "command": "bun ~/claude-permissions/plugin/dist/post-hook.js"
           }
         ]
       }
@@ -75,7 +76,7 @@ Add the hook directly to `~/.claude/settings.json`. This is equivalent to what t
 }
 ```
 
-Replace `/path/to/claude-permissions` with the absolute path to your local clone. Make sure both `plugin/dist/hook.js` and `plugin/dist/post-hook.js` exist by running `bun b` first.
+Make sure both `plugin/dist/hook.js` and `plugin/dist/post-hook.js` exist by running `bun b` first.
 
 After editing rules, rebuild and reload:
 
