@@ -2,6 +2,33 @@
 
 Rules are declared in `.claude/permissions.yaml` in your project root, or `~/.claude/permissions.yaml` for user-global rules. Run `/reload-plugins` to pick up changes.
 
+---
+
+- [Structure overview](#structure-overview)
+- [Single rule vs list](#single-rule-vs-list)
+- [Pattern matching](#pattern-matching)
+- [Matching field values](#matching-field-values)
+- [Short and long flag forms](#short-and-long-flag-forms)
+- [Matching multiple fields](#matching-multiple-fields)
+- [Positional argument matching](#positional-argument-matching)
+- [Matching field values with OR](#matching-field-values-with-or)
+- [Matching environment variables](#matching-environment-variables)
+- [Matching file contents](#matching-file-contents)
+- [Inverting matches](#inverting-matches)
+- [Matching one of multiple rules](#matching-one-of-multiple-rules)
+- [Nested rules](#nested-rules)
+- [Subcommand matching](#subcommand-matching)
+- [File tool rules](#file-tool-rules-read-write-edit-multi_edit)
+- [WebFetch rules](#webfetch-rules)
+- [MCP tool rules](#mcp-tool-rules)
+- [Matching the working directory](#matching-the-working-directory)
+- [Decision values](#decision-values)
+- [Strictest wins](#strictest-wins)
+- [Field form reference](#field-form-reference)
+- [Field reference](#field-reference)
+
+---
+
 ## Structure overview
 
 The top-level keys are either **Bash binary names** (`rm`, `git`, `curl`) or **tool kinds** (`read`, `write`, `edit`, `multi_edit`, `webfetch`, `mcp`).
@@ -184,63 +211,6 @@ git:
 
 This matches only when `git push --remote origin` is called with `CI=true` set and the working directory is under `/projects/`.
 
-## Nested rules
-
-Use a `rules:` key to group a set of rules under a shared set of matching fields. The sub-rules only run when the parent fields match -- any combination of `cmd`, `options`, `env`, `cwd`, or `path` can be used. This avoids repeating the same fields on every rule.
-
-```yaml
-aws:
-  # Only evaluate the sub-rules when the profile is not sandbox
-  - env:
-      AWS_PROFILE: /^(?!sandbox$)/
-    rules:
-      - cmd: "* delete-*"
-        decide: deny
-        reason: Deletes on non-sandbox profiles risk permanent data loss.
-      - cmd: "* create-*"
-        decide: deny
-        reason: Creates on non-sandbox profiles may incur unexpected costs.
-      - decide: ask
-        reason: Confirm AWS operation on non-sandbox profile
-```
-
-The parent block contributes no `decide` of its own -- it is a pure filter. All normal matching fields (`cmd`, `options`, `env`, `cwd`, `path`) are supported.
-
-Sub-rules are evaluated exactly like top-level rules: strictest-wins applies within the `rules:` list, and the winning outcome from the block propagates up and competes with any other rules at the outer level.
-
-Nesting can go as deep as needed:
-
-```yaml
-aws:
-  - env:
-      AWS_PROFILE: /^(?!sandbox$)/
-    rules:
-      - cmd: "iam *"
-        rules:
-          - options:
-              - create-role
-              - attach-role-policy
-            decide: deny
-            reason: Role changes require a change-control ticket.
-          - decide: ask
-            reason: Confirm IAM operation on non-sandbox profile
-      - decide: ask
-        reason: Confirm AWS operation on non-sandbox profile
-```
-
-Nested `rules:` blocks also work on non-binary tools. For example, to gate file-tool rules on a working directory:
-
-```yaml
-write:
-  - cwd: /projects/production/**
-    rules:
-      - path: "**/*.env"
-        decide: deny
-        reason: Env files in production are managed by the secrets pipeline.
-      - decide: ask
-        reason: Confirm write inside production project
-```
-
 ## Positional argument matching
 
 Use `cmd` to match positional arguments (non-flag values on the command line). Each word in the string is tested against the positional argument at the same index. Extra positional arguments beyond the pattern are ignored.
@@ -318,6 +288,59 @@ read:
   reason: Confirm before reading secrets
 ```
 
+## Matching environment variables
+
+Use `env` to match against environment variables. All key/value pairs must match simultaneously (AND semantics):
+
+```yaml
+git:
+  push:
+    env:
+      CI: "true"
+    decide: deny
+    reason: No pushes from CI
+```
+
+Values follow the same pattern matching rules as other fields: exact string, glob, or `/regex/`.
+
+## Matching file contents
+
+Use `file` to match based on the existence or contents of a file on disk. The key is the file path (tilde-expanded).
+
+To check that a file exists:
+
+```yaml
+kubectl:
+  - file:
+      ~/.kube/config: true
+    decide: ask
+    reason: A kubeconfig is present
+```
+
+To check that a file exists and its contents match a pattern, add a `contains:` key:
+
+```yaml
+kubectl:
+  - file:
+      ~/.kube/config:
+        contains: "current-context: sandbox"
+    decide: allow
+    reason: Anything goes in the sandbox context
+```
+
+The `contains:` value follows the same pattern matching rules as other fields: exact string, glob, or `/regex/`. For example, to match any non-production context:
+
+```yaml
+kubectl:
+  - file:
+      ~/.kube/config:
+        contains: "/current-context: (?!prod)/"
+    decide: allow
+    reason: Non-production context detected
+```
+
+The rule matches when the file exists and (if `contains:` is set) its contents match the pattern. If the file is absent, the condition does not match.
+
 ## Inverting matches
 
 Use `not:` to invert a set of conditions. Any combination of rule fields (`cmd`, `env`, `options`, `cwd`, `path`, `file`) can appear under `not:`. The rule matches when the fields inside `not:` do **not** all match simultaneously.
@@ -363,7 +386,7 @@ kubectl:
 
 This matches when `~/.kube/config` exists but does not contain the given string.
 
-## Matching one of mulitple rules
+## Matching one of multiple rules
 
 To match on any of several distinct cases, use a list of rules. The strictest matching decision wins across all rules that match (deny beats ask beats allow beats abstain):
 
@@ -376,6 +399,63 @@ git:
     - cwd: /etc/**
       decide: deny
       reason: No staging files from /etc
+```
+
+## Nested rules
+
+Use a `rules:` key to group a set of rules under a shared set of matching fields. The sub-rules only run when the parent fields match -- any combination of `cmd`, `options`, `env`, `cwd`, `path`, or `file` can be used. This avoids repeating the same fields on every rule.
+
+```yaml
+aws:
+  # Only evaluate the sub-rules when the profile is not sandbox
+  - env:
+      AWS_PROFILE: /^(?!sandbox$)/
+    rules:
+      - cmd: "* delete-*"
+        decide: deny
+        reason: Deletes on non-sandbox profiles risk permanent data loss.
+      - cmd: "* create-*"
+        decide: deny
+        reason: Creates on non-sandbox profiles may incur unexpected costs.
+      - decide: ask
+        reason: Confirm AWS operation on non-sandbox profile
+```
+
+The parent block contributes no `decide` of its own -- it is a pure filter. All normal matching fields (`cmd`, `options`, `env`, `cwd`, `path`, `file`) are supported.
+
+Sub-rules are evaluated exactly like top-level rules: strictest-wins applies within the `rules:` list, and the winning outcome from the block propagates up and competes with any other rules at the outer level.
+
+Nesting can go as deep as needed:
+
+```yaml
+aws:
+  - env:
+      AWS_PROFILE: /^(?!sandbox$)/
+    rules:
+      - cmd: "iam *"
+        rules:
+          - options:
+              - create-role
+              - attach-role-policy
+            decide: deny
+            reason: Role changes require a change-control ticket.
+          - decide: ask
+            reason: Confirm IAM operation on non-sandbox profile
+      - decide: ask
+        reason: Confirm AWS operation on non-sandbox profile
+```
+
+Nested `rules:` blocks also work on non-binary tools. For example, to gate file-tool rules on a working directory:
+
+```yaml
+write:
+  - cwd: /projects/production/**
+    rules:
+      - path: "**/*.env"
+        decide: deny
+        reason: Env files in production are managed by the secrets pipeline.
+      - decide: ask
+        reason: Confirm write inside production project
 ```
 
 ## Subcommand matching
@@ -679,6 +759,7 @@ Every field follows this unified pattern:
 | `path` | string | read, write, edit, multi_edit | path matches the pattern. |
 | `path-in` | array | read, write, edit, multi_edit | path matches any pattern (OR). |
 | `env` | object | any | All key/value pairs must be present (AND). |
+| `file` | object | any | File at the given path must exist. If `contains:` is set, the file's contents must also match the pattern (exact string, glob, or `/regex/`). |
 | `cwd_resolved` | boolean | any | When true, only matches when cwd is known to be accurate. When false, only matches when cwd tracking was broken by an unresolvable `cd`. Omit to match either. |
 | `host` | string | webfetch | Exact or glob match against the URL host. |
 | `host-in` | array | webfetch | Host matches any entry (OR). |

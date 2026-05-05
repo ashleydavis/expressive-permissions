@@ -1,0 +1,18 @@
+description: "bash not: env matches → ABSTAIN (rule suppressed, falls to default ask)"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "AWS_PROFILE=sandbox aws ec2 delete-vpc --vpc-id vpc-12345"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    aws:
+      decide: deny
+      not:
+        env:
+          AWS_PROFILE: sandbox
+
+expected:
+  decision: ask

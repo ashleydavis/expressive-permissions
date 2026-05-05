@@ -1,4 +1,4 @@
-import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync, statSync } from "fs";
+import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync, statSync, cpSync } from "fs";
 import { join } from "path";
 import { spawnSync } from "child_process";
 import { tmpdir } from "os";
@@ -92,6 +92,9 @@ function findNewestLogFile(baseDir: string): string | null {
     return newestPath;
 }
 
+// The root of the repository, used to locate the e2e/fixtures directory.
+const REPO_ROOT = join(__dirname, "..");
+
 // runTest parses one test case YAML file, spawns hook.ts with the test input, and
 // compares the output to the expected values. Returns true on pass, false on fail.
 function runTest(testFilePath: string): boolean {
@@ -106,6 +109,7 @@ function runTest(testFilePath: string): boolean {
 
         mkdirSync(homeDir, { recursive: true });
         mkdirSync(claudeDir, { recursive: true });
+        cpSync(join(REPO_ROOT, "e2e", "fixtures"), join(projectDir, "fixtures"), { recursive: true });
 
         writeFileSync(join(claudeDir, "permissions.yaml"), stringify(testCase.rules));
 

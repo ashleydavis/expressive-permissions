@@ -6,6 +6,19 @@ These are starting points. Take what is useful and extend it with the specific s
 
 ---
 
+- [AWS CLI](#aws-cli)
+  - [Allow read-only operations](#allow-read-only-operations)
+  - [Block all write operations](#block-all-write-operations)
+- [kubectl](#kubectl)
+  - [Read-only access with a catch-all](#read-only-access-with-a-catch-all)
+  - [Block write and exec operations](#block-write-and-exec-operations)
+- [Scoping rules to production contexts](#scoping-rules-to-production-contexts)
+  - [AWS: matching on the active profile](#aws-matching-on-the-active-profile)
+  - [Kubectl: matching on the current context via kubeconfig](#kubectl-matching-on-the-current-context-via-kubeconfig)
+  - [Kubectl: matching on the context argument](#kubectl-matching-on-the-context-argument)
+
+---
+
 ## AWS CLI
 
 The examples below allow read-only AWS cli operations, but block updates, writes and deletes.

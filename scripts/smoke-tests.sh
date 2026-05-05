@@ -9,6 +9,6 @@ while IFS= read -r yaml_file; do
     else
         FAIL=$((FAIL + 1))
     fi
-done < <(find "$PROJECT_DIR/e2e" -name "*.yaml" | sort)
+done < <(find "$PROJECT_DIR/e2e" -name "*.yaml" -not -path "*/fixtures/*" | sort)
 echo "Results: $PASS/$TOTAL passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

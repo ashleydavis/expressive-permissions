@@ -1,0 +1,18 @@
+description: "bash file: referencing nonexistent path → ABSTAIN"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "kubectl delete pod mypod"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    kubectl:
+      file:
+        /nonexistent/path/to/file.yaml:
+          contains: "sandbox"
+      decide: allow
+
+expected:
+  decision: ask

@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
+import { homedir } from "os";
 import { parse } from "yaml";
 import picomatch from "picomatch";
 import { Rule, RuleOutcome, AstNode, Environment, ToolCall, ABSTAIN, Decision, Command } from "./types";
@@ -8,7 +9,38 @@ import { Rule, RuleOutcome, AstNode, Environment, ToolCall, ABSTAIN, Decision, C
 type DecideValue = "allow" | "deny" | "ask" | "abstain";
 
 // Union of all possible values within a YAML entry
-type IEntryValue = string | boolean | string[] | Record<string, string> | IYamlEntry | IYamlEntry[];
+type IEntryValue = string | boolean | string[] | Record<string, string> | IYamlEntry | IYamlEntry[] | INotFields;
+
+// Describes a file content match: the file must exist and contain the given substring.
+export interface IFileMatch {
+    // Substring that must appear somewhere in the file's contents
+    contains: string;
+}
+
+// Inverted match block: rule fires only when all enclosed fields do NOT all match simultaneously.
+// Excludes decision/meta fields (decide, reason, rules) and tool-specific fields (host, tool).
+export interface INotFields {
+    // Positional arg matcher (same semantics as IYamlEntry.cmd)
+    cmd?: string | string[];
+    // OR form of cmd
+    "cmd-in"?: string[];
+    // Flag matcher (same semantics as IYamlEntry.options)
+    options?: string[] | Record<string, string | boolean>;
+    // OR form of options
+    "options-in"?: string[];
+    // Glob or regex pattern matched against env.cwd
+    cwd?: string;
+    // OR form of cwd
+    "cwd-in"?: string[];
+    // Map of env var name -> glob pattern; all must match
+    env?: Record<string, string>;
+    // Glob pattern matched against node.file_path (file tool nodes only)
+    path?: string;
+    // OR form of path
+    "path-in"?: string[];
+    // Map of file path → IFileMatch (or true for existence-only); all must match
+    file?: Record<string, IFileMatch | true>;
+}
 
 // A YAML rule entry with optional matcher fields, a decide outcome, and optional subcommand keys
 export interface IYamlEntry {
@@ -46,6 +78,10 @@ export interface IYamlEntry {
     reason?: string;
     // Nested sub-rules evaluated when this entry's conditions match (mutually exclusive with decide)
     rules?: IYamlEntry[];
+    // Inverted fields block: rule fires only when enclosed fields do NOT all match
+    not?: INotFields;
+    // Map of file path → IFileMatch (or true for existence-only); all must match for the rule to fire
+    file?: Record<string, IFileMatch | true>;
     // Dynamic subcommand keys (any key not in KNOWN_FIELDS)
     [key: string]: IEntryValue | undefined;
 }
@@ -69,7 +105,7 @@ export interface IYamlConfig {
 }
 
 // Fields that are matcher/control fields and NOT subcommand keys
-const KNOWN_FIELDS = new Set(["decide", "reason", "rules", "cmd", "cmd-in", "options", "options-in", "cwd", "cwd-in", "cwd_resolved", "env", "path", "path-in", "host", "host-in", "tool", "tool-in"]);
+const KNOWN_FIELDS = new Set(["decide", "reason", "rules", "not", "file", "cmd", "cmd-in", "options", "options-in", "cwd", "cwd-in", "cwd_resolved", "env", "path", "path-in", "host", "host-in", "tool", "tool-in"]);
 
 // Normalises a YAML section value: plain object → single-entry list; array → as-is
 function normalizeToList(value: IYamlEntry | IYamlEntry[]): IYamlEntry[] {
@@ -127,6 +163,45 @@ function matchesCwdResolved(entry: IYamlEntry, env: Environment): boolean {
         return true;
     }
     return entry.cwd_resolved === env.cwdResolved;
+}
+
+// Expands ~ to the home directory and resolves relative paths against CLAUDE_PROJECT_DIR (falling back to cwd).
+function homePath(rawPath: string): string {
+    if (rawPath.startsWith("~")) {
+        return homedir() + rawPath.slice(1);
+    }
+    if (!rawPath.startsWith("/")) {
+        const projectDir = process.env["CLAUDE_PROJECT_DIR"] ?? process.cwd();
+        return join(projectDir, rawPath);
+    }
+    return rawPath;
+}
+
+// Evaluates a file: field map; returns "match" when all entries pass, "file-absent" if any file is missing,
+// or "no-match" if a file exists but its contents do not satisfy the contains check.
+export function evaluateFileField(file: Record<string, IFileMatch | true>): "match" | "no-match" | "file-absent" {
+    for (const [rawPath, fileMatch] of Object.entries(file)) {
+        const expandedPath = homePath(rawPath);
+        if (!existsSync(expandedPath)) {
+            return "file-absent";
+        }
+        if (fileMatch === true) {
+            continue;
+        }
+        const content = readFileSync(expandedPath, "utf8");
+        if (!content.includes(fileMatch.contains)) {
+            return "no-match";
+        }
+    }
+    return "match";
+}
+
+// Returns true when the entry's file: field is absent or all its checks pass.
+export function matchesFileField(entry: IYamlEntry): boolean {
+    if (entry.file === undefined) {
+        return true;
+    }
+    return evaluateFileField(entry.file) === "match";
 }
 
 // Returns true when all env var patterns in the entry match the current environment vars
@@ -325,6 +400,12 @@ function buildBashRule(binary: string, subcommandPath: string[], entry: IYamlEnt
         if (!matchesEnvVars(entry, env)) {
             return ABSTAIN;
         }
+        if (!matchesFileField(entry)) {
+            return ABSTAIN;
+        }
+        if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, cmdOffset)) {
+            return ABSTAIN;
+        }
 
         return { decision };
     };
@@ -381,6 +462,12 @@ export function buildBashScopedRule(binary: string, subcommandPath: string[], en
         if (!matchesEnvVars(entry, env)) {
             return ABSTAIN;
         }
+        if (!matchesFileField(entry)) {
+            return ABSTAIN;
+        }
+        if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, cmdOffset)) {
+            return ABSTAIN;
+        }
 
         return runSubRules(subRules, node, env, call);
     };
@@ -434,6 +521,43 @@ function matchesPath(entry: IYamlEntry, filePath: string): boolean {
     return true;
 }
 
+// Returns true when all applicable fields in a not: block simultaneously match the given node and env.
+// Used to invert rule matches: if this returns true, the rule is suppressed (returns ABSTAIN / false).
+// cmd/options are only evaluated for Command nodes; path/path-in only for nodes with file_path.
+// Special case: if not.file is set and the file is absent, returns true (neither rule fires).
+export function notFieldsAllMatch(not: INotFields, node: AstNode, env: Environment, cmdOffset: number): boolean {
+    if (not.file !== undefined) {
+        const fileResult = evaluateFileField(not.file);
+        if (fileResult === "file-absent") {
+            return true;
+        }
+        if (fileResult === "no-match") {
+            return false;
+        }
+    }
+    if (node.type === "command") {
+        if (!matchesCmd(not as IYamlEntry, node as Command, cmdOffset)) {
+            return false;
+        }
+        if (!matchesOptions(not as IYamlEntry, node as Command)) {
+            return false;
+        }
+    }
+    if (!matchesCwd(not as IYamlEntry, env)) {
+        return false;
+    }
+    if (!matchesEnvVars(not as IYamlEntry, env)) {
+        return false;
+    }
+    if ("file_path" in node) {
+        const filePath = (node as { file_path: string }).file_path;
+        if (!matchesPath(not as IYamlEntry, filePath)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Returns true when the node and entry conditions all match for a file-based tool rule
 function matchesFileEntry(nodeType: string, entry: IYamlEntry, node: AstNode, env: Environment): boolean {
     if (node.type !== nodeType) {
@@ -453,6 +577,12 @@ function matchesFileEntry(nodeType: string, entry: IYamlEntry, node: AstNode, en
         return false;
     }
     if (!matchesEnvVars(entry, env)) {
+        return false;
+    }
+    if (!matchesFileField(entry)) {
+        return false;
+    }
+    if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, 0)) {
         return false;
     }
     return true;
@@ -508,6 +638,12 @@ function matchesWebFetchEntry(entry: IYamlEntry, node: AstNode, env: Environment
     if (!matchesEnvVars(entry, env)) {
         return false;
     }
+    if (!matchesFileField(entry)) {
+        return false;
+    }
+    if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, 0)) {
+        return false;
+    }
     return true;
 }
 
@@ -548,6 +684,12 @@ function matchesMcpEntry(entry: IYamlEntry, node: AstNode, env: Environment): bo
         return false;
     }
     if (!matchesEnvVars(entry, env)) {
+        return false;
+    }
+    if (!matchesFileField(entry)) {
+        return false;
+    }
+    if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, 0)) {
         return false;
     }
     return true;
@@ -715,6 +857,14 @@ export function resolveEntryCwdPatterns(entry: IYamlEntry, baseDir: string): voi
     }
     if (Array.isArray(entry["cwd-in"])) {
         entry["cwd-in"] = entry["cwd-in"].map((pattern: string) => resolveCwdPattern(pattern, baseDir));
+    }
+    if (entry.not !== undefined) {
+        if (typeof entry.not.cwd === "string") {
+            entry.not.cwd = resolveCwdPattern(entry.not.cwd, baseDir);
+        }
+        if (Array.isArray(entry.not["cwd-in"])) {
+            entry.not["cwd-in"] = entry.not["cwd-in"].map((pattern: string) => resolveCwdPattern(pattern, baseDir));
+        }
     }
     if (Array.isArray(entry.rules)) {
         for (const subEntry of entry.rules) {

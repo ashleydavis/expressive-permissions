@@ -205,4 +205,4 @@ git push origin v1.2.3
 
 The `publish` GitHub Actions workflow triggers on tags matching `v*.*.*` and runs compile, Jest tests, and both smoke test suites as a final validation gate.
 
-The `ci` workflow runs on every push and pull request: compile, Jest tests, `scripts/smoke-tests.sh`, and `smoke-tests-bash-parser.sh`.
+The `ci` workflow runs on every push and pull request: compile, Jest tests, `scripts/smoke-tests.sh`, and `scripts/smoke-tests-bash-parser.sh`.

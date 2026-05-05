@@ -1,0 +1,19 @@
+description: "bash not: file: file contains string → ABSTAIN (not: suppressed)"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "kubectl delete pod mypod"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    kubectl:
+      not:
+        file:
+          fixtures/sandbox.txt:
+            contains: "sandbox"
+      decide: deny
+
+expected:
+  decision: ask

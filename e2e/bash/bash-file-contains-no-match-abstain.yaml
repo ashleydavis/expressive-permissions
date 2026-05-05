@@ -1,0 +1,18 @@
+description: "bash file: contains does not match → ABSTAIN (falls to default ask)"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "kubectl delete pod mypod"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    kubectl:
+      file:
+        fixtures/no-sandbox.txt:
+          contains: "sandbox"
+      decide: allow
+
+expected:
+  decision: ask

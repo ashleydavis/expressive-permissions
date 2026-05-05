@@ -1,6 +1,7 @@
-import { mkdirSync, writeFileSync, rmSync } from "fs";
+import { mkdirSync, writeFileSync, rmSync, mkdtempSync } from "fs";
 import { join } from "path";
-import { loadConfigRules, resolveCwdPattern, resolveEntryCwdPatterns, resolveRelativeCwdPatterns, aggregateOutcomes, buildBashScopedRule, buildFileScopedRule, IYamlEntry, IYamlConfig } from "../load-config";
+import { tmpdir } from "os";
+import { loadConfigRules, resolveCwdPattern, resolveEntryCwdPatterns, resolveRelativeCwdPatterns, aggregateOutcomes, buildBashScopedRule, buildFileScopedRule, notFieldsAllMatch, evaluateFileField, matchesFileField, IYamlEntry, IYamlConfig, INotFields, IFileMatch } from "../load-config";
 import { Rule, RuleOutcome, AstNode, Environment, ToolCall, Command } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -2450,6 +2451,24 @@ test("resolveEntryCwdPatterns: known fields (options, cmd, env) not recursed int
     expect(entry.cmd).toBe("./foo");
 });
 
+test("resolveEntryCwdPatterns: not: cwd ./ resolved", () => {
+    const entry: IYamlEntry = { not: { cwd: "./**" }, decide: "deny" };
+    resolveEntryCwdPatterns(entry, "/base");
+    expect(entry.not!.cwd).toBe("/base/**");
+});
+
+test("resolveEntryCwdPatterns: not: cwd-in each ./ pattern resolved", () => {
+    const entry: IYamlEntry = { not: { "cwd-in": ["./src/**", "/etc/**", "./test/**"] }, decide: "deny" };
+    resolveEntryCwdPatterns(entry, "/base");
+    expect(entry.not!["cwd-in"]).toEqual(["/base/src/**", "/etc/**", "/base/test/**"]);
+});
+
+test("resolveEntryCwdPatterns: not: absolute cwd unchanged", () => {
+    const entry: IYamlEntry = { not: { cwd: "/etc/**" }, decide: "deny" };
+    resolveEntryCwdPatterns(entry, "/base");
+    expect(entry.not!.cwd).toBe("/etc/**");
+});
+
 // ---------------------------------------------------------------------------
 // resolveRelativeCwdPatterns
 // ---------------------------------------------------------------------------
@@ -2708,4 +2727,563 @@ test("resolveEntryCwdPatterns: ./relative cwd inside rules: block is resolved", 
     };
     resolveEntryCwdPatterns(entry, "/base");
     expect(entry.rules![0].cwd).toBe("/base/src");
+});
+
+// ---------------------------------------------------------------------------
+// notFieldsAllMatch: direct unit tests
+// ---------------------------------------------------------------------------
+
+test("notFieldsAllMatch: env field matches → true", () => {
+    const not: INotFields = { env: { AWS_PROFILE: "sandbox" } };
+    const node = makeCommand("aws", []);
+    const env = makeEnv("/project", true, { AWS_PROFILE: "sandbox" });
+    expect(notFieldsAllMatch(not, node, env, 0)).toBe(true);
+});
+
+test("notFieldsAllMatch: env field does not match → false", () => {
+    const not: INotFields = { env: { AWS_PROFILE: "sandbox" } };
+    const node = makeCommand("aws", []);
+    const env = makeEnv("/project", true, { AWS_PROFILE: "prod" });
+    expect(notFieldsAllMatch(not, node, env, 0)).toBe(false);
+});
+
+test("notFieldsAllMatch: cmd field matches → true", () => {
+    const not: INotFields = { cmd: "ls" };
+    const node = makeCommand("bash", ["ls"]);
+    const env = makeEnv();
+    expect(notFieldsAllMatch(not, node, env, 0)).toBe(true);
+});
+
+test("notFieldsAllMatch: cmd field does not match → false", () => {
+    const not: INotFields = { cmd: "ls" };
+    const node = makeCommand("bash", ["rm"]);
+    const env = makeEnv();
+    expect(notFieldsAllMatch(not, node, env, 0)).toBe(false);
+});
+
+test("notFieldsAllMatch: multiple fields, all match → true", () => {
+    const not: INotFields = { cmd: "delete-*", env: { ENV: "prod" } };
+    const node = makeCommand("aws", ["delete-bucket"]);
+    const env = makeEnv("/project", true, { ENV: "prod" });
+    expect(notFieldsAllMatch(not, node, env, 0)).toBe(true);
+});
+
+test("notFieldsAllMatch: multiple fields, one does not match → false", () => {
+    const not: INotFields = { cmd: "delete-*", env: { ENV: "prod" } };
+    const node = makeCommand("aws", ["delete-bucket"]);
+    const env = makeEnv("/project", true, { ENV: "dev" });
+    expect(notFieldsAllMatch(not, node, env, 0)).toBe(false);
+});
+
+test("notFieldsAllMatch: no fields set → true (empty not: always matches)", () => {
+    const not: INotFields = {};
+    const node = makeCommand("aws", ["anything"]);
+    const env = makeEnv();
+    expect(notFieldsAllMatch(not, node, env, 0)).toBe(true);
+});
+
+// ---------------------------------------------------------------------------
+// not: in bash rules
+// ---------------------------------------------------------------------------
+
+test("bash rule not: env: — env matches → ABSTAIN (rule suppressed)", () => {
+    const yaml = `
+bash:
+  aws:
+    decide: deny
+    not:
+      env:
+        AWS_PROFILE: sandbox
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const node = makeCommand("aws", ["ec2", "delete-vpc"]);
+        const sandboxEnv = makeEnv("/project", true, { AWS_PROFILE: "sandbox" });
+        expect(decide(rules[0], node, sandboxEnv)).toBe("abstain");
+    });
+});
+
+test("bash rule not: env: — env does not match → rule fires (deny)", () => {
+    const yaml = `
+bash:
+  aws:
+    decide: deny
+    not:
+      env:
+        AWS_PROFILE: sandbox
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const node = makeCommand("aws", ["ec2", "delete-vpc"]);
+        const prodEnv = makeEnv("/project", true, { AWS_PROFILE: "prod" });
+        expect(decide(rules[0], node, prodEnv)).toBe("deny");
+    });
+});
+
+test("bash rule not: cmd: — cmd matches → ABSTAIN", () => {
+    const yaml = `
+bash:
+  aws:
+    decide: deny
+    not:
+      cmd: "s3 ls"
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const node = makeCommand("aws", ["s3", "ls"]);
+        expect(decide(rules[0], node)).toBe("abstain");
+    });
+});
+
+test("bash rule not: cmd: — cmd does not match → rule fires", () => {
+    const yaml = `
+bash:
+  aws:
+    decide: deny
+    not:
+      cmd: "s3 ls"
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const node = makeCommand("aws", ["ec2", "describe-instances"]);
+        expect(decide(rules[0], node)).toBe("deny");
+    });
+});
+
+test("bash rule not: combined cmd and env — both match → ABSTAIN", () => {
+    const yaml = `
+bash:
+  aws:
+    decide: deny
+    not:
+      cmd: "s3 ls"
+      env:
+        AWS_PROFILE: sandbox
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const node = makeCommand("aws", ["s3", "ls"]);
+        const sandboxEnv = makeEnv("/project", true, { AWS_PROFILE: "sandbox" });
+        expect(decide(rules[0], node, sandboxEnv)).toBe("abstain");
+    });
+});
+
+test("bash rule not: combined cmd and env — only cmd matches → rule fires", () => {
+    const yaml = `
+bash:
+  aws:
+    decide: deny
+    not:
+      cmd: "s3 ls"
+      env:
+        AWS_PROFILE: sandbox
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const node = makeCommand("aws", ["s3", "ls"]);
+        const prodEnv = makeEnv("/project", true, { AWS_PROFILE: "prod" });
+        expect(decide(rules[0], node, prodEnv)).toBe("deny");
+    });
+});
+
+// ---------------------------------------------------------------------------
+// not: in file tool rules
+// ---------------------------------------------------------------------------
+
+test("read rule not: env: matching → ABSTAIN (rule suppressed)", () => {
+    const yaml = `
+read:
+  path: "**"
+  decide: deny
+  not:
+    env:
+      AWS_PROFILE: sandbox
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const node: AstNode = { type: "read", file_path: "/project/file.ts" };
+        const sandboxEnv = makeEnv("/project", true, { AWS_PROFILE: "sandbox" });
+        expect(decide(rules[0], node, sandboxEnv)).toBe("abstain");
+    });
+});
+
+test("read rule not: env: not matching → rule fires", () => {
+    const yaml = `
+read:
+  path: "**"
+  decide: deny
+  not:
+    env:
+      AWS_PROFILE: sandbox
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const node: AstNode = { type: "read", file_path: "/project/file.ts" };
+        const prodEnv = makeEnv("/project", true, { AWS_PROFILE: "prod" });
+        expect(decide(rules[0], node, prodEnv)).toBe("deny");
+    });
+});
+
+// ---------------------------------------------------------------------------
+// not: in webfetch rules
+// ---------------------------------------------------------------------------
+
+test("webfetch rule not: env: matching → ABSTAIN", () => {
+    const yaml = `
+webfetch:
+  decide: deny
+  not:
+    env:
+      DEPLOY_ENV: prod
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const node: AstNode = { type: "other", tool_name: "WebFetch", tool_input: { url: "https://example.com" } };
+        const prodEnv = makeEnv("/project", true, { DEPLOY_ENV: "prod" });
+        expect(decide(rules[0], node, prodEnv)).toBe("abstain");
+    });
+});
+
+// ---------------------------------------------------------------------------
+// not: in MCP rules
+// ---------------------------------------------------------------------------
+
+test("mcp rule not: env: matching → ABSTAIN", () => {
+    const yaml = `
+mcp:
+  decide: deny
+  not:
+    env:
+      SAFE_MODE: "true"
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const node: AstNode = { type: "other", tool_name: "mcp__server__action", tool_input: {} };
+        const safeEnv = makeEnv("/project", true, { SAFE_MODE: "true" });
+        expect(decide(rules[0], node, safeEnv)).toBe("abstain");
+    });
+});
+
+// ---------------------------------------------------------------------------
+// evaluateFileField: direct unit tests
+// ---------------------------------------------------------------------------
+
+// Creates a temp directory, invokes callback with its path, then removes it.
+function withTempDir(callback: (dir: string) => void): void {
+    const dir = mkdtempSync(join(tmpdir(), "claude-file-test-"));
+    try {
+        callback(dir);
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+}
+
+test("evaluateFileField: file absent → file-absent", () => {
+    const result = evaluateFileField({ "/nonexistent-path-xyz/file.txt": { contains: "anything" } });
+    expect(result).toBe("file-absent");
+});
+
+test("evaluateFileField: value true, file exists → match (existence-only check)", () => {
+    withTempDir((dir) => {
+        const filePath = join(dir, "test.txt");
+        writeFileSync(filePath, "some content", "utf-8");
+        const result = evaluateFileField({ [filePath]: true });
+        expect(result).toBe("match");
+    });
+});
+
+test("evaluateFileField: value IFileMatch, file exists, contains matches → match", () => {
+    withTempDir((dir) => {
+        const filePath = join(dir, "kube.yaml");
+        writeFileSync(filePath, "current-context: sandbox\nclusters: []", "utf-8");
+        const result = evaluateFileField({ [filePath]: { contains: "current-context: sandbox" } });
+        expect(result).toBe("match");
+    });
+});
+
+test("evaluateFileField: value IFileMatch, file exists, contains does not match → no-match", () => {
+    withTempDir((dir) => {
+        const filePath = join(dir, "kube.yaml");
+        writeFileSync(filePath, "current-context: production\nclusters: []", "utf-8");
+        const result = evaluateFileField({ [filePath]: { contains: "current-context: sandbox" } });
+        expect(result).toBe("no-match");
+    });
+});
+
+test("evaluateFileField: ~ in path is expanded (absolute path check passes as a proxy)", () => {
+    withTempDir((dir) => {
+        const filePath = join(dir, "config.txt");
+        writeFileSync(filePath, "hello", "utf-8");
+        expect(evaluateFileField({ [filePath]: { contains: "hello" } })).toBe("match");
+    });
+});
+
+test("evaluateFileField: relative path is resolved against CLAUDE_PROJECT_DIR", () => {
+    withTempDir((dir) => {
+        writeFileSync(join(dir, "context.txt"), "current-context: sandbox", "utf-8");
+        const origProjectDir = process.env["CLAUDE_PROJECT_DIR"];
+        process.env["CLAUDE_PROJECT_DIR"] = dir;
+        try {
+            expect(evaluateFileField({ "context.txt": { contains: "sandbox" } })).toBe("match");
+            expect(evaluateFileField({ "context.txt": { contains: "prod" } })).toBe("no-match");
+            expect(evaluateFileField({ "missing.txt": { contains: "x" } })).toBe("file-absent");
+        } finally {
+            if (origProjectDir === undefined) {
+                delete process.env["CLAUDE_PROJECT_DIR"];
+            } else {
+                process.env["CLAUDE_PROJECT_DIR"] = origProjectDir;
+            }
+        }
+    });
+});
+
+// ---------------------------------------------------------------------------
+// matchesFileField: direct unit tests
+// ---------------------------------------------------------------------------
+
+test("matchesFileField: no file field on entry → true", () => {
+    const entry: IYamlEntry = { decide: "allow" };
+    expect(matchesFileField(entry)).toBe(true);
+});
+
+test("matchesFileField: file exists and contains matches → true", () => {
+    withTempDir((dir) => {
+        const filePath = join(dir, "kubeconfig");
+        writeFileSync(filePath, "current-context: sandbox", "utf-8");
+        const entry: IYamlEntry = { decide: "allow", file: { [filePath]: { contains: "sandbox" } } };
+        expect(matchesFileField(entry)).toBe(true);
+    });
+});
+
+test("matchesFileField: file absent → false", () => {
+    const entry: IYamlEntry = { decide: "allow", file: { "/no/such/file.txt": { contains: "x" } } };
+    expect(matchesFileField(entry)).toBe(false);
+});
+
+test("matchesFileField: file exists, contains does not match → false", () => {
+    withTempDir((dir) => {
+        const filePath = join(dir, "kubeconfig");
+        writeFileSync(filePath, "current-context: prod", "utf-8");
+        const entry: IYamlEntry = { decide: "allow", file: { [filePath]: { contains: "sandbox" } } };
+        expect(matchesFileField(entry)).toBe(false);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// notFieldsAllMatch with file
+// ---------------------------------------------------------------------------
+
+test("notConditionsAllMatch with file: file absent → true (suppresses not: block)", () => {
+    const not: INotFields = { file: { "/no/such/file.txt": { contains: "sandbox" } } };
+    const node = makeCommand("kubectl", ["delete", "pod"]);
+    expect(notFieldsAllMatch(not, node, makeEnv(), 0)).toBe(true);
+});
+
+test("notConditionsAllMatch with file: file exists + contains matches → true", () => {
+    withTempDir((dir) => {
+        const filePath = join(dir, "kubeconfig");
+        writeFileSync(filePath, "current-context: sandbox", "utf-8");
+        const not: INotFields = { file: { [filePath]: { contains: "sandbox" } } };
+        const node = makeCommand("kubectl", ["delete", "pod"]);
+        expect(notFieldsAllMatch(not, node, makeEnv(), 0)).toBe(true);
+    });
+});
+
+test("notConditionsAllMatch with file: file exists + contains does not match → false", () => {
+    withTempDir((dir) => {
+        const filePath = join(dir, "kubeconfig");
+        writeFileSync(filePath, "current-context: prod", "utf-8");
+        const not: INotFields = { file: { [filePath]: { contains: "sandbox" } } };
+        const node = makeCommand("kubectl", ["delete", "pod"]);
+        expect(notFieldsAllMatch(not, node, makeEnv(), 0)).toBe(false);
+    });
+});
+
+test("notConditionsAllMatch with file + env: file matches + env matches → true", () => {
+    withTempDir((dir) => {
+        const filePath = join(dir, "kubeconfig");
+        writeFileSync(filePath, "current-context: sandbox", "utf-8");
+        const not: INotFields = { file: { [filePath]: { contains: "sandbox" } }, env: { KUBE_CONTEXT: "sandbox" } };
+        const node = makeCommand("kubectl", ["delete", "pod"]);
+        const env = makeEnv("/project", true, { KUBE_CONTEXT: "sandbox" });
+        expect(notFieldsAllMatch(not, node, env, 0)).toBe(true);
+    });
+});
+
+test("notConditionsAllMatch with file + env: file matches + env does not match → false", () => {
+    withTempDir((dir) => {
+        const filePath = join(dir, "kubeconfig");
+        writeFileSync(filePath, "current-context: sandbox", "utf-8");
+        const not: INotFields = { file: { [filePath]: { contains: "sandbox" } }, env: { KUBE_CONTEXT: "prod" } };
+        const node = makeCommand("kubectl", ["delete", "pod"]);
+        const env = makeEnv("/project", true, { KUBE_CONTEXT: "sandbox" });
+        expect(notFieldsAllMatch(not, node, env, 0)).toBe(false);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Bash rule: direct file: field integration
+// ---------------------------------------------------------------------------
+
+test("bash rule file: contains — file contains string → rule fires (allow)", () => {
+    withTempDir((dir) => {
+        const filePath = join(dir, "kube.yaml");
+        writeFileSync(filePath, "current-context: sandbox", "utf-8");
+        const yaml = `
+bash:
+  kubectl:
+    file:
+      ${filePath}:
+        contains: "current-context: sandbox"
+    decide: allow
+`;
+        withYamlFixtures(null, yaml, (rules) => {
+            const node = makeCommand("kubectl", ["delete", "pod"]);
+            expect(decide(rules[0], node)).toBe("allow");
+        });
+    });
+});
+
+test("bash rule file: contains — file does not contain string → ABSTAIN", () => {
+    withTempDir((dir) => {
+        const filePath = join(dir, "kube.yaml");
+        writeFileSync(filePath, "current-context: prod", "utf-8");
+        const yaml = `
+bash:
+  kubectl:
+    file:
+      ${filePath}:
+        contains: "current-context: sandbox"
+    decide: allow
+`;
+        withYamlFixtures(null, yaml, (rules) => {
+            const node = makeCommand("kubectl", ["delete", "pod"]);
+            expect(decide(rules[0], node)).toBe("abstain");
+        });
+    });
+});
+
+test("bash rule file: contains — file absent → ABSTAIN", () => {
+    const yaml = `
+bash:
+  kubectl:
+    file:
+      /no/such/kube.yaml:
+        contains: "current-context: sandbox"
+    decide: allow
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const node = makeCommand("kubectl", ["delete", "pod"]);
+        expect(decide(rules[0], node)).toBe("abstain");
+    });
+});
+
+test("bash rule not: file: contains — file absent → ABSTAIN (neither fires)", () => {
+    const yaml = `
+bash:
+  kubectl:
+    not:
+      file:
+        /no/such/kube.yaml:
+          contains: "current-context: sandbox"
+    decide: deny
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const node = makeCommand("kubectl", ["delete", "pod"]);
+        expect(decide(rules[0], node)).toBe("abstain");
+    });
+});
+
+test("bash rule not: file: contains — file exists and matches → ABSTAIN (not: suppressed)", () => {
+    withTempDir((dir) => {
+        const filePath = join(dir, "kube.yaml");
+        writeFileSync(filePath, "current-context: sandbox", "utf-8");
+        const yaml = `
+bash:
+  kubectl:
+    not:
+      file:
+        ${filePath}:
+          contains: "current-context: sandbox"
+    decide: deny
+`;
+        withYamlFixtures(null, yaml, (rules) => {
+            const node = makeCommand("kubectl", ["delete", "pod"]);
+            expect(decide(rules[0], node)).toBe("abstain");
+        });
+    });
+});
+
+test("bash rule not: file: contains — file exists, does not match → rule fires (deny)", () => {
+    withTempDir((dir) => {
+        const filePath = join(dir, "kube.yaml");
+        writeFileSync(filePath, "current-context: prod", "utf-8");
+        const yaml = `
+bash:
+  kubectl:
+    not:
+      file:
+        ${filePath}:
+          contains: "current-context: sandbox"
+    decide: deny
+`;
+        withYamlFixtures(null, yaml, (rules) => {
+            const node = makeCommand("kubectl", ["delete", "pod"]);
+            expect(decide(rules[0], node)).toBe("deny");
+        });
+    });
+});
+
+// ---------------------------------------------------------------------------
+// File tool rule: direct file: field integration
+// ---------------------------------------------------------------------------
+
+test("read rule file: matching → rule fires (allow)", () => {
+    withTempDir((dir) => {
+        const filePath = join(dir, "context.txt");
+        writeFileSync(filePath, "env: sandbox", "utf-8");
+        const yaml = `
+read:
+  path: "**"
+  file:
+    ${filePath}:
+      contains: "sandbox"
+  decide: allow
+`;
+        withYamlFixtures(null, yaml, (rules) => {
+            const node: AstNode = { type: "read", file_path: "/project/src/index.ts" };
+            expect(decide(rules[0], node)).toBe("allow");
+        });
+    });
+});
+
+test("read rule file: not matching → ABSTAIN", () => {
+    withTempDir((dir) => {
+        const filePath = join(dir, "context.txt");
+        writeFileSync(filePath, "env: production", "utf-8");
+        const yaml = `
+read:
+  path: "**"
+  file:
+    ${filePath}:
+      contains: "sandbox"
+  decide: allow
+`;
+        withYamlFixtures(null, yaml, (rules) => {
+            const node: AstNode = { type: "read", file_path: "/project/src/index.ts" };
+            expect(decide(rules[0], node)).toBe("abstain");
+        });
+    });
+});
+
+// ---------------------------------------------------------------------------
+// WebFetch rule: direct file: field integration
+// ---------------------------------------------------------------------------
+
+test("webfetch rule file: matching → rule fires (allow)", () => {
+    withTempDir((dir) => {
+        const filePath = join(dir, "context.txt");
+        writeFileSync(filePath, "env: sandbox", "utf-8");
+        const yaml = `
+webfetch:
+  file:
+    ${filePath}:
+      contains: "sandbox"
+  decide: allow
+`;
+        withYamlFixtures(null, yaml, (rules) => {
+            const node: AstNode = { type: "other", tool_name: "WebFetch", tool_input: { url: "https://example.com" } };
+            expect(decide(rules[0], node)).toBe("allow");
+        });
+    });
 });
