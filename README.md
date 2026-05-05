@@ -1,5 +1,25 @@
 # claude-permissions
 
+## Table of contents
+
+- [Why?](#why)
+- [Examples](#examples)
+- [Motivation](#motivation)
+    - [Relative paths are matched against your project directory](#relative-paths-are-matched-against-your-project-directory)
+    - [Absolute paths are matched against your entire computer](#absolute-paths-are-matched-against-your-entire-computer)
+    - [Argument matching across flags and aliases](#argument-matching-across-flags-and-aliases)
+    - [Environment variables and working directory are tracked](#environment-variables-and-working-directory-are-tracked)
+- [Installation](#installation)
+    - [Stable release](#stable-release)
+    - [Pre-release / testing (pin to `dev` branch)](#pre-release--testing-pin-to-dev-branch)
+- [Verifying the plugin](#verifying-the-plugin)
+- [Configuration](#configuration)
+    - [Global configuration (applies to every project)](#global-configuration-applies-to-every-project)
+    - [Local project configuration (applies to one project)](#local-project-configuration-applies-to-one-project)
+- [Quick start: adding a rule](#quick-start-adding-a-rule)
+- [Further reading](#further-reading)
+- [License](#license)
+
 A permissions system for Claude that actually works. Easily allow everything that's safe. Easily deny everything that's dangerous. Prompt the user for everything else.
 
 This is a plugin for Claude Code to handle permissions. You delegate all of Claude's permission requests to this plugin and then it will decide, through rules you have laid down in yaml configuration files, whether to allow or deny any particular tool use or command invocation.
