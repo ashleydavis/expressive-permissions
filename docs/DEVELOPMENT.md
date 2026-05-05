@@ -23,7 +23,7 @@ For contributors and anyone who wants to write TypeScript rules, run tests, or p
 git clone https://github.com/ashleydavis/claude-permissions
 cd claude-permissions
 bun install
-bun bundle   # bundle plugin/dist/hook.js
+bun b        # bundle plugin/dist/hook.js and plugin/dist/post-hook.js
 ```
 
 ## Running it during development
@@ -83,6 +83,32 @@ After editing rules, rebuild and reload:
 bun b && /reload-plugins
 ```
 
+## Allowing all tools through to the plugin
+
+The plugin's hook is the sole decision-maker, so Claude Code's own permission system must be set to allow all tools. Otherwise Claude Code prompts separately before the hook fires, producing double prompts.
+
+> **Warning:** Only apply these settings after you have verified the plugin is working (see [How to test the plugin is working](#how-to-test-the-plugin-is-working)). Without the plugin active, these settings remove all permission checks.
+
+Add the following to `~/.claude/settings.json` (global) or `.claude/settings.json` in the project root (project-local):
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash",
+      "Read",
+      "Write",
+      "Edit",
+      "MultiEdit",
+      "WebFetch",
+      "mcp__*"
+    ]
+  }
+}
+```
+
+With this in place, every tool call flows through `permissions.yaml` rules and nothing prompts twice.
+
 ## How to test the plugin is working
 
 The repo ships several `echo` rules in `.claude/permissions.yaml` that cover all three outcomes as well as pipeline position, `cd`-based cwd changes, and env-var matching:
@@ -113,7 +139,7 @@ This lists all active plugins. `claude-permissions` should appear in the list.
 
 If the hook is silently not firing, the most common causes are:
 
-- `plugin/dist/hook.js` is missing — run `bun bundle` to generate it.
+- `plugin/dist/hook.js` or `plugin/dist/post-hook.js` is missing — run `bun b` to generate both.
 - The plugin directory path is wrong — verify the path passed to `--plugin-dir` points to the `plugin/` subdirectory, not the repo root.
 - A stale hook after editing source — run `bun b && /reload-plugins`.
 
