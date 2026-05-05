@@ -27,6 +27,32 @@ Or from any other project directory:
 claude --plugin-dir /path/to/claude-permissions/plugin
 ```
 
+Note: `--plugin-dir` is a CLI flag and does not apply to Claude Code running inside IDE extensions (VS Code, JetBrains). Use the global hook approach below if you need the plugin active in those environments.
+
+### Enabling for all Claude instances (including IDE extensions)
+
+Add the hook directly to `~/.claude/settings.json`. This is equivalent to what the plugin system does internally and applies to every Claude Code instance on the machine, including the VS Code extension:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun /path/to/claude-permissions/plugin/dist/hook.js"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Replace `/path/to/claude-permissions` with the absolute path to your local clone. Make sure `plugin/dist/hook.js` exists by running `bun bundle` first.
+
 After editing rules, rebuild and reload:
 
 ```bash
