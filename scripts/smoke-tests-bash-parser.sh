@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-EXAMPLES_DIR="$SCRIPT_DIR/examples/ast"
-CHECK_SCRIPT="$SCRIPT_DIR/scripts/check-ast-example.ts"
+EXAMPLES_DIR="$SCRIPT_DIR/../examples/ast"
+CHECK_SCRIPT="$SCRIPT_DIR/../scripts/check-ast-example.ts"
 
 passed=0
 failed=0
