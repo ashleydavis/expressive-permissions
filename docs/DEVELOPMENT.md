@@ -52,7 +52,7 @@ Add the hook directly to `~/.claude/settings.json`. This is equivalent to what t
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "*",
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
@@ -63,7 +63,7 @@ Add the hook directly to `~/.claude/settings.json`. This is equivalent to what t
     ],
     "PostToolUse": [
       {
-        "matcher": "*",
+        "matcher": "",
         "hooks": [
           {
             "type": "command",

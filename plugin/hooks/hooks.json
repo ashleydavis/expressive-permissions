@@ -2,13 +2,13 @@
     "hooks": {
         "PreToolUse": [
             {
-                "matcher": "*",
+                "matcher": "",
                 "hooks": [{ "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/dist/hook.js" }]
             }
         ],
         "PostToolUse": [
             {
-                "matcher": "*",
+                "matcher": "",
                 "hooks": [{ "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/dist/post-hook.js" }]
             }
         ]
