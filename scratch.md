@@ -130,3 +130,7 @@ Duplicate code.
 ---
 
 Make sure all functions are exported and unit tested.
+
+---
+
+It would be good if the config file could list env vars and files to capture to the audit log. That way we can say we are interested in knowing the value of AWS_PROFILE when commands were invoked.

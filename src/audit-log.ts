@@ -63,8 +63,24 @@ export interface IFinalDecisionEntry extends IAuditLogEntryBase {
     reason?: string;
 }
 
+// Logged once per PostToolUse hook invocation, capturing the tool execution result.
+export interface IToolExecutionEntry extends IAuditLogEntryBase {
+    // Discriminator for the tool_execution variant.
+    type: "tool_execution";
+    // The Claude Code tool name (e.g. "Bash", "Read").
+    tool: string;
+    // The raw tool input arguments.
+    input: Record<string, unknown>;
+    // The current working directory at hook invocation time.
+    cwd: string;
+    // The raw tool response payload.
+    response: Record<string, unknown>;
+    // Whether the tool reported an error in its response.
+    isError: boolean;
+}
+
 // Union of all audit log entry variants.
-export type IAuditLogEntry = IToolRequestEntry | IRuleMatchEntry | IAggregationEntry | IFinalDecisionEntry;
+export type IAuditLogEntry = IToolRequestEntry | IRuleMatchEntry | IAggregationEntry | IFinalDecisionEntry | IToolExecutionEntry;
 
 // Interface for objects that can receive audit log entries.
 export interface IAuditLogger {
@@ -143,6 +159,14 @@ export function formatTextEntry(entry: IAuditLogEntry): string {
         case "final_decision": {
             const reasonPart = entry.reason ? `  "${entry.reason}"` : "";
             return `${time}  ${"RESULT".padEnd(9)}${entry.tool} → ${entry.decision.toUpperCase()}${reasonPart}`;
+        }
+        case "tool_execution": {
+            const inputSummary =
+                typeof entry.input["command"] === "string" ? entry.input["command"] as string :
+                typeof entry.input["file_path"] === "string" ? entry.input["file_path"] as string :
+                JSON.stringify(entry.input);
+            const errorPart = entry.isError ? "  [ERROR]" : "";
+            return `${time}  ${"EXECUTE".padEnd(9)}${entry.tool}: ${inputSummary}${errorPart}`;
         }
     }
 }

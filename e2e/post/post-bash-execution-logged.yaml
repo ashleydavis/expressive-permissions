@@ -1,0 +1,22 @@
+description: "PostToolUse: Bash execution is logged with tool_execution entry"
+input:
+  tool_name: Bash
+  tool_input:
+    command: ls
+  cwd: /home/user/project
+rules: {}
+expected:
+  decision: ask
+post_input:
+  tool_name: Bash
+  tool_input:
+    command: ls
+  tool_response:
+    output: file.txt
+    isError: false
+  cwd: /home/user/project
+post_expected:
+  audit_log:
+    - type: tool_execution
+      tool: Bash
+      isError: "false"

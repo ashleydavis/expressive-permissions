@@ -206,3 +206,15 @@ export const ABSTAIN: RuleOutcome = { decision: { action: "abstain" } };
 
 // A rule function: inspects one AST node and returns a decision with optional env updates
 export type Rule = (node: AstNode, env: Environment, call: ToolCall) => RuleOutcome;
+
+// The raw stdin JSON payload sent by Claude Code's PostToolUse hook
+export interface IPostToolUseCall {
+    // The tool name as reported by Claude Code (e.g. "Bash", "Read", "Write")
+    tool_name: string;
+    // The input arguments supplied to the tool
+    tool_input: Record<string, ToolInputValue>;
+    // The raw tool response payload (shape varies by tool)
+    tool_response: Record<string, unknown>;
+    // The current working directory at the time of the hook invocation
+    cwd: string;
+}

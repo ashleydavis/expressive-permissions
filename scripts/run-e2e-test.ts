@@ -14,6 +14,24 @@ interface ITestCaseInput {
     cwd: string;
 }
 
+// IPostToolUseInput describes the PostToolUse hook input fields in a test case YAML file.
+interface IPostToolUseInput {
+    // The Claude Code tool name (e.g. "Bash", "Read")
+    tool_name: string;
+    // The tool-specific input arguments
+    tool_input: Record<string, unknown>;
+    // The raw tool response payload
+    tool_response: Record<string, unknown>;
+    // The working directory for the tool call
+    cwd: string;
+}
+
+// IPostToolUseExpected describes the expected outcomes for the PostToolUse hook.
+interface IPostToolUseExpected {
+    // When present, the newest log file must contain matching entries for each item.
+    audit_log?: IAuditLogExpectedEntry[];
+}
+
 // IAuditLogExpectedEntry describes one expected audit log entry to assert against.
 // Only the listed fields are checked; extra fields in the actual entry are ignored.
 interface IAuditLogExpectedEntry {
@@ -43,6 +61,10 @@ interface ITestCase {
     rules: Record<string, unknown>;
     // The expected outputs from hook.ts
     expected: ITestCaseExpected;
+    // Optional PostToolUse hook input to feed to post-hook.ts after the PreToolUse assertions
+    post_input?: IPostToolUseInput;
+    // Optional expected outcomes for the PostToolUse hook invocation
+    post_expected?: IPostToolUseExpected;
 }
 
 // IHookSpecificOutput describes the hookSpecificOutput field in hook.ts stdout JSON.
@@ -178,6 +200,51 @@ function runTest(testFilePath: string): boolean {
                     process.stdout.write(`FAIL: ${testCase.description}\n`);
                     process.stdout.write(`  audit_log: no entry matching ${JSON.stringify(expectedEntry)}\n`);
                     return false;
+                }
+            }
+        }
+
+        if (testCase.post_input !== undefined) {
+            const postInputJson = JSON.stringify(testCase.post_input);
+            const postHookPath = join(__dirname, "..", "src", "post-hook.ts");
+            const postResult = spawnSync("bun", [postHookPath], {
+                input: postInputJson,
+                env: testEnv,
+                encoding: "utf-8",
+            });
+
+            if (postResult.status !== 0) {
+                process.stdout.write(`FAIL: ${testCase.description}\n`);
+                process.stdout.write(`  post-hook.ts exited with status ${postResult.status}\n`);
+                if (postResult.stderr) {
+                    process.stdout.write(`  stderr: ${postResult.stderr}\n`);
+                }
+                return false;
+            }
+
+            if (testCase.post_expected?.audit_log !== undefined) {
+                const logBaseDir = join(projectDir, ".claude", "permissions-log");
+                const logFile = findNewestLogFile(logBaseDir);
+                if (!logFile) {
+                    process.stdout.write(`FAIL: ${testCase.description}\n`);
+                    process.stdout.write(`  post audit_log: no log file found under ${logBaseDir}\n`);
+                    return false;
+                }
+                const logLines = readFileSync(logFile, "utf-8").split("\n").filter(Boolean);
+                const logEntries: Record<string, string>[] = logLines.map(
+                    (line: string) => JSON.parse(line) as Record<string, string>
+                );
+                for (const expectedEntry of testCase.post_expected.audit_log) {
+                    const matchingEntry = logEntries.find((actualEntry: Record<string, string>) =>
+                        Object.entries(expectedEntry).every(
+                            ([entryKey, entryValue]) => String(actualEntry[entryKey]) === entryValue
+                        )
+                    );
+                    if (!matchingEntry) {
+                        process.stdout.write(`FAIL: ${testCase.description}\n`);
+                        process.stdout.write(`  post audit_log: no entry matching ${JSON.stringify(expectedEntry)}\n`);
+                        return false;
+                    }
                 }
             }
         }

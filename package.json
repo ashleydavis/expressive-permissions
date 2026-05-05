@@ -4,7 +4,8 @@
     "type": "module",
     "scripts": {
         "bundle": "bun build src/hook.ts --outfile plugin/dist/hook.js --target bun",
-        "b": "bun run bundle",
+        "bundle:post": "bun build src/post-hook.ts --outfile plugin/dist/post-hook.js --target bun",
+        "b": "bun run bundle && bun run bundle:post",
         "compile": "tsc --noEmit",
         "c": "bun run compile",
         "test": "jest --passWithNoTests",

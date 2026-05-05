@@ -14,6 +14,7 @@ import {
     IToolRequestEntry,
     IRuleMatchEntry,
     IAggregationEntry,
+    IToolExecutionEntry,
 } from "../audit-log";
 
 // makeDate builds a local-time Date from explicit year/month(1-based)/day/hour components.
@@ -355,6 +356,45 @@ test("formatTextEntry final_decision with reason shows reason", () => {
         reason: "rm is not allowed",
     };
     expect(formatTextEntry(entry)).toBe('10:23:01  RESULT   Bash → DENY  "rm is not allowed"');
+});
+
+test("formatTextEntry tool_execution with command input and isError false shows EXECUTE without ERROR", () => {
+    const entry: IToolExecutionEntry = {
+        type: "tool_execution",
+        timestamp: "2025-06-15T10:23:01.000+10:00",
+        tool: "Bash",
+        input: { command: "ls -la" },
+        cwd: "/home/user",
+        response: { output: "file.txt", isError: false },
+        isError: false,
+    };
+    expect(formatTextEntry(entry)).toBe("10:23:01  EXECUTE  Bash: ls -la");
+});
+
+test("formatTextEntry tool_execution with isError true appends ERROR suffix", () => {
+    const entry: IToolExecutionEntry = {
+        type: "tool_execution",
+        timestamp: "2025-06-15T10:23:01.000+10:00",
+        tool: "Bash",
+        input: { command: "rm -rf /" },
+        cwd: "/home/user",
+        response: { output: "", isError: true },
+        isError: true,
+    };
+    expect(formatTextEntry(entry)).toBe("10:23:01  EXECUTE  Bash: rm -rf /  [ERROR]");
+});
+
+test("formatTextEntry tool_execution with file_path input uses path as summary", () => {
+    const entry: IToolExecutionEntry = {
+        type: "tool_execution",
+        timestamp: "2025-06-15T10:23:01.000+10:00",
+        tool: "Read",
+        input: { file_path: "/project/src/main.ts" },
+        cwd: "/home/user",
+        response: { content: "hello" },
+        isError: false,
+    };
+    expect(formatTextEntry(entry)).toBe("10:23:01  EXECUTE  Read: /project/src/main.ts");
 });
 
 // ---------------------------------------------------------------------------

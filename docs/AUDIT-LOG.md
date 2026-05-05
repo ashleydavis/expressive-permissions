@@ -1,6 +1,6 @@
 # Audit Log
 
-Every tool call processed by the permissions hook is recorded to an audit log so you can review exactly what was allowed, denied, or escalated and why.
+Every tool call processed by the permissions plugin is recorded to an audit log. The `PreToolUse` hook records the decision process; the `PostToolUse` hook records the execution result. Together they give a complete picture of what Claude Code requested, what was decided, and what actually ran.
 
 ## Location
 
@@ -32,7 +32,10 @@ On every hook invocation the plugin automatically removes month directories olde
 10:23:01  AGG      node:binop  op:&&  children:deny  own:abstain  → deny
 10:23:01  AGG      node:bash  children:deny  own:abstain  → deny
 10:23:01  RESULT   Bash → DENY  "rm is not allowed"
+10:23:02  EXECUTE  Bash: ls -la
 ```
+
+For an allowed tool the full sequence is: `TOOL` (request received) → rule/aggregation lines → `RESULT` (decision) → `EXECUTE` (tool ran, written by the PostToolUse hook). When a tool is denied there is no `EXECUTE` line.
 
 ### JSON Lines entry types (`.json`)
 
@@ -60,6 +63,14 @@ On every hook invocation the plugin automatically removes month directories olde
 {"type":"final_decision","timestamp":"2025-06-15T10:23:01.003+10:00","tool":"Bash","decision":"allow"}
 ```
 
+**`tool_execution`** — logged once per PostToolUse invocation, after the tool has run. Only appears for tools that were allowed (denied tools never execute).
+
+```json
+{"type":"tool_execution","timestamp":"2025-06-15T10:23:02.000+10:00","tool":"Bash","input":{"command":"ls -la"},"cwd":"/home/user/project","response":{"output":"total 8\n...","isError":false},"isError":false}
+```
+
+`isError` is extracted as a first-class field from the tool response for easy filtering. The full raw response is stored in `response`.
+
 ## Useful one-liners
 
 Tail the current hour's human-readable log:
@@ -78,4 +89,10 @@ View all approved commands (JSON):
 
 ```sh
 grep '"decision":"allow"' .claude/permissions-log/**/*.json
+```
+
+View all tool executions that errored:
+
+```sh
+grep '"type":"tool_execution"' .claude/permissions-log/**/*.json | grep '"isError":true'
 ```
