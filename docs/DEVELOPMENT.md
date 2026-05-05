@@ -2,6 +2,19 @@
 
 For contributors and anyone who wants to write TypeScript rules, run tests, or publish the plugin.
 
+## Table of contents
+
+- [Prerequisites](#prerequisites)
+- [Running it during development](#running-it-during-development)
+    - [Enabling for all Claude instances (including IDE extensions)](#enabling-for-all-claude-instances-including-ide-extensions)
+- [How to test the plugin is working](#how-to-test-the-plugin-is-working)
+- [Scripts](#scripts)
+- [Adding a TypeScript rule](#adding-a-typescript-rule)
+    - [What a rule can match](#what-a-rule-can-match)
+    - [Registry ordering](#registry-ordering)
+- [Testing](#testing)
+- [Publishing](#publishing)
+
 ## Prerequisites
 
 - [Bun](https://bun.sh) — runtime, bundler, and package manager
