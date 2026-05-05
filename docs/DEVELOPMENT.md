@@ -59,17 +59,28 @@ Add the hook directly to `~/.claude/settings.json`. This is equivalent to what t
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun /path/to/claude-permissions/plugin/dist/post-hook.js"
+          }
+        ]
+      }
     ]
   }
 }
 ```
 
-Replace `/path/to/claude-permissions` with the absolute path to your local clone. Make sure `plugin/dist/hook.js` exists by running `bun bundle` first.
+Replace `/path/to/claude-permissions` with the absolute path to your local clone. Make sure both `plugin/dist/hook.js` and `plugin/dist/post-hook.js` exist by running `bun b` first.
 
 After editing rules, rebuild and reload:
 
 ```bash
-bun bundle && /reload-plugins
+bun b && /reload-plugins
 ```
 
 ## How to test the plugin is working
@@ -104,13 +115,15 @@ If the hook is silently not firing, the most common causes are:
 
 - `plugin/dist/hook.js` is missing — run `bun bundle` to generate it.
 - The plugin directory path is wrong — verify the path passed to `--plugin-dir` points to the `plugin/` subdirectory, not the repo root.
-- A stale hook after editing source — run `bun bundle && /reload-plugins`.
+- A stale hook after editing source — run `bun b && /reload-plugins`.
 
 ## Scripts
 
 | Script | Short | Description |
 |---|---|---|
-| `bundle` | `b` | Bundle `src/hook.ts` → `plugin/dist/hook.js` |
+| `bundle` | — | Bundle `src/hook.ts` → `plugin/dist/hook.js` |
+| `bundle:post` | — | Bundle `src/post-hook.ts` → `plugin/dist/post-hook.js` |
+| `b` | — | Run both `bundle` and `bundle:post` |
 | `compile` | `c` | TypeScript type-check (no emit) |
 | `test` | `t` | Run Jest unit tests |
 | `test:watch` | `tw` | Jest in watch mode |
@@ -169,7 +182,7 @@ describe("blockCurl", () => {
 **4. Build and reload**:
 
 ```bash
-bun bundle && /reload-plugins
+bun b && /reload-plugins
 ```
 
 ### What a rule can match
@@ -218,12 +231,13 @@ plugin/
 ├── .claude-plugin/
 │   └── plugin.json     # manifest
 ├── hooks/
-│   └── hooks.json      # registers the PreToolUse hook
+│   └── hooks.json      # registers the PreToolUse and PostToolUse hooks
 └── dist/
-    └── hook.js         # bundled output — commit this
+    ├── hook.js         # bundled PreToolUse entry point — commit this
+    └── post-hook.js    # bundled PostToolUse entry point — commit this
 ```
 
-Commit `plugin/dist/hook.js` so users installing from a path or the marketplace don't need to run a build step themselves. Run `bun bundle` before committing to keep it up to date.
+Commit both `plugin/dist/hook.js` and `plugin/dist/post-hook.js` so users installing from a path or the marketplace don't need to run a build step themselves. Run `bun b` before committing to keep both up to date.
 
 The plugin is distributed via the Claude Code marketplace system. The repo root contains `.claude-plugin/marketplace.json` which lists the plugin at `./plugin`. Users install it with:
 
@@ -232,11 +246,11 @@ The plugin is distributed via the Claude Code marketplace system. The repo root 
 /plugin install claude-permissions
 ```
 
-Before tagging a release, bundle the hook so the committed `plugin/dist/hook.js` is up to date:
+Before tagging a release, bundle both hooks so the committed dist files are up to date:
 
 ```bash
-bun bundle
-git add plugin/dist/hook.js
+bun b
+git add plugin/dist/hook.js plugin/dist/post-hook.js
 git commit -m "bundle for release"
 git tag v1.2.3
 git push origin v1.2.3
