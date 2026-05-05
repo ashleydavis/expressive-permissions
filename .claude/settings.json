@@ -5,8 +5,16 @@
             "Read",
             "Write",
             "Edit",
-            "MultiEdit",
+            "Glob",
+            "Grep",
             "WebFetch",
+            "WebSearch",
+            "TodoWrite",
+            "Agent",
+            "NotebookEdit",
+            "ExitPlanMode",
+            "BashOutput",
+            "KillShell",
             "mcp__*"
         ]
     }

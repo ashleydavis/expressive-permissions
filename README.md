@@ -131,8 +131,16 @@ Add the following to your settings to allow all tools. This causes the plugin's 
       "Read",
       "Write",
       "Edit",
-      "MultiEdit",
+      "Glob",
+      "Grep",
       "WebFetch",
+      "WebSearch",
+      "TodoWrite",
+      "Agent",
+      "NotebookEdit",
+      "ExitPlanMode",
+      "BashOutput",
+      "KillShell",
       "mcp__*"
     ]
   }

@@ -100,8 +100,16 @@ Add the following to `~/.claude/settings.json` (global) or `.claude/settings.jso
       "Read",
       "Write",
       "Edit",
-      "MultiEdit",
+      "Glob",
+      "Grep",
       "WebFetch",
+      "WebSearch",
+      "TodoWrite",
+      "Agent",
+      "NotebookEdit",
+      "ExitPlanMode",
+      "BashOutput",
+      "KillShell",
       "mcp__*"
     ]
   }
