@@ -17,6 +17,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A Claude Code plugin that intercepts every tool call (Bash, Read, Edit, Write, MultiEdit, MCP, etc.) via the PreToolUse hook and decides whether to allow, deny, or ask the user. The hook converts each tool call into an AST — Bash commands parse into operator/command sub-trees, other tools become typed leaves — then walks the tree threading an immutable Environment (cwd + env vars) and runs every registered rule at each node. Rule outcomes (allow / deny / ask / abstain, plus optional env updates) aggregate strictest-wins per node and bubble up to the root. Rules are authored as small TypeScript functions in `src/rules/` (one per file with paired tests) or declared in a YAML config at `.claude/permissions.yaml`. Built-in rules encode Bash semantics like `cd` and env-var assignments; everything else is user-defined.
 
+## Commands
+
+- `bun run compile` — compile TypeScript (use this, not tsc directly)
+- `bun run test` — unit tests
+- `bun run smoke` — smoke tests
+- `bun run test:all` — all tests
+
 ## Tech Stack
 
 - **Runtime**: Bun (runs `plugin/dist/hook.js`; users must have Bun installed)
@@ -48,6 +55,7 @@ A Claude Code plugin that intercepts every tool call (Bash, Read, Edit, Write, M
 - Never use anonymous object types inline (e.g. `Promise<{ foo: number }>`). Always define a named interface instead, unless specifically asked to use an anonymous type.
 - Never use IIFE async generator pattern (`(async function* () { ... })()`). Extract to a named `async function*` instead.
 - Never use `ReturnType<typeof ...>`. Use the actual type directly (e.g. `NodeJS.Timeout` instead of `ReturnType<typeof setTimeout>`).
+- Never use inline type casts (e.g. `(x as Foo).bar`). Assign to a typed variable instead (e.g. `const foo: Foo = x; foo.bar`).
 - Never use the `unknown` type. Use the actual type directly.
 
 ## Restrictions

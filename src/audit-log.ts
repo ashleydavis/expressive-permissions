@@ -25,10 +25,10 @@ export interface IToolRequestEntry extends IAuditLogEntryBase {
 export interface IRuleMatchEntry extends IAuditLogEntryBase {
     // Discriminator for the rule_match variant.
     type: "rule_match";
-    // The type field of the AST node that was evaluated.
-    nodeType: string;
-    // The name of the rule that produced the decision, if available.
-    ruleName?: string;
+    // The source file the rule was loaded from, if known.
+    ruleFile?: string;
+    // The 1-based line number in ruleFile where this rule's entry begins, if known.
+    ruleLine?: number;
     // The decision produced by this rule.
     decision: string;
     // Optional human-readable reason attached to the decision.
@@ -41,16 +41,12 @@ export interface IRuleMatchEntry extends IAuditLogEntryBase {
 export interface IAggregationEntry extends IAuditLogEntryBase {
     // Discriminator for the aggregation variant.
     type: "aggregation";
-    // The type field of the intermediate AST node.
-    nodeType: string;
-    // The binary operator token for binop nodes (e.g. "&&", "||", ";", "|").
-    op?: string;
-    // The aggregated decision produced by all children.
-    childrenDecision: string;
-    // The decision produced by this node's own rules (may be "abstain").
-    ownDecision: string;
-    // The final combined decision after layering own rules onto children.
-    combined: string;
+    // The reconstructed command string for this node.
+    cmd: string;
+    // The final combined decision after evaluating all rules and children.
+    decision: string;
+    // Optional human-readable reason attached to the decision.
+    reason?: string;
 }
 
 // Logged once per hook invocation, just before returning the final decision.
@@ -59,6 +55,8 @@ export interface IFinalDecisionEntry extends IAuditLogEntryBase {
     type: "final_decision";
     // The Claude Code tool name.
     tool: string;
+    // The reconstructed command or file path from the tool input.
+    cmd?: string;
     // The final decision returned by the engine.
     decision: string;
     // Optional human-readable reason attached to the decision.
@@ -142,34 +140,59 @@ export function formatTextEntry(entry: IAuditLogEntry): string {
 
     switch (entry.type) {
         case "tool_request": {
-            const inputSummary =
-                typeof entry.input["command"] === "string" ? entry.input["command"] as string :
-                typeof entry.input["file_path"] === "string" ? entry.input["file_path"] as string :
-                JSON.stringify(entry.input);
-            return `${time}  ${"TOOL".padEnd(9)}${entry.tool}: ${inputSummary}`;
+            let inputSummary: string;
+            if (typeof entry.input["command"] === "string") {
+                inputSummary = entry.input["command"];
+            }
+            else if (typeof entry.input["file_path"] === "string") {
+                inputSummary = entry.input["file_path"];
+            }
+            else {
+                inputSummary = JSON.stringify(entry.input);
+            }
+            return `${time}  ${"TOOL".padEnd(9)}${entry.tool.padEnd(10)}"${inputSummary}"`;
         }
         case "rule_match": {
-            const label = entry.decision.toUpperCase();
-            const rulePart = entry.ruleName ? `rule:${entry.ruleName}  ` : "";
-            const cmdPart = entry.cmd !== undefined ? `  cmd:"${entry.cmd}"` : "";
-            const reasonPart = entry.reason ? `  "${entry.reason}"` : "";
-            return `${time}  ${label.padEnd(9)}${rulePart}node:${entry.nodeType}${cmdPart}${reasonPart}`;
+            const reasonPart = entry.reason ? ` "${entry.reason}"` : "";
+            let content: string;
+            if (entry.cmd !== undefined && entry.ruleFile) {
+                const linePart = entry.ruleLine !== undefined ? `:${entry.ruleLine}` : "";
+                content = `"${entry.cmd}" → ${entry.ruleFile}${linePart} → ${entry.decision}${reasonPart}`;
+            }
+            else if (entry.cmd !== undefined) {
+                content = `"${entry.cmd}" → ${entry.decision}${reasonPart}`;
+            }
+            else if (entry.ruleFile) {
+                const linePart = entry.ruleLine !== undefined ? `:${entry.ruleLine}` : "";
+                content = `${entry.ruleFile}${linePart} → ${entry.decision}${reasonPart}`;
+            }
+            else {
+                content = `→ ${entry.decision}${reasonPart}`;
+            }
+            return `${time}  ${"RULE".padEnd(9)}${"".padEnd(10)}${content}`;
         }
         case "aggregation": {
-            const opPart = entry.op ? `  op:${entry.op}` : "";
-            return `${time}  ${"AGG".padEnd(9)}node:${entry.nodeType}${opPart}  children:${entry.childrenDecision}  own:${entry.ownDecision}  → ${entry.combined}`;
+            const reasonPart = entry.reason ? ` "${entry.reason}"` : "";
+            return `${time}  ${"NODE".padEnd(9)}${"".padEnd(10)}"${entry.cmd}" → ${entry.decision}${reasonPart}`;
         }
         case "final_decision": {
-            const reasonPart = entry.reason ? `  "${entry.reason}"` : "";
-            return `${time}  ${"RESULT".padEnd(9)}${entry.tool} → ${entry.decision.toUpperCase()}${reasonPart}`;
+            const cmdPart = entry.cmd !== undefined ? `"${entry.cmd}" → ` : "→ ";
+            const reasonPart = entry.reason ? ` "${entry.reason}"` : "";
+            return `${time}  ${"RESULT".padEnd(9)}${entry.tool.padEnd(10)}${cmdPart}${entry.decision.toUpperCase()}${reasonPart}`;
         }
         case "tool_execution": {
-            const inputSummary =
-                typeof entry.input["command"] === "string" ? entry.input["command"] as string :
-                typeof entry.input["file_path"] === "string" ? entry.input["file_path"] as string :
-                JSON.stringify(entry.input);
-            const errorPart = entry.isError ? "  [ERROR]" : "";
-            return `${time}  ${"EXECUTE".padEnd(9)}${entry.tool}: ${inputSummary}${errorPart}`;
+            let executeSummary: string;
+            if (typeof entry.input["command"] === "string") {
+                executeSummary = entry.input["command"];
+            }
+            else if (typeof entry.input["file_path"] === "string") {
+                executeSummary = entry.input["file_path"];
+            }
+            else {
+                executeSummary = JSON.stringify(entry.input);
+            }
+            const errorPart = entry.isError ? " [ERROR]" : "";
+            return `${time}  ${"EXECUTE".padEnd(9)}${entry.tool.padEnd(10)}"${executeSummary}"${errorPart}`;
         }
     }
 }

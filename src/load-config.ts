@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
-import { parse } from "yaml";
+import { parseDocument, isMap, isSeq, isPair, isScalar, Node } from "yaml";
 import picomatch from "picomatch";
 import { Rule, RuleOutcome, AstNode, Environment, ToolCall, ABSTAIN, Decision, Command } from "./types";
 
@@ -9,7 +9,7 @@ import { Rule, RuleOutcome, AstNode, Environment, ToolCall, ABSTAIN, Decision, C
 type DecideValue = "allow" | "deny" | "ask" | "abstain";
 
 // Union of all possible values within a YAML entry
-type IEntryValue = string | boolean | string[] | Record<string, string> | IYamlEntry | IYamlEntry[] | INotFields;
+type IEntryValue = string | number | boolean | string[] | Record<string, string> | IYamlEntry | IYamlEntry[] | INotFields;
 
 // Describes a file content match: the file must exist and contain the given substring.
 export interface IFileMatch {
@@ -84,6 +84,10 @@ export interface IYamlEntry {
     file?: Record<string, IFileMatch | true>;
     // Dynamic subcommand keys (any key not in KNOWN_FIELDS)
     [key: string]: IEntryValue | undefined;
+    // The display path of the YAML file this entry was parsed from, set during parsing
+    sourceFile?: string;
+    // 1-based line number in the source YAML file where this entry begins, set during parsing
+    sourceLine?: number;
 }
 
 // Top-level structure of the permissions YAML file
@@ -105,7 +109,7 @@ export interface IYamlConfig {
 }
 
 // Fields that are matcher/control fields and NOT subcommand keys
-const KNOWN_FIELDS = new Set(["decide", "reason", "rules", "not", "file", "cmd", "cmd-in", "options", "options-in", "cwd", "cwd-in", "cwd_resolved", "env", "path", "path-in", "host", "host-in", "tool", "tool-in"]);
+const KNOWN_FIELDS = new Set(["decide", "reason", "rules", "not", "file", "cmd", "cmd-in", "options", "options-in", "cwd", "cwd-in", "cwd_resolved", "env", "path", "path-in", "host", "host-in", "tool", "tool-in", "sourceLine", "sourceFile"]);
 
 // All accepted values for the decide field
 const VALID_DECIDE_VALUES = new Set<string>(["allow", "deny", "ask", "abstain"]);
@@ -422,6 +426,8 @@ function buildBashRule(binary: string, subcommandPath: string[], entry: IYamlEnt
     };
 
     Object.defineProperty(rule, "name", { value: ruleName });
+    rule.ruleFile = entry.sourceFile;
+    rule.ruleLine = entry.sourceLine;
     return rule;
 }
 
@@ -484,6 +490,8 @@ export function buildBashScopedRule(binary: string, subcommandPath: string[], en
     };
 
     Object.defineProperty(rule, "name", { value: ruleName });
+    rule.ruleFile = entry.sourceFile;
+    rule.ruleLine = entry.sourceLine;
     return rule;
 }
 
@@ -615,6 +623,8 @@ function buildFileRule(nodeType: string, entry: IYamlEntry): Rule {
     };
 
     Object.defineProperty(rule, "name", { value: ruleName });
+    rule.ruleFile = entry.sourceFile;
+    rule.ruleLine = entry.sourceLine;
     return rule;
 }
 
@@ -674,6 +684,8 @@ function buildWebFetchRule(entry: IYamlEntry): Rule {
     };
 
     Object.defineProperty(rule, "name", { value: ruleName });
+    rule.ruleFile = entry.sourceFile;
+    rule.ruleLine = entry.sourceLine;
     return rule;
 }
 
@@ -722,6 +734,8 @@ function buildMcpRule(entry: IYamlEntry): Rule {
     };
 
     Object.defineProperty(rule, "name", { value: ruleName });
+    rule.ruleFile = entry.sourceFile;
+    rule.ruleLine = entry.sourceLine;
     return rule;
 }
 
@@ -757,6 +771,8 @@ export function buildFileScopedRule(nodeType: string, entry: IYamlEntry): Rule {
     };
 
     Object.defineProperty(rule, "name", { value: ruleName });
+    rule.ruleFile = entry.sourceFile;
+    rule.ruleLine = entry.sourceLine;
     return rule;
 }
 
@@ -778,6 +794,8 @@ export function buildWebFetchScopedRule(entry: IYamlEntry): Rule {
     };
 
     Object.defineProperty(rule, "name", { value: ruleName });
+    rule.ruleFile = entry.sourceFile;
+    rule.ruleLine = entry.sourceLine;
     return rule;
 }
 
@@ -799,6 +817,8 @@ export function buildMcpScopedRule(entry: IYamlEntry): Rule {
     };
 
     Object.defineProperty(rule, "name", { value: ruleName });
+    rule.ruleFile = entry.sourceFile;
+    rule.ruleLine = entry.sourceLine;
     return rule;
 }
 
@@ -921,13 +941,58 @@ export function resolveRelativeCwdPatterns(config: IYamlConfig, baseDir: string)
     }
 }
 
-// Reads and parses a YAML file; returns null if the file does not exist
-function readYamlFile(filePath: string): IYamlConfig | null {
+// lineOfOffset returns the 1-based line number for a character offset in a source string.
+export function lineOfOffset(source: string, offset: number): number {
+    let line = 1;
+    for (let idx = 0; idx < offset; idx++) {
+        if (source[idx] === "\n") {
+            line++;
+        }
+    }
+    return line;
+}
+
+// annotateLines walks a YAML AST node and the corresponding parsed JS value in parallel,
+// stamping sourceFile and sourceLine onto each IYamlEntry object that has a decide field.
+export function annotateLines(node: Node | null, jsValue: unknown, source: string, displayFile: string): void {
+    if (isMap(node) && jsValue !== null && typeof jsValue === "object" && !Array.isArray(jsValue)) {
+        const jsObj = jsValue as IYamlEntry;
+        if ("decide" in jsObj && node.range) {
+            jsObj.sourceFile = displayFile;
+            jsObj.sourceLine = lineOfOffset(source, node.range[0]);
+        }
+        for (const pair of node.items) {
+            if (!isPair(pair) || !isScalar(pair.key)) {
+                continue;
+            }
+            const key = String(pair.key.value);
+            if (key in jsObj) {
+                annotateLines(pair.value as Node, jsObj[key] as unknown, source, displayFile);
+            }
+        }
+    }
+    else if (isSeq(node) && Array.isArray(jsValue)) {
+        for (let idx = 0; idx < node.items.length; idx++) {
+            annotateLines(node.items[idx] as Node, jsValue[idx], source, displayFile);
+        }
+    }
+}
+
+// Reads and parses a YAML file, annotating each entry with sourceFile and sourceLine.
+// displayFile is the path shown in log output (e.g. ".claude/permissions.yaml").
+// Returns null if the file does not exist. Throws on invalid YAML.
+function readYamlFile(filePath: string, displayFile: string): IYamlConfig | null {
     if (!existsSync(filePath)) {
         return null;
     }
     const content = readFileSync(filePath, "utf-8");
-    return parse(content) as IYamlConfig;
+    const doc = parseDocument(content);
+    if (doc.errors.length > 0) {
+        throw doc.errors[0];
+    }
+    const config: IYamlConfig = doc.toJS();
+    annotateLines(doc.contents, config, content, displayFile);
+    return config;
 }
 
 // Recursively validates a single rule entry and appends any problems to errors.
@@ -1022,7 +1087,7 @@ export function loadConfigRules(): Rule[] {
 
     const homeDir = process.env["HOME"];
     if (homeDir !== undefined) {
-        const homeYaml = readYamlFile(join(homeDir, ".claude", "permissions.yaml"));
+        const homeYaml = readYamlFile(join(homeDir, ".claude", "permissions.yaml"), "~/.claude/permissions.yaml");
         if (homeYaml !== null) {
             resolveRelativeCwdPatterns(homeYaml, homeDir);
             homeConfig = homeYaml;
@@ -1031,7 +1096,7 @@ export function loadConfigRules(): Rule[] {
 
     const projectDir = process.env["CLAUDE_PROJECT_DIR"];
     if (projectDir !== undefined) {
-        const projectYaml = readYamlFile(join(projectDir, ".claude", "permissions.yaml"));
+        const projectYaml = readYamlFile(join(projectDir, ".claude", "permissions.yaml"), ".claude/permissions.yaml");
         if (projectYaml !== null) {
             resolveRelativeCwdPatterns(projectYaml, projectDir);
             projectConfig = projectYaml;

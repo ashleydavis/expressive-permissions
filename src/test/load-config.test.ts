@@ -1,7 +1,8 @@
 import { mkdirSync, writeFileSync, rmSync, mkdtempSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { loadConfigRules, validateConfig, resolveCwdPattern, resolveEntryCwdPatterns, resolveRelativeCwdPatterns, aggregateOutcomes, buildBashScopedRule, buildFileScopedRule, notFieldsAllMatch, evaluateFileField, matchesFileField, IYamlEntry, IYamlConfig, INotFields, IFileMatch, IConfigError } from "../load-config";
+import { loadConfigRules, validateConfig, resolveCwdPattern, resolveEntryCwdPatterns, resolveRelativeCwdPatterns, aggregateOutcomes, buildBashScopedRule, buildFileScopedRule, notFieldsAllMatch, evaluateFileField, matchesFileField, lineOfOffset, annotateLines, IYamlEntry, IYamlConfig, INotFields, IFileMatch, IConfigError } from "../load-config";
+import { parseDocument } from "yaml";
 import { Rule, RuleOutcome, AstNode, Environment, ToolCall, Command } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -3425,4 +3426,51 @@ test("loadConfigRules: config with invalid decide writes [CONFIG ERROR] to stder
     finally {
         stderrSpy.mockRestore();
     }
+});
+
+test("lineOfOffset returns 1 for offset 0", () => {
+    expect(lineOfOffset("hello\nworld", 0)).toBe(1);
+});
+
+test("lineOfOffset returns 1 for offset within first line", () => {
+    expect(lineOfOffset("hello\nworld", 4)).toBe(1);
+});
+
+test("lineOfOffset returns 2 for offset on second line", () => {
+    expect(lineOfOffset("hello\nworld", 6)).toBe(2);
+});
+
+test("lineOfOffset returns 3 for offset on third line", () => {
+    expect(lineOfOffset("a\nb\nc", 4)).toBe(3);
+});
+
+test("annotateLines stamps sourceLine on entry with decide key", () => {
+    const source = "bash:\n  git:\n    decide: allow\n";
+    const doc = parseDocument(source);
+    const config: IYamlConfig = doc.toJS();
+    annotateLines(doc.contents, config, source, ".claude/permissions.yaml");
+    const bashSection = config.bash as Record<string, IYamlEntry>;
+    expect(bashSection["git"].sourceLine).toBe(3);
+    expect(bashSection["git"].sourceFile).toBe(".claude/permissions.yaml");
+});
+
+test("annotateLines stamps correct line for second binary", () => {
+    const source = "bash:\n  git:\n    decide: allow\n  echo:\n    decide: allow\n";
+    const doc = parseDocument(source);
+    const config: IYamlConfig = doc.toJS();
+    annotateLines(doc.contents, config, source, ".claude/permissions.yaml");
+    const bashSection = config.bash as Record<string, IYamlEntry>;
+    expect(bashSection["git"].sourceLine).toBe(3);
+    expect(bashSection["echo"].sourceLine).toBe(5);
+});
+
+test("annotateLines stamps correct line for nested subcommand entry", () => {
+    const source = "bash:\n  git:\n    diff:\n      decide: allow\n";
+    const doc = parseDocument(source);
+    const config: IYamlConfig = doc.toJS();
+    annotateLines(doc.contents, config, source, ".claude/permissions.yaml");
+    const bashSection = config.bash as Record<string, IYamlEntry>;
+    const gitEntry: IYamlEntry = bashSection["git"];
+    const diffEntry: IYamlEntry = gitEntry["diff"] as IYamlEntry;
+    expect(diffEntry.sourceLine).toBe(4);
 });

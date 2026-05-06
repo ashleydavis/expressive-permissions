@@ -40,6 +40,8 @@ export interface IAskDecision {
 export interface IAbstainDecision {
     // Discriminator for the abstain variant
     action: "abstain";
+    // Optional human-readable reason explaining the abstention
+    reason?: string;
 }
 
 // Union of all possible rule decision variants
@@ -185,8 +187,10 @@ export interface Environment {
 export interface Annotation {
     // The aggregated decision for this node
     decision: Decision;
-    // The name of the rule responsible for the decision, if applicable
-    ruleName?: string;
+    // The source file of the rule responsible for the decision, if applicable
+    ruleFile?: string;
+    // The 1-based line number in ruleFile, if known
+    ruleLine?: number;
     // The raw string fragment that triggered the decision, if applicable
     triggeringRaw?: string;
 }
@@ -204,8 +208,17 @@ export interface RuleOutcome {
 // Sentinel RuleOutcome returned by a rule that has no opinion on the current node
 export const ABSTAIN: RuleOutcome = { decision: { action: "abstain" } };
 
-// A rule function: inspects one AST node and returns a decision with optional env updates
-export type Rule = (node: AstNode, env: Environment, call: ToolCall) => RuleOutcome;
+// A rule function: inspects one AST node and returns a decision with optional env updates.
+// ruleFile and ruleLine optionally identify the source location this rule was compiled from.
+export interface Rule {
+    // The rule evaluation function.
+    (node: AstNode, env: Environment, call: ToolCall): RuleOutcome;
+    // The source file this rule was compiled from, if known.
+    ruleFile?: string;
+    // The 1-based line number in ruleFile where this rule's entry begins, if known.
+    ruleLine?: number;
+}
+
 
 // The raw stdin JSON payload sent by Claude Code's PostToolUse hook
 export interface IPostToolUseCall {

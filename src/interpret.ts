@@ -141,12 +141,12 @@ function runRules(node: AstNode, env: Environment, call: ToolCall, logger: IAudi
 
         if (outcome.decision.action !== "abstain") {
             const timestamp = toLocalISOString(new Date());
-            const reason = "reason" in outcome.decision ? outcome.decision.reason : undefined;
+            const reason = outcome.decision.reason;
             logger.log({
                 type: "rule_match",
                 timestamp,
-                nodeType: node.type,
-                ruleName: rule.name || undefined,
+                ruleFile: rule.ruleFile,
+                ruleLine: rule.ruleLine,
                 decision: outcome.decision.action,
                 reason,
                 cmd: describeNode(effectiveNode),
@@ -156,7 +156,8 @@ function runRules(node: AstNode, env: Environment, call: ToolCall, logger: IAudi
         if (outcome.decision.action === "deny") {
             bestAnnotation = {
                 decision: outcome.decision,
-                ruleName: rule.name || undefined,
+                ruleFile: rule.ruleFile,
+                ruleLine: rule.ruleLine,
             };
             break;
         }
@@ -167,7 +168,8 @@ function runRules(node: AstNode, env: Environment, call: ToolCall, logger: IAudi
         ) {
             bestAnnotation = {
                 decision: outcome.decision,
-                ruleName: rule.name || undefined,
+                ruleFile: rule.ruleFile,
+                ruleLine: rule.ruleLine,
             };
         }
     }
@@ -275,14 +277,13 @@ function interpret(node: AstNode, env: Environment, call: ToolCall, logger: IAud
     const childrenAnnotation = aggregateChildren(childrenResult.childAnnotations);
 
     if (childrenAnnotation.decision.action === "deny") {
+        const denyReason = childrenAnnotation.decision.reason;
         logger.log({
             type: "aggregation",
             timestamp: toLocalISOString(new Date()),
-            nodeType: node.type,
-            op: node.type === "binop" ? (node as BinOp).op : undefined,
-            childrenDecision: childrenAnnotation.decision.action,
-            ownDecision: "abstain",
-            combined: "deny",
+            cmd: describeNode(node),
+            decision: "deny",
+            reason: denyReason,
         });
         return { annotation: childrenAnnotation, envOut: childrenResult.envOut };
     }
@@ -290,15 +291,14 @@ function interpret(node: AstNode, env: Environment, call: ToolCall, logger: IAud
     const rulesResult = runRules(node, env, call, logger);
     const envOut = rulesResult.envUpdate(childrenResult.envOut);
     const annotation = combine(childrenAnnotation, rulesResult.annotation);
+    const combinedReason = annotation.decision.reason;
 
     logger.log({
         type: "aggregation",
         timestamp: toLocalISOString(new Date()),
-        nodeType: node.type,
-        op: node.type === "binop" ? (node as BinOp).op : undefined,
-        childrenDecision: childrenAnnotation.decision.action,
-        ownDecision: rulesResult.annotation.decision.action,
-        combined: annotation.decision.action,
+        cmd: describeNode(node),
+        decision: annotation.decision.action,
+        reason: combinedReason,
     });
 
     return { annotation, envOut };
@@ -333,11 +333,12 @@ export function decide(call: ToolCall, logger: IAuditLogger): Decision {
         decision = ASK;
     }
 
-    const finalReason = "reason" in decision ? decision.reason : undefined;
+    const finalReason = decision.reason;
     logger.log({
         type: "final_decision",
         timestamp: toLocalISOString(new Date()),
         tool: call.tool_name,
+        cmd: describeNode(root),
         decision: decision.action,
         reason: finalReason,
     });

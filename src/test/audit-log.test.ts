@@ -242,7 +242,7 @@ test("formatTextEntry tool_request with command shows tool and command", () => {
         input: { command: "ls -la" },
         cwd: "/home/user",
     };
-    expect(formatTextEntry(entry)).toBe("10:23:01  TOOL     Bash: ls -la");
+    expect(formatTextEntry(entry)).toBe('10:23:01  TOOL     Bash      "ls -la"');
 });
 
 test("formatTextEntry tool_request with file_path shows tool and path", () => {
@@ -253,7 +253,7 @@ test("formatTextEntry tool_request with file_path shows tool and path", () => {
         input: { file_path: "/project/src/main.ts" },
         cwd: "/home/user",
     };
-    expect(formatTextEntry(entry)).toBe("10:23:01  TOOL     Read: /project/src/main.ts");
+    expect(formatTextEntry(entry)).toBe('10:23:01  TOOL     Read      "/project/src/main.ts"');
 });
 
 test("formatTextEntry tool_request with unknown input falls back to JSON", () => {
@@ -264,124 +264,117 @@ test("formatTextEntry tool_request with unknown input falls back to JSON", () =>
         input: { foo: "bar" },
         cwd: "/home/user",
     };
-    expect(formatTextEntry(entry)).toBe('10:23:01  TOOL     Other: {"foo":"bar"}');
+    expect(formatTextEntry(entry)).toBe('10:23:01  TOOL     Other     "{"foo":"bar"}"');
 });
 
-test("formatTextEntry rule_match allow with ruleName shows ALLOW and rule", () => {
+test("formatTextEntry rule_match allow with ruleName shows RULE, cmd, rule, and decision", () => {
     const entry: IRuleMatchEntry = {
         type: "rule_match",
         timestamp: "2025-06-15T10:23:01.000+10:00",
-        nodeType: "command",
-        ruleName: "ls",
+        ruleFile: "ls",
         decision: "allow",
+        cmd: "ls",
     };
-    expect(formatTextEntry(entry)).toBe("10:23:01  ALLOW    rule:ls  node:command");
+    expect(formatTextEntry(entry)).toBe('10:23:01  RULE               "ls" → ls → allow');
 });
 
-test("formatTextEntry rule_match deny with reason shows DENY, rule, and reason", () => {
+test("formatTextEntry rule_match deny with reason shows RULE, cmd, rule, decision, and reason", () => {
     const entry: IRuleMatchEntry = {
         type: "rule_match",
         timestamp: "2025-06-15T10:23:01.000+10:00",
-        nodeType: "command",
-        ruleName: "rm",
+        ruleFile: "rm",
         decision: "deny",
         reason: "rm is not allowed",
+        cmd: "rm foo",
     };
-    expect(formatTextEntry(entry)).toBe('10:23:01  DENY     rule:rm  node:command  "rm is not allowed"');
+    expect(formatTextEntry(entry)).toBe('10:23:01  RULE               "rm foo" → rm → deny "rm is not allowed"');
 });
 
-test("formatTextEntry rule_match ask with reason shows ASK", () => {
+test("formatTextEntry rule_match ask with reason shows RULE and decision", () => {
     const entry: IRuleMatchEntry = {
         type: "rule_match",
         timestamp: "2025-06-15T10:23:01.000+10:00",
-        nodeType: "command",
-        ruleName: "catch-all",
+        ruleFile: "catch-all",
         decision: "ask",
         reason: "please confirm",
+        cmd: "something",
     };
-    expect(formatTextEntry(entry)).toBe('10:23:01  ASK      rule:catch-all  node:command  "please confirm"');
+    expect(formatTextEntry(entry)).toBe('10:23:01  RULE               "something" → catch-all → ask "please confirm"');
 });
 
-test("formatTextEntry rule_match without ruleName omits rule: part", () => {
+test("formatTextEntry rule_match without ruleName omits rule part", () => {
     const entry: IRuleMatchEntry = {
         type: "rule_match",
         timestamp: "2025-06-15T10:23:01.000+10:00",
-        nodeType: "command",
         decision: "allow",
+        cmd: "ls",
     };
-    expect(formatTextEntry(entry)).toBe("10:23:01  ALLOW    node:command");
-});
-
-test("formatTextEntry rule_match with cmd includes cmd in output", () => {
-    const entry: IRuleMatchEntry = {
-        type: "rule_match",
-        timestamp: "2025-06-15T10:23:01.000+10:00",
-        nodeType: "command",
-        ruleName: "head-allow",
-        decision: "allow",
-        cmd: "head -5 foo.csv",
-    };
-    expect(formatTextEntry(entry)).toBe('10:23:01  ALLOW    rule:head-allow  node:command  cmd:"head -5 foo.csv"');
+    expect(formatTextEntry(entry)).toBe('10:23:01  RULE               "ls" → allow');
 });
 
 test("formatTextEntry rule_match with cmd and reason shows cmd before reason", () => {
     const entry: IRuleMatchEntry = {
         type: "rule_match",
         timestamp: "2025-06-15T10:23:01.000+10:00",
-        nodeType: "command",
-        ruleName: "head-allow",
+        ruleFile: "head-allow",
         decision: "allow",
         reason: "Readonly file access",
         cmd: "head -5 foo.csv",
     };
-    expect(formatTextEntry(entry)).toBe('10:23:01  ALLOW    rule:head-allow  node:command  cmd:"head -5 foo.csv"  "Readonly file access"');
+    expect(formatTextEntry(entry)).toBe('10:23:01  RULE               "head -5 foo.csv" → head-allow → allow "Readonly file access"');
 });
 
 test("formatTextEntry rule_match without cmd omits cmd part", () => {
     const entry: IRuleMatchEntry = {
         type: "rule_match",
         timestamp: "2025-06-15T10:23:01.000+10:00",
-        nodeType: "command",
-        ruleName: "head-allow",
+        ruleFile: "head-allow",
         decision: "allow",
         reason: "Readonly file access",
     };
-    expect(formatTextEntry(entry)).toBe('10:23:01  ALLOW    rule:head-allow  node:command  "Readonly file access"');
+    expect(formatTextEntry(entry)).toBe('10:23:01  RULE               head-allow → allow "Readonly file access"');
 });
 
-test("formatTextEntry aggregation with op shows all fields", () => {
+test("formatTextEntry aggregation shows NODE with cmd and decision", () => {
     const entry: IAggregationEntry = {
         type: "aggregation",
         timestamp: "2025-06-15T10:23:01.000+10:00",
-        nodeType: "binop",
-        op: "&&",
-        childrenDecision: "deny",
-        ownDecision: "abstain",
-        combined: "deny",
+        cmd: "git diff --cached && echo done",
+        decision: "deny",
     };
-    expect(formatTextEntry(entry)).toBe("10:23:01  AGG      node:binop  op:&&  children:deny  own:abstain  → deny");
+    expect(formatTextEntry(entry)).toBe('10:23:01  NODE               "git diff --cached && echo done" → deny');
 });
 
-test("formatTextEntry aggregation without op omits op part", () => {
+test("formatTextEntry aggregation with reason shows reason", () => {
     const entry: IAggregationEntry = {
         type: "aggregation",
         timestamp: "2025-06-15T10:23:01.000+10:00",
-        nodeType: "bash",
-        childrenDecision: "allow",
-        ownDecision: "abstain",
-        combined: "allow",
+        cmd: "git diff --cached --name-only && echo done",
+        decision: "allow",
+        reason: "all sub-commands allowed",
     };
-    expect(formatTextEntry(entry)).toBe("10:23:01  AGG      node:bash  children:allow  own:abstain  → allow");
+    expect(formatTextEntry(entry)).toBe('10:23:01  NODE               "git diff --cached --name-only && echo done" → allow "all sub-commands allowed"');
 });
 
-test("formatTextEntry final_decision without reason shows RESULT", () => {
+test("formatTextEntry final_decision with cmd shows cmd before decision", () => {
+    const entry: IFinalDecisionEntry = {
+        type: "final_decision",
+        timestamp: "2025-06-15T10:23:01.000+10:00",
+        tool: "Bash",
+        cmd: "git diff --name-only",
+        decision: "allow",
+    };
+    expect(formatTextEntry(entry)).toBe('10:23:01  RESULT   Bash      "git diff --name-only" → ALLOW');
+});
+
+test("formatTextEntry final_decision without cmd omits cmd part", () => {
     const entry: IFinalDecisionEntry = {
         type: "final_decision",
         timestamp: "2025-06-15T10:23:01.000+10:00",
         tool: "Bash",
         decision: "allow",
     };
-    expect(formatTextEntry(entry)).toBe("10:23:01  RESULT   Bash → ALLOW");
+    expect(formatTextEntry(entry)).toBe("10:23:01  RESULT   Bash      → ALLOW");
 });
 
 test("formatTextEntry final_decision with reason shows reason", () => {
@@ -389,10 +382,11 @@ test("formatTextEntry final_decision with reason shows reason", () => {
         type: "final_decision",
         timestamp: "2025-06-15T10:23:01.000+10:00",
         tool: "Bash",
+        cmd: "rm foo",
         decision: "deny",
         reason: "rm is not allowed",
     };
-    expect(formatTextEntry(entry)).toBe('10:23:01  RESULT   Bash → DENY  "rm is not allowed"');
+    expect(formatTextEntry(entry)).toBe('10:23:01  RESULT   Bash      "rm foo" → DENY "rm is not allowed"');
 });
 
 test("formatTextEntry tool_execution with command input and isError false shows EXECUTE without ERROR", () => {
@@ -405,7 +399,7 @@ test("formatTextEntry tool_execution with command input and isError false shows 
         response: { output: "file.txt", isError: false },
         isError: false,
     };
-    expect(formatTextEntry(entry)).toBe("10:23:01  EXECUTE  Bash: ls -la");
+    expect(formatTextEntry(entry)).toBe('10:23:01  EXECUTE  Bash      "ls -la"');
 });
 
 test("formatTextEntry tool_execution with isError true appends ERROR suffix", () => {
@@ -418,7 +412,7 @@ test("formatTextEntry tool_execution with isError true appends ERROR suffix", ()
         response: { output: "", isError: true },
         isError: true,
     };
-    expect(formatTextEntry(entry)).toBe("10:23:01  EXECUTE  Bash: rm -rf /  [ERROR]");
+    expect(formatTextEntry(entry)).toBe('10:23:01  EXECUTE  Bash      "rm -rf /" [ERROR]');
 });
 
 test("formatTextEntry tool_execution with file_path input uses path as summary", () => {
@@ -431,7 +425,7 @@ test("formatTextEntry tool_execution with file_path input uses path as summary",
         response: { content: "hello" },
         isError: false,
     };
-    expect(formatTextEntry(entry)).toBe("10:23:01  EXECUTE  Read: /project/src/main.ts");
+    expect(formatTextEntry(entry)).toBe('10:23:01  EXECUTE  Read      "/project/src/main.ts"');
 });
 
 // ---------------------------------------------------------------------------

@@ -921,13 +921,13 @@ test("aggregateChildren: deny among allows → deny", () => {
 });
 
 test("aggregateChildren: all allow → allow (returns last annotation)", () => {
-    const last = { decision: { action: "allow" as const }, ruleName: "last" };
+    const last = { decision: { action: "allow" as const }, ruleFile: "last" };
     const result = aggregateChildren([
         { decision: { action: "allow" } },
         last,
     ]);
     expect(result.decision.action).toBe("allow");
-    expect(result.ruleName).toBe("last");
+    expect(result.ruleFile).toBe("last");
 });
 
 test("aggregateChildren: allow + ask → ask", () => {
@@ -956,28 +956,28 @@ test("aggregateChildren: single allow → allow", () => {
 // ---------------------------------------------------------------------------
 
 test("combine: own abstain → returns children annotation unchanged", () => {
-    const children = { decision: { action: "allow" as const }, ruleName: "child" };
+    const children = { decision: { action: "allow" as const }, ruleFile: "child" };
     const result = combine(children, { decision: { action: "abstain" } });
     expect(result).toBe(children);
 });
 
 test("combine: own allow → returns own annotation", () => {
     const children = { decision: { action: "ask" as const } };
-    const own = { decision: { action: "allow" as const }, ruleName: "override" };
+    const own = { decision: { action: "allow" as const }, ruleFile: "override" };
     const result = combine(children, own);
     expect(result).toBe(own);
 });
 
 test("combine: own ask → returns own annotation", () => {
     const children = { decision: { action: "allow" as const } };
-    const own = { decision: { action: "ask" as const }, ruleName: "conservative" };
+    const own = { decision: { action: "ask" as const }, ruleFile: "conservative" };
     const result = combine(children, own);
     expect(result).toBe(own);
 });
 
 test("combine: own deny → returns own annotation", () => {
     const children = { decision: { action: "allow" as const } };
-    const own = { decision: { action: "deny" as const, reason: "blocked" }, ruleName: "blocker" };
+    const own = { decision: { action: "deny" as const, reason: "blocked" }, ruleFile: "blocker" };
     const result = combine(children, own);
     expect(result).toBe(own);
 });
