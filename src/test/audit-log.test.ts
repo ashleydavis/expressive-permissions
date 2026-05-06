@@ -312,6 +312,43 @@ test("formatTextEntry rule_match without ruleName omits rule: part", () => {
     expect(formatTextEntry(entry)).toBe("10:23:01  ALLOW    node:command");
 });
 
+test("formatTextEntry rule_match with cmd includes cmd in output", () => {
+    const entry: IRuleMatchEntry = {
+        type: "rule_match",
+        timestamp: "2025-06-15T10:23:01.000+10:00",
+        nodeType: "command",
+        ruleName: "head-allow",
+        decision: "allow",
+        cmd: "head -5 foo.csv",
+    };
+    expect(formatTextEntry(entry)).toBe('10:23:01  ALLOW    rule:head-allow  node:command  cmd:"head -5 foo.csv"');
+});
+
+test("formatTextEntry rule_match with cmd and reason shows cmd before reason", () => {
+    const entry: IRuleMatchEntry = {
+        type: "rule_match",
+        timestamp: "2025-06-15T10:23:01.000+10:00",
+        nodeType: "command",
+        ruleName: "head-allow",
+        decision: "allow",
+        reason: "Readonly file access",
+        cmd: "head -5 foo.csv",
+    };
+    expect(formatTextEntry(entry)).toBe('10:23:01  ALLOW    rule:head-allow  node:command  cmd:"head -5 foo.csv"  "Readonly file access"');
+});
+
+test("formatTextEntry rule_match without cmd omits cmd part", () => {
+    const entry: IRuleMatchEntry = {
+        type: "rule_match",
+        timestamp: "2025-06-15T10:23:01.000+10:00",
+        nodeType: "command",
+        ruleName: "head-allow",
+        decision: "allow",
+        reason: "Readonly file access",
+    };
+    expect(formatTextEntry(entry)).toBe('10:23:01  ALLOW    rule:head-allow  node:command  "Readonly file access"');
+});
+
 test("formatTextEntry aggregation with op shows all fields", () => {
     const entry: IAggregationEntry = {
         type: "aggregation",

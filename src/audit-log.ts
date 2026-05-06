@@ -33,6 +33,8 @@ export interface IRuleMatchEntry extends IAuditLogEntryBase {
     decision: string;
     // Optional human-readable reason attached to the decision.
     reason?: string;
+    // The reconstructed sub-command or path that this rule was matched against.
+    cmd?: string;
 }
 
 // Logged once per intermediate node after combining children and own-rule results.
@@ -149,8 +151,9 @@ export function formatTextEntry(entry: IAuditLogEntry): string {
         case "rule_match": {
             const label = entry.decision.toUpperCase();
             const rulePart = entry.ruleName ? `rule:${entry.ruleName}  ` : "";
+            const cmdPart = entry.cmd !== undefined ? `  cmd:"${entry.cmd}"` : "";
             const reasonPart = entry.reason ? `  "${entry.reason}"` : "";
-            return `${time}  ${label.padEnd(9)}${rulePart}node:${entry.nodeType}${reasonPart}`;
+            return `${time}  ${label.padEnd(9)}${rulePart}node:${entry.nodeType}${cmdPart}${reasonPart}`;
         }
         case "aggregation": {
             const opPart = entry.op ? `  op:${entry.op}` : "";

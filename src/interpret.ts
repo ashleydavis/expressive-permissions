@@ -80,6 +80,31 @@ export function rank(decision: Decision): number {
     return RANK[decision.action] ?? 0;
 }
 
+// describeNode returns a human-readable string representation of an AST node for log output.
+// For command nodes it returns the raw command string. For tool-root leaf nodes it returns
+// the relevant file path or tool name. For intermediate nodes it recursively rebuilds
+// the expression from its children.
+export function describeNode(node: AstNode): string {
+    switch (node.type) {
+        case "command":
+            return node.raw;
+        case "binop":
+            return `${describeNode(node.left)} ${node.op} ${describeNode(node.right)}`;
+        case "bash":
+            return node.raw;
+        case "read":
+            return node.file_path;
+        case "write":
+            return node.file_path;
+        case "edit":
+            return node.file_path;
+        case "multiedit":
+            return node.file_path;
+        case "other":
+            return node.tool_name;
+    }
+}
+
 // isLeaf returns true for AST nodes that have no child nodes to walk.
 // Intermediate nodes carry child references in well-known fields: BinOp uses "left"/"right",
 // Bash uses "ast". Any node without those fields is a leaf.
@@ -124,6 +149,7 @@ function runRules(node: AstNode, env: Environment, call: ToolCall, logger: IAudi
                 ruleName: rule.name || undefined,
                 decision: outcome.decision.action,
                 reason,
+                cmd: describeNode(effectiveNode),
             });
         }
 

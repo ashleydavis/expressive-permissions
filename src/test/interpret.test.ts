@@ -1,5 +1,5 @@
-import { decide, expandToken, expandCommandOptions, rank, isLeaf, aggregateChildren, combine } from "../interpret";
-import { NullAuditLogger } from "../audit-log";
+import { decide, expandToken, expandCommandOptions, rank, isLeaf, aggregateChildren, combine, describeNode } from "../interpret";
+import { NullAuditLogger, IAuditLogEntry, IAuditLogger, IRuleMatchEntry } from "../audit-log";
 import { rules } from "../rules";
 import { cdRule } from "../rules/builtin/cd";
 import { envPrefixRule } from "../rules/builtin/env-prefix";
@@ -980,4 +980,114 @@ test("combine: own deny → returns own annotation", () => {
     const own = { decision: { action: "deny" as const, reason: "blocked" }, ruleName: "blocker" };
     const result = combine(children, own);
     expect(result).toBe(own);
+});
+
+// ---------------------------------------------------------------------------
+// describeNode — direct unit tests
+// ---------------------------------------------------------------------------
+
+test("describeNode: command node returns raw string", () => {
+    const node: import("../types").Command = {
+        type: "command", binary: "wc", options: { l: true },
+        cmd: [], envPrefix: {}, redirects: [], raw: "wc -l foo.txt",
+    };
+    expect(describeNode(node)).toBe("wc -l foo.txt");
+});
+
+test("describeNode: bash node returns raw string", () => {
+    const inner: import("../types").Command = {
+        type: "command", binary: "ls", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "ls",
+    };
+    const node: import("../types").Bash = { type: "bash", ast: inner, raw: "ls" };
+    expect(describeNode(node)).toBe("ls");
+});
+
+test("describeNode: binop node rebuilds left op right recursively", () => {
+    const left: import("../types").Command = {
+        type: "command", binary: "wc", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "wc -l foo.csv",
+    };
+    const right: import("../types").Command = {
+        type: "command", binary: "head", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "head -5 foo.csv",
+    };
+    const node: import("../types").BinOp = { type: "binop", op: "&&", left, right };
+    expect(describeNode(node)).toBe("wc -l foo.csv && head -5 foo.csv");
+});
+
+test("describeNode: nested binop rebuilds recursively", () => {
+    const cmd1: import("../types").Command = {
+        type: "command", binary: "a", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "a",
+    };
+    const cmd2: import("../types").Command = {
+        type: "command", binary: "b", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "b",
+    };
+    const cmd3: import("../types").Command = {
+        type: "command", binary: "c", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "c",
+    };
+    const inner: import("../types").BinOp = { type: "binop", op: ";", left: cmd1, right: cmd2 };
+    const outer: import("../types").BinOp = { type: "binop", op: "&&", left: inner, right: cmd3 };
+    expect(describeNode(outer)).toBe("a ; b && c");
+});
+
+test("describeNode: read node returns file_path", () => {
+    const node: import("../types").Read = { type: "read", file_path: "/etc/hosts" };
+    expect(describeNode(node)).toBe("/etc/hosts");
+});
+
+test("describeNode: write node returns file_path", () => {
+    const node: import("../types").Write = { type: "write", file_path: "/tmp/out.txt", content: "" };
+    expect(describeNode(node)).toBe("/tmp/out.txt");
+});
+
+test("describeNode: edit node returns file_path", () => {
+    const node: import("../types").Edit = {
+        type: "edit", file_path: "/src/main.ts", old_string: "a", new_string: "b",
+    };
+    expect(describeNode(node)).toBe("/src/main.ts");
+});
+
+test("describeNode: multiedit node returns file_path", () => {
+    const node: import("../types").MultiEdit = { type: "multiedit", file_path: "/src/lib.ts", edits: [] };
+    expect(describeNode(node)).toBe("/src/lib.ts");
+});
+
+test("describeNode: other node returns tool_name", () => {
+    const node: import("../types").OtherTool = { type: "other", tool_name: "Grep", tool_input: {} };
+    expect(describeNode(node)).toBe("Grep");
+});
+
+// ---------------------------------------------------------------------------
+// cmd field in logged rule_match entries
+// ---------------------------------------------------------------------------
+
+// SpyAuditLogger captures every entry logged during a decide() call.
+class SpyAuditLogger implements IAuditLogger {
+    // All entries received via log().
+    readonly entries: IAuditLogEntry[] = [];
+
+    log(entry: IAuditLogEntry): void {
+        this.entries.push(entry);
+    }
+}
+
+test("rule_match log entry includes cmd matching the command raw string", () => {
+    const spy = new SpyAuditLogger();
+    rules.push(spyRule({ decision: { action: "allow" } }));
+    decide(makeBashCall("head -5 foo.csv"), spy);
+    const ruleMatches = spy.entries.filter(
+        (entry: IAuditLogEntry) => entry.type === "rule_match"
+    ) as IRuleMatchEntry[];
+    expect(ruleMatches.length).toBeGreaterThan(0);
+    expect(ruleMatches[0].cmd).toBe("head -5 foo.csv");
+});
+
+test("rule_match log entries for compound command include per-subcommand raw strings", () => {
+    const spy = new SpyAuditLogger();
+    rules.push(spyRule({ decision: { action: "allow" } }));
+    decide(makeBashCall("wc -l foo.csv && head -5 foo.csv"), spy);
+    const ruleMatches = spy.entries.filter(
+        (entry: IAuditLogEntry) => entry.type === "rule_match"
+    ) as IRuleMatchEntry[];
+    const cmds = ruleMatches.map((entry: IRuleMatchEntry) => entry.cmd);
+    expect(cmds).toContain("wc -l foo.csv");
+    expect(cmds).toContain("head -5 foo.csv");
 });
