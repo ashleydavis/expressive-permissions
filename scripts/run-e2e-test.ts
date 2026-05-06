@@ -1,4 +1,4 @@
-import { readFileSync, mkdirSync, writeFileSync, rmSync, readdirSync, statSync, cpSync } from "fs";
+import { readFileSync, mkdirSync, writeFileSync, rmSync, readdirSync, statSync, cpSync, lstatSync } from "fs";
 import { join, dirname } from "path";
 import { spawnSync } from "child_process";
 import { parse, stringify } from "yaml";
@@ -256,10 +256,14 @@ function runTest(testFilePath: string): boolean {
 
 // main reads the test file path from argv[2] and exits 0 on pass or 1 on fail.
 function main(): void {
-    const testFilePath = process.argv[2];
+    let testFilePath = process.argv[2];
     if (!testFilePath) {
-        process.stderr.write("Usage: bun run src/run-e2e-test.ts <test-file.yaml>\n");
+        process.stderr.write("Usage: bun run src/run-e2e-test.ts <test-dir-or-file>\n");
         process.exit(1);
+    }
+
+    if (lstatSync(testFilePath).isDirectory()) {
+        testFilePath = join(testFilePath, "test.yaml");
     }
 
     const passed = runTest(testFilePath);
