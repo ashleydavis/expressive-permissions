@@ -11,6 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Never use memory.
 - All Claude configuration goes in this repository only, not in the home directory.
 - Never stash code unless asked.
+- NEVER USE SYNC VERSIONS OF FUNCTIONS (e.g. readFileSync, appendFileSync, mkdirSync). Always use async/await equivalents from `fs/promises`.
 
 ## Project Overview
 

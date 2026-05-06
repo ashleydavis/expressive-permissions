@@ -107,6 +107,17 @@ export interface IYamlConfig {
 // Fields that are matcher/control fields and NOT subcommand keys
 const KNOWN_FIELDS = new Set(["decide", "reason", "rules", "not", "file", "cmd", "cmd-in", "options", "options-in", "cwd", "cwd-in", "cwd_resolved", "env", "path", "path-in", "host", "host-in", "tool", "tool-in"]);
 
+// All accepted values for the decide field
+const VALID_DECIDE_VALUES = new Set<string>(["allow", "deny", "ask", "abstain"]);
+
+// A single validation problem found while inspecting a permissions YAML config.
+export interface IConfigError {
+    // Dot-path to the offending key (e.g. "bash.git.remote.decide").
+    path: string;
+    // Human-readable description of what is wrong and how to fix it.
+    message: string;
+}
+
 // Normalises a YAML section value: plain object → single-entry list; array → as-is
 function normalizeToList(value: IYamlEntry | IYamlEntry[]): IYamlEntry[] {
     if (Array.isArray(value)) {
@@ -481,6 +492,9 @@ export function compileBashBinary(binary: string, entries: IYamlEntry[], subcomm
     const compiledRules: Rule[] = [];
 
     for (const entry of entries) {
+        if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+            continue;
+        }
         const subcommandKeys = Object.keys(entry).filter((key: string) => !KNOWN_FIELDS.has(key));
 
         if (entry.rules !== undefined) {
@@ -916,6 +930,76 @@ function readYamlFile(filePath: string): IYamlConfig | null {
     return parse(content) as IYamlConfig;
 }
 
+// Recursively validates a single rule entry and appends any problems to errors.
+// path is the dot-path string used in error messages (e.g. "bash.git[0].log[0]").
+function validateEntry(entry: IYamlEntry, path: string, errors: IConfigError[]): void {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+        errors.push({ path, message: `expected a rule entry object but got ${Array.isArray(entry) ? "array" : typeof entry}` });
+        return;
+    }
+    if (entry.decide !== undefined && !VALID_DECIDE_VALUES.has(entry.decide as string)) {
+        errors.push({ path: `${path}.decide`, message: `invalid decide value '${entry.decide}': must be one of allow, deny, ask, abstain` });
+    }
+    if (entry.decide !== undefined && entry.rules !== undefined) {
+        errors.push({ path, message: `'decide' and 'rules' are mutually exclusive; 'decide' will be ignored` });
+    }
+    const subcommandKeys = Object.keys(entry).filter((key: string) => !KNOWN_FIELDS.has(key));
+    if (entry.decide === undefined && entry.rules === undefined && subcommandKeys.length === 0) {
+        errors.push({ path, message: `entry has neither 'decide', 'rules', nor subcommand keys and will always abstain` });
+    }
+    if (entry.rules !== undefined) {
+        for (let index = 0; index < entry.rules.length; index++) {
+            validateEntry(entry.rules[index], `${path}.rules[${index}]`, errors);
+        }
+    }
+    for (const subKey of subcommandKeys) {
+        const subValue = entry[subKey];
+        if (typeof subValue !== "object" || subValue === null) {
+            errors.push({ path: `${path}.${subKey}`, message: `subcommand value must be a rule entry object or list of rule entries, got ${typeof subValue}` });
+            continue;
+        }
+        if (Array.isArray(subValue)) {
+            for (let index = 0; index < subValue.length; index++) {
+                const item = (subValue as IEntryValue[])[index];
+                if (typeof item !== "object" || item === null || Array.isArray(item)) {
+                    errors.push({ path: `${path}.${subKey}[${index}]`, message: `expected a rule entry object but got ${Array.isArray(item) ? "array" : typeof item}` });
+                    continue;
+                }
+                validateEntry(item as IYamlEntry, `${path}.${subKey}[${index}]`, errors);
+            }
+        }
+        else {
+            validateEntry(subValue as IYamlEntry, `${path}.${subKey}`, errors);
+        }
+    }
+}
+
+// validateConfig inspects a fully parsed IYamlConfig and returns a list of IConfigError
+// describing any problems found. An empty list means no issues were detected.
+export function validateConfig(config: IYamlConfig): IConfigError[] {
+    const errors: IConfigError[] = [];
+    if (config.bash !== undefined) {
+        for (const [binary, value] of Object.entries(config.bash)) {
+            const entries = normalizeToList(value);
+            for (let index = 0; index < entries.length; index++) {
+                validateEntry(entries[index], `bash.${binary}[${index}]`, errors);
+            }
+        }
+    }
+    const nonBashSections = ["read", "write", "edit", "multi_edit", "webfetch", "mcp"];
+    for (const section of nonBashSections) {
+        const sectionValue = (config as Record<string, IYamlEntry | IYamlEntry[] | undefined>)[section];
+        if (sectionValue === undefined) {
+            continue;
+        }
+        const entries = normalizeToList(sectionValue);
+        for (let index = 0; index < entries.length; index++) {
+            validateEntry(entries[index], `${section}[${index}]`, errors);
+        }
+    }
+    return errors;
+}
+
 // Compiles all rules from a merged config object
 function compileConfig(config: IYamlConfig): Rule[] {
     const compiledRules: Rule[] = [];
@@ -955,5 +1039,9 @@ export function loadConfigRules(): Rule[] {
     }
 
     const merged: IYamlConfig = { ...homeConfig, ...projectConfig };
+    const configErrors = validateConfig(merged);
+    for (const configError of configErrors) {
+        process.stderr.write(`[CONFIG ERROR] ${configError.path}: ${configError.message}\n`);
+    }
     return compileConfig(merged);
 }

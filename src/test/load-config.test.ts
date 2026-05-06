@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync, rmSync, mkdtempSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { loadConfigRules, resolveCwdPattern, resolveEntryCwdPatterns, resolveRelativeCwdPatterns, aggregateOutcomes, buildBashScopedRule, buildFileScopedRule, notFieldsAllMatch, evaluateFileField, matchesFileField, IYamlEntry, IYamlConfig, INotFields, IFileMatch } from "../load-config";
+import { loadConfigRules, validateConfig, resolveCwdPattern, resolveEntryCwdPatterns, resolveRelativeCwdPatterns, aggregateOutcomes, buildBashScopedRule, buildFileScopedRule, notFieldsAllMatch, evaluateFileField, matchesFileField, IYamlEntry, IYamlConfig, INotFields, IFileMatch, IConfigError } from "../load-config";
 import { Rule, RuleOutcome, AstNode, Environment, ToolCall, Command } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -3286,4 +3286,143 @@ webfetch:
             expect(decide(rules[0], node)).toBe("allow");
         });
     });
+});
+
+// ---------------------------------------------------------------------------
+// validateConfig
+// ---------------------------------------------------------------------------
+
+test("validateConfig: valid bash entry returns no errors", () => {
+    const config: IYamlConfig = {
+        bash: { ls: { decide: "allow", reason: "read-only" } },
+    };
+    expect(validateConfig(config)).toHaveLength(0);
+});
+
+test("validateConfig: invalid decide value reports error with path and value", () => {
+    const config = {
+        bash: { ls: { decide: "block", reason: "test" } },
+    } as IYamlConfig;
+    const errors = validateConfig(config);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].path).toBe("bash.ls[0].decide");
+    expect(errors[0].message).toContain("block");
+    expect(errors[0].message).toContain("allow");
+});
+
+test("validateConfig: decide and rules both set reports error", () => {
+    const config: IYamlConfig = {
+        bash: { ls: { decide: "allow", rules: [{ decide: "deny" }] } },
+    };
+    const errors = validateConfig(config);
+    expect(errors.some((error: IConfigError) => error.message.includes("mutually exclusive"))).toBe(true);
+});
+
+test("validateConfig: entry with no decide, rules, or subcommands reports error", () => {
+    const config: IYamlConfig = {
+        bash: { ls: { reason: "no decision here" } },
+    };
+    const errors = validateConfig(config);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain("abstain");
+});
+
+test("validateConfig: subcommand-only entry (no decide/rules) does not report error", () => {
+    const config: IYamlConfig = {
+        bash: { git: { log: { decide: "allow" } } },
+    };
+    expect(validateConfig(config)).toHaveLength(0);
+});
+
+test("validateConfig: primitive string as subcommand value reports error", () => {
+    const config = {
+        bash: { git: { remote: "allow" } },
+    } as IYamlConfig;
+    const errors = validateConfig(config);
+    expect(errors.some((error: IConfigError) => error.path.includes("remote"))).toBe(true);
+    expect(errors.some((error: IConfigError) => error.message.includes("string"))).toBe(true);
+});
+
+test("validateConfig: array of primitive strings as subcommand value (args:[v] bug) reports error per item", () => {
+    const config = {
+        bash: { git: { args: ["v"] } },
+    } as IYamlConfig;
+    const errors = validateConfig(config);
+    expect(errors.some((error: IConfigError) => error.path.includes("args[0]"))).toBe(true);
+    expect(errors.some((error: IConfigError) => error.message.includes("string"))).toBe(true);
+});
+
+test("validateConfig: invalid decide in nested subcommand reports full path", () => {
+    const config = {
+        bash: { git: { log: { decide: "permit" } } },
+    } as IYamlConfig;
+    const errors = validateConfig(config);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].path).toBe("bash.git[0].log.decide");
+    expect(errors[0].message).toContain("permit");
+});
+
+test("validateConfig: invalid decide in rules sub-entry reports path including rules index", () => {
+    const config = {
+        bash: { ls: { rules: [{ decide: "nope" }] } },
+    } as IYamlConfig;
+    const errors = validateConfig(config);
+    expect(errors.some((error: IConfigError) => error.path.includes("rules[0].decide"))).toBe(true);
+});
+
+test("validateConfig: invalid decide in read section reports error", () => {
+    const config = {
+        read: { decide: "grant", path: "/tmp/**" },
+    } as IYamlConfig;
+    const errors = validateConfig(config);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].path).toContain("read");
+    expect(errors[0].message).toContain("grant");
+});
+
+test("validateConfig: invalid decide in mcp section reports error", () => {
+    const config = {
+        mcp: [{ decide: "nope", tool: "SomeTool" }],
+    } as IYamlConfig;
+    const errors = validateConfig(config);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].path).toContain("mcp");
+    expect(errors[0].message).toContain("nope");
+});
+
+test("validateConfig: multiple errors in one config are all reported", () => {
+    const config = {
+        bash: {
+            ls: { decide: "bad1" },
+            cat: { decide: "bad2" },
+        },
+    } as IYamlConfig;
+    const errors = validateConfig(config);
+    expect(errors).toHaveLength(2);
+    expect(errors.some((error: IConfigError) => error.message.includes("bad1"))).toBe(true);
+    expect(errors.some((error: IConfigError) => error.message.includes("bad2"))).toBe(true);
+});
+
+test("validateConfig: empty config returns no errors", () => {
+    expect(validateConfig({})).toHaveLength(0);
+});
+
+test("loadConfigRules: config with invalid decide writes [CONFIG ERROR] to stderr", () => {
+    const stderrWrites: string[] = [];
+    const stderrSpy = jest.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+        stderrWrites.push(String(chunk));
+        return true;
+    });
+    try {
+        withYamlFixtures(
+            `bash:\n  ls:\n    decide: block`,
+            null,
+            () => {},
+        );
+        expect(stderrWrites.join("")).toContain("[CONFIG ERROR]");
+        expect(stderrWrites.join("")).toContain("block");
+    }
+    finally {
+        stderrSpy.mockRestore();
+    }
 });

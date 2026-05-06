@@ -1,6 +1,7 @@
 import { decide } from "./interpret";
 import { createLogger } from "./audit-log";
 import { ToolCall } from "./types";
+import { resolveDebugLogPath, appendDebugBlock, logDebugError, IDebugField } from "./debug-log";
 
 // Abort timer: kills the process if the hook takes longer than 5 seconds.
 const abortTimer: NodeJS.Timeout = setTimeout(() => process.exit(1), 5000);
@@ -21,22 +22,36 @@ export async function readStdin(): Promise<string> {
 // runHook parses the ToolCall from stdin, runs the permission decision, and writes
 // the hookSpecificOutput to stdout, then exits 0. On any error it writes to stderr and exits 1.
 export async function runHook(): Promise<void> {
+    let logPath: string | undefined;
     try {
-        const call = JSON.parse(await readStdin()) as ToolCall;
+        const rawStdin = await readStdin();
+        const call = JSON.parse(rawStdin) as ToolCall;
         const projectDir = process.env["CLAUDE_PROJECT_DIR"];
         if (!projectDir) {
             throw new Error("CLAUDE_PROJECT_DIR is not set");
         }
+        logPath = resolveDebugLogPath(projectDir);
+        await appendDebugBlock(logPath, "[PRE-HOOK ENTRY]", [
+            { key: "tool_call", value: call },
+            { key: "CLAUDE_PROJECT_DIR", value: projectDir },
+            { key: "process.env", value: process.env },
+        ]);
         const logger = createLogger(projectDir, new Date());
         const decision = decide(call, logger);
         const permissionDecision = decision.action;
         const permissionDecisionReason = "reason" in decision ? decision.reason : undefined;
+        const exitFields: IDebugField[] = [{ key: "decision", value: permissionDecision }];
+        if (permissionDecisionReason !== undefined) {
+            exitFields.push({ key: "reason", value: permissionDecisionReason });
+        }
+        await appendDebugBlock(logPath, "[PRE-HOOK EXIT]", exitFields);
         process.stdout.write(
             JSON.stringify({ hookSpecificOutput: { hookEventName, permissionDecision, permissionDecisionReason } }) + "\n"
         );
         process.exit(0);
     }
     catch (hookError) {
+        await logDebugError(logPath, hookError);
         process.stderr.write(String(hookError) + "\n");
         process.exit(1);
     }
