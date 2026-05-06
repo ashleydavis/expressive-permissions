@@ -24,7 +24,7 @@ cd ~
 git clone https://github.com/ashleydavis/claude-permissions
 cd claude-permissions
 bun install
-bun b        # bundle plugin/dist/hook.js and plugin/dist/post-hook.js
+bun run bundle        # bundle plugin/dist/pre-hook.js and plugin/dist/post-hook.js
 ```
 
 ## Running it during development
@@ -56,7 +56,7 @@ Add the hook directly to `~/.claude/settings.json`. This is equivalent to what t
         "hooks": [
           {
             "type": "command",
-            "command": "bun ~/claude-permissions/plugin/dist/hook.js"
+            "command": "bun ~/claude-permissions/src/pre-hook.ts"
           }
         ]
       }
@@ -67,7 +67,7 @@ Add the hook directly to `~/.claude/settings.json`. This is equivalent to what t
         "hooks": [
           {
             "type": "command",
-            "command": "bun ~/claude-permissions/plugin/dist/post-hook.js"
+            "command": "bun ~/claude-permissions/src/post-hook.ts"
           }
         ]
       }
@@ -76,12 +76,10 @@ Add the hook directly to `~/.claude/settings.json`. This is equivalent to what t
 }
 ```
 
-Make sure both `plugin/dist/hook.js` and `plugin/dist/post-hook.js` exist by running `bun b` first.
-
-After editing rules, rebuild and reload:
+After editing rules, reload:
 
 ```bash
-bun b && /reload-plugins
+/reload-plugins
 ```
 
 ## Allowing all tools through to the plugin
@@ -148,17 +146,17 @@ This lists all active plugins. `claude-permissions` should appear in the list.
 
 If the hook is silently not firing, the most common causes are:
 
-- `plugin/dist/hook.js` or `plugin/dist/post-hook.js` is missing — run `bun b` to generate both.
+- `plugin/dist/pre-hook.js` or `plugin/dist/post-hook.js` is missing — run `bun run bundle` to generate both.
 - The plugin directory path is wrong — verify the path passed to `--plugin-dir` points to the `plugin/` subdirectory, not the repo root.
-- A stale hook after editing source — run `bun b && /reload-plugins`.
+- A stale hook after editing source — run `bun run bundle && /reload-plugins`.
 
 ## Scripts
 
 | Script | Short | Description |
 |---|---|---|
-| `bundle` | — | Bundle `src/hook.ts` → `plugin/dist/hook.js` |
+| `bundle:pre` | — | Bundle `src/pre-hook.ts` → `plugin/dist/pre-hook.js` |
 | `bundle:post` | — | Bundle `src/post-hook.ts` → `plugin/dist/post-hook.js` |
-| `b` | — | Run both `bundle` and `bundle:post` |
+| `bundle` | `b` | Run both `bundle:pre` and `bundle:post` |
 | `compile` | `c` | TypeScript type-check (no emit) |
 | `test` | `t` | Run Jest unit tests |
 | `test:watch` | `tw` | Jest in watch mode |
@@ -217,7 +215,7 @@ describe("blockCurl", () => {
 **4. Build and reload**:
 
 ```bash
-bun b && /reload-plugins
+bun run bundle && /reload-plugins
 ```
 
 ### What a rule can match
@@ -255,7 +253,7 @@ bun run compile       # type-check only (no emit)
 bun run smoke         # build first, then run smoke tests
 ```
 
-Unit tests live under `src/test/` mirroring the source tree. `src/test/hook.test.ts` covers the hook runner (stdin parsing, stdout output, error path). Run `bun run smoke` to build and then run the end-to-end smoke tests in `scripts/smoke-tests.sh`.
+Unit tests live under `src/test/` mirroring the source tree. `src/test/pre-hook.test.ts` covers the hook runner (stdin parsing, stdout output, error path). Run `bun run smoke` to build and then run the end-to-end smoke tests in `scripts/smoke-tests.sh`.
 
 ## Publishing
 
@@ -268,11 +266,11 @@ plugin/
 ├── hooks/
 │   └── hooks.json      # registers the PreToolUse and PostToolUse hooks
 └── dist/
-    ├── hook.js         # bundled PreToolUse entry point — commit this
+    ├── pre-hook.js     # bundled PreToolUse entry point — commit this
     └── post-hook.js    # bundled PostToolUse entry point — commit this
 ```
 
-Commit both `plugin/dist/hook.js` and `plugin/dist/post-hook.js` so users installing from a path or the marketplace don't need to run a build step themselves. Run `bun b` before committing to keep both up to date.
+Commit both `plugin/dist/pre-hook.js` and `plugin/dist/post-hook.js` so users installing from a path or the marketplace don't need to run a build step themselves. Run `bun run bundle` before committing to keep both up to date.
 
 The plugin is distributed via the Claude Code marketplace system. The repo root contains `.claude-plugin/marketplace.json` which lists the plugin at `./plugin`. Users install it with:
 
@@ -284,8 +282,8 @@ The plugin is distributed via the Claude Code marketplace system. The repo root 
 Before tagging a release, bundle both hooks so the committed dist files are up to date:
 
 ```bash
-bun b
-git add plugin/dist/hook.js plugin/dist/post-hook.js
+bun run bundle
+git add plugin/dist/pre-hook.js plugin/dist/post-hook.js
 git commit -m "bundle for release"
 git tag v1.2.3
 git push origin v1.2.3

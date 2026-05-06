@@ -7,19 +7,22 @@ Architecture deep-dive for someone who wants to write non-trivial rules or debug
 ```mermaid
 flowchart LR
   A[LLM] -->|requests a tool| CC[Claude Code]
-  CC -->|JSON on stdin| H[hook.js]
+  CC -->|PreToolUse, JSON on stdin| H[pre-hook.js]
   H --> BA[build AST]
   BA --> I[interpret, apply rules]
   I --> D[Decision]
   D -->|JSON on stdout| CC
   CC -->|allow / deny / ask| A
+  CC -->|PostToolUse, JSON on stdin| PH[post-hook.js]
+  H & PH --> AL[audit log]
 ```
 
-- **Claude Code** intercepts every tool call via the `PreToolUse` hook and writes a JSON payload to `hook.js` on stdin.
-- **`hook.js`** (`src/hook.ts`) reads stdin, calls `decide(call)`, and writes the result JSON to stdout. It is intentionally thin - no logic lives here.
+- **Claude Code** intercepts every tool call via the `PreToolUse` hook and writes a JSON payload to `pre-hook.js` on stdin.
+- **`pre-hook.js`** (`src/pre-hook.ts`) reads stdin, calls `decide(call)`, and writes the result JSON to stdout. It is intentionally thin - no logic lives here.
 - **build AST** (`src/build-ast.ts`) converts the raw `ToolCall` into a typed root AST node (`bash`, `read`, `write`, `edit`, `multiedit`, or the generic `other` fallback). For Bash, it delegates sub-tree construction to `parseBash`.
-- **interpret, apply rules** (`src/interpret.ts`) walks the tree with an immutable `Environment`, runs every registered rule at each node, and aggregates outcomes bottom-up.
+- **interpret, apply rules** (`src/interpret.ts`) walks the tree with an immutable `Environment`, runs every registered rule at each node, and aggregates outcomes bottom-up. Each non-abstaining rule match and aggregation step is written to the audit log.
 - **`Decision`** (`allow` / `deny` / `ask`) flows back to Claude Code, which acts on it.
+- **`post-hook.js`** (`src/post-hook.ts`) fires via the `PostToolUse` hook after the tool actually executes (only for allowed calls). It records the tool result and any error flag to the audit log.
 
 ## 2. Tool call → AST
 
@@ -151,7 +154,7 @@ Built-ins are registered first in `src/rules/index.ts` so their env updates land
 
 ### TypeScript rules
 
-A rule is a single function `(node: AstNode, env: Environment, call: ToolCall) => RuleOutcome`. Place it in its own file under `src/rules/`, add it to the array in `src/rules/index.ts`, write a paired test under `src/test/rules/`, then rebuild (`bun bundle`).
+A rule is a single function `(node: AstNode, env: Environment, call: ToolCall) => RuleOutcome`. Place it in its own file under `src/rules/`, add it to the array in `src/rules/index.ts`, write a paired test under `src/test/rules/`, then rebuild (`bun run bundle`).
 
 Rules should:
 - Return `ABSTAIN` for node types they don't care about (by `node.type`).
@@ -173,3 +176,29 @@ Rules run in registry order. The ordering in `src/rules/index.ts`:
 2. YAML rules - appended via `...loadConfigRules()`, which merges `~/.claude/permissions.yaml` (home) and `.claude/permissions.yaml` (project), with project beating home on conflict at the top-level key.
 
 The plugin ships with no default rules. All permission decisions come from the user's YAML config. Within the compiled rule list, strictest-wins applies: a deny short-circuits any later rules, and an ask cannot be downgraded by a later allow at the same node.
+
+## 8. Audit log
+
+Every hook invocation writes structured entries to `.claude/permissions-log/` inside the project root (`CLAUDE_PROJECT_DIR`). Files are partitioned by hour in local time:
+
+```
+.claude/permissions-log/
+└── YYYY-MM/
+    └── DD/
+        ├── HH.json   # JSON Lines — one entry per line, machine-readable
+        └── HH.log    # plain text — human-readable summary
+```
+
+### Entry types
+
+| Type | Written by | When |
+|---|---|---|
+| `tool_request` | `pre-hook.js` | Once per invocation, before any rule runs — captures the raw tool call |
+| `rule_match` | `pre-hook.js` | Once per non-abstaining rule at any AST node — records rule name, decision, and matched cmd |
+| `aggregation` | `pre-hook.js` | Once per intermediate node — records children decision, own decision, and combined result |
+| `final_decision` | `pre-hook.js` | Once per invocation, just before returning — the authoritative allow / deny / ask |
+| `tool_execution` | `post-hook.js` | Once per allowed tool execution — captures the tool response and whether it reported an error |
+
+### Retention
+
+The three most recent calendar months are kept. Months older than that are pruned automatically on each hook invocation. Files within a kept month are never deleted.

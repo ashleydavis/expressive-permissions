@@ -3,9 +3,10 @@
     "version": "1.0.0",
     "type": "module",
     "scripts": {
-        "bundle": "bun build src/hook.ts --outfile plugin/dist/hook.js --target bun",
+        "bundle:pre": "bun build src/pre-hook.ts --outfile plugin/dist/pre-hook.js --target bun",
         "bundle:post": "bun build src/post-hook.ts --outfile plugin/dist/post-hook.js --target bun",
-        "b": "bun run bundle && bun run bundle:post",
+        "bundle": "bun run bundle:pre && bun run bundle:post",
+        "b": "bun run bundle",
         "compile": "tsc --noEmit",
         "c": "bun run compile",
         "test": "jest --passWithNoTests",
@@ -14,6 +15,7 @@
         "tw": "bun run test:watch",
         "smoke": "bash scripts/smoke-tests.sh",
         "test:all": "bun run test && bash scripts/smoke-tests-bash-parser.sh && bash scripts/hook-smoke-tests.sh && bash scripts/smoke-tests.sh",
+        "ta": "bun run test:all",
         "dev": "claude --plugin-dir /home/ash/projects/claude-permissions/plugin",
         "d": "bun run dev"
     },

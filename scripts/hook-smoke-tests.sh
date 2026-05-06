@@ -2,7 +2,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR/.."
-HOOK_JS="$PROJECT_DIR/plugin/dist/hook.js"
+HOOK_JS="$PROJECT_DIR/plugin/dist/pre-hook.js"
 
 echo "Building bundle..."
 (cd "$PROJECT_DIR" && bun run bundle) || { echo "Build failed" >&2; exit 1; }

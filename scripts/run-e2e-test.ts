@@ -146,7 +146,7 @@ function runTest(testFilePath: string): boolean {
         testEnv["HOME"] = homeDir;
         testEnv["CLAUDE_PROJECT_DIR"] = projectDir;
 
-        const hookPath = join(__dirname, "..", "src", "hook.ts");
+        const hookPath = join(__dirname, "..", "src", "pre-hook.ts");
         const result = spawnSync("bun", [hookPath], {
             input: inputJson,
             env: testEnv,
@@ -155,7 +155,7 @@ function runTest(testFilePath: string): boolean {
 
         if (result.status !== 0) {
             process.stdout.write(`FAIL: ${testCase.description}\n`);
-            process.stdout.write(`  hook.ts exited with status ${result.status}\n`);
+            process.stdout.write(`  pre-hook.ts exited with status ${result.status}\n`);
             if (result.stderr) {
                 process.stdout.write(`  stderr: ${result.stderr}\n`);
             }

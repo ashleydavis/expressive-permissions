@@ -1,4 +1,4 @@
-import { readStdin, runHook } from "../hook";
+import { readStdin, runHook } from "../pre-hook";
 
 // An async iterable that yields a single Buffer chunk, used to mock process.stdin.
 interface IMockStdin {

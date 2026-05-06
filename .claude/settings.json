@@ -17,5 +17,29 @@
             "KillShell",
             "mcp__*"
         ]
+    },
+    "hooks": {
+        "PreToolUse": [
+            {
+                "matcher": "",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "bun ./src/pre-hook.ts"
+                    }
+                ]
+            }
+        ],
+        "PostToolUse": [
+            {
+                "matcher": "",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "bun ./src/post-hook.ts"
+                    }
+                ]
+            }
+        ]
     }
 }

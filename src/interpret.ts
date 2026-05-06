@@ -304,7 +304,7 @@ function interpret(node: AstNode, env: Environment, call: ToolCall, logger: IAud
     return { annotation, envOut };
 }
 
-// decide is the public entry point called by hook.ts. It builds the root AST from the
+// decide is the public entry point called by pre-hook.ts. It builds the root AST from the
 // ToolCall, initialises env0 from the call's cwd, runs the full interpreter pass, and
 // returns the root decision. A root abstain (which should not occur in practice) is
 // promoted to ask as a safe default.

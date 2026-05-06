@@ -3,7 +3,7 @@
         "PreToolUse": [
             {
                 "matcher": "",
-                "hooks": [{ "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/dist/hook.js" }]
+                "hooks": [{ "type": "command", "command": "bun ${CLAUDE_PLUGIN_ROOT}/dist/pre-hook.js" }]
             }
         ],
         "PostToolUse": [
