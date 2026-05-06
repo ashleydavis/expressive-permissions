@@ -1,0 +1,16 @@
+description: "bash: git status --short allow"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "git status --short"
+  cwd: /home/blah/projects/claude-permissions
+
+rules:
+  bash:
+    git:
+      status:
+        decide: allow
+
+expected:
+  decision: allow

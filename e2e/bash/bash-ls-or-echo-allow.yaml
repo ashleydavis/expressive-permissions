@@ -1,0 +1,17 @@
+description: "bash: ls path 2>/dev/null || echo message both allow"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "ls /home/blah/projects/claude-permissions/e2e/ 2>/dev/null || echo 'No e2e directory'"
+  cwd: /home/blah/projects/claude-permissions
+
+rules:
+  bash:
+    ls:
+      decide: allow
+    echo:
+      decide: allow
+
+expected:
+  decision: allow

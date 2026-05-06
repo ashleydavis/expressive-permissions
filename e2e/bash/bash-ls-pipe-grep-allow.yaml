@@ -1,0 +1,17 @@
+description: "bash: ls path | grep pattern both allow"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "ls /home/blah/projects/claude-permissions/e2e/bash/ | grep -i git"
+  cwd: /home/blah/projects/claude-permissions
+
+rules:
+  bash:
+    ls:
+      decide: allow
+    grep:
+      decide: allow
+
+expected:
+  decision: allow

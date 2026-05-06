@@ -1,0 +1,18 @@
+description: "bash: git diff --cached --name-only && echo '---' && git diff --name-only all allow"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "git diff --cached --name-only && echo '---' && git diff --name-only"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    git:
+      diff:
+        decide: allow
+    echo:
+      decide: allow
+
+expected:
+  decision: allow

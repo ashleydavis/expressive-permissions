@@ -1,0 +1,20 @@
+description: "bash: find | xargs grep | head triple pipe all allow"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "find /home/blah/projects/claude-permissions/e2e -name '*.yaml' | xargs grep -l 'git' 2>/dev/null | head -5"
+  cwd: /home/blah/projects/claude-permissions
+
+rules:
+  bash:
+    find:
+      cmd: "./**"
+      decide: allow
+    xargs:
+      decide: allow
+    head:
+      decide: allow
+
+expected:
+  decision: allow

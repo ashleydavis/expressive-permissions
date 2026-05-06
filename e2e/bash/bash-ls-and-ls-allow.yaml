@@ -1,0 +1,15 @@
+description: "bash: ls path && ls path both allow"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "ls /home/blah/projects/claude-permissions/scripts/ && ls /home/blah/projects/claude-permissions/plugin/hooks/"
+  cwd: /home/blah/projects/claude-permissions
+
+rules:
+  bash:
+    ls:
+      decide: allow
+
+expected:
+  decision: allow

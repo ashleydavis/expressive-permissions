@@ -1,0 +1,17 @@
+description: "bash: bun run script allow"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "bun run scripts/run-e2e-test.ts e2e/bash/bash-git-diff-echo-and-allow.yaml"
+  cwd: /home/blah/projects/claude-permissions
+
+rules:
+  bash:
+    bun:
+      run:
+        cmd: "**/*.ts"
+        decide: allow
+
+expected:
+  decision: allow

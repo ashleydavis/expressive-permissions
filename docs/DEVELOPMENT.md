@@ -253,6 +253,12 @@ bun run compile       # type-check only (no emit)
 bun run smoke         # build first, then run smoke tests
 ```
 
+To run a single smoke test:
+
+```bash
+bun run scripts/run-e2e-test.ts e2e/bash/bash-and-both-allow.yaml
+```
+
 Unit tests live under `src/test/` mirroring the source tree. `src/test/pre-hook.test.ts` covers the hook runner (stdin parsing, stdout output, error path). Run `bun run smoke` to build and then run the end-to-end smoke tests in `scripts/smoke-tests.sh`.
 
 ## Publishing
