@@ -164,6 +164,73 @@ read:
     });
 });
 
+test("loadConfigRules: home bash rules survive when project bash section covers a different binary", () => {
+    const homeYaml = `
+bash:
+  grep:
+    decide: allow
+    reason: Searching file contents
+`;
+    const projectYaml = `
+bash:
+  echo:
+    decide: deny
+    reason: Echo is blocked
+`;
+    withYamlFixtures(homeYaml, projectYaml, (rules) => {
+        const grepNode = makeCommand("grep", ["/home/user/src"]);
+        const outcomes = rules.map((rule) => rule(grepNode, makeEnv(), dummyCall).decision.action);
+        expect(outcomes).toContain("allow");
+    });
+});
+
+test("loadConfigRules: multiple home bash rules survive when project bash section covers a different binary", () => {
+    const homeYaml = `
+bash:
+  grep:
+    decide: allow
+  ls:
+    decide: allow
+  find:
+    decide: allow
+`;
+    const projectYaml = `
+bash:
+  echo:
+    decide: deny
+`;
+    withYamlFixtures(homeYaml, projectYaml, (rules) => {
+        const grepNode = makeCommand("grep", []);
+        const lsNode = makeCommand("ls", []);
+        const findNode = makeCommand("find", []);
+        const grepOutcomes = rules.map((rule) => rule(grepNode, makeEnv(), dummyCall).decision.action);
+        const lsOutcomes = rules.map((rule) => rule(lsNode, makeEnv(), dummyCall).decision.action);
+        const findOutcomes = rules.map((rule) => rule(findNode, makeEnv(), dummyCall).decision.action);
+        expect(grepOutcomes).toContain("allow");
+        expect(lsOutcomes).toContain("allow");
+        expect(findOutcomes).toContain("allow");
+    });
+});
+
+test("loadConfigRules: home bash rule count is preserved when project adds a different bash binary", () => {
+    const homeYaml = `
+bash:
+  grep:
+    decide: allow
+  ls:
+    decide: allow
+`;
+    const projectYaml = `
+bash:
+  echo:
+    decide: deny
+`;
+    withYamlFixtures(homeYaml, projectYaml, (rules) => {
+        // Should have 3 rules total: grep (home), ls (home), echo (project)
+        expect(rules.length).toBe(3);
+    });
+});
+
 // ---------------------------------------------------------------------------
 // Bash: catch-all (no matcher fields)
 // ---------------------------------------------------------------------------

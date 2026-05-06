@@ -1104,6 +1104,9 @@ export function loadConfigRules(): Rule[] {
     }
 
     const merged: IYamlConfig = { ...homeConfig, ...projectConfig };
+    if (homeConfig.bash !== undefined && projectConfig.bash !== undefined) {
+        merged.bash = { ...homeConfig.bash, ...projectConfig.bash };
+    }
     const configErrors = validateConfig(merged);
     for (const configError of configErrors) {
         process.stderr.write(`[CONFIG ERROR] ${configError.path}: ${configError.message}\n`);

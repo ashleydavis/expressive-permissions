@@ -1,0 +1,16 @@
+description: "bash: grep | grep | grep pipeline all allow when grep binary is allowed"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: 'grep -r "from.*rules" /home/blah/projects/claude-permissions/src --include="*.ts" -n | grep -v node_modules | grep -v test'
+  cwd: /home/blah/projects/claude-permissions
+
+rules:
+  bash:
+    grep:
+      decide: allow
+      reason: Searching file contents
+
+expected:
+  decision: allow
