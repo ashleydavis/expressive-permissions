@@ -4,3 +4,4 @@ plugin/dist/
 .DS_Store
 .env*
 .claude/permissions-log/
+tmp/

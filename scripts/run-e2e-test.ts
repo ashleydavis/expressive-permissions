@@ -1,7 +1,6 @@
-import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync, statSync, cpSync } from "fs";
-import { join } from "path";
+import { readFileSync, mkdirSync, writeFileSync, rmSync, readdirSync, statSync, cpSync } from "fs";
+import { join, dirname } from "path";
 import { spawnSync } from "child_process";
-import { tmpdir } from "os";
 import { parse, stringify } from "yaml";
 
 // ITestCaseInput describes the tool call input fields in a test case YAML file.
@@ -122,18 +121,20 @@ const REPO_ROOT = join(__dirname, "..");
 function runTest(testFilePath: string): boolean {
     const content = readFileSync(testFilePath, "utf-8");
     const testCase = parse(content) as ITestCase;
-    const tmpDir = mkdtempSync(join(tmpdir(), "claude-e2e-"));
+    const testDir = dirname(testFilePath);
+    const tmpDir = join(testDir, "tmp");
 
-    try {
-        const homeDir = join(tmpDir, "home");
-        const projectDir = join(tmpDir, "project");
-        const claudeDir = join(projectDir, ".claude");
+    rmSync(tmpDir, { recursive: true, force: true });
 
-        mkdirSync(homeDir, { recursive: true });
-        mkdirSync(claudeDir, { recursive: true });
-        cpSync(join(REPO_ROOT, "e2e", "fixtures"), join(projectDir, "fixtures"), { recursive: true });
+    const homeDir = join(tmpDir, "home");
+    const projectDir = join(tmpDir, "project");
+    const claudeDir = join(projectDir, ".claude");
 
-        writeFileSync(join(claudeDir, "permissions.yaml"), stringify(testCase.rules));
+    mkdirSync(homeDir, { recursive: true });
+    mkdirSync(claudeDir, { recursive: true });
+    cpSync(join(REPO_ROOT, "e2e", "fixtures"), join(projectDir, "fixtures"), { recursive: true });
+
+    writeFileSync(join(claudeDir, "permissions.yaml"), stringify(testCase.rules));
 
         const inputJson = JSON.stringify(testCase.input);
 
@@ -251,10 +252,6 @@ function runTest(testFilePath: string): boolean {
 
         process.stdout.write(`PASS: ${testCase.description}\n`);
         return true;
-    }
-    finally {
-        rmSync(tmpDir, { recursive: true, force: true });
-    }
 }
 
 // main reads the test file path from argv[2] and exits 0 on pass or 1 on fail.
