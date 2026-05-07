@@ -1,5 +1,5 @@
 import { buildAst, describeNode } from "./build-ast";
-import { registry } from "./rules";
+import { IRuleRegistry } from "./rule-registry";
 import { IAuditLogger, toLocalISOString } from "./audit-log";
 import {
     AstNode,
@@ -77,10 +77,11 @@ function walkChildren(
     node: AstNode,
     env: Environment,
     call: ToolCall,
-    logger: IAuditLogger
+    logger: IAuditLogger,
+    registry: IRuleRegistry
 ): IWalkChildrenResult {
     if (node.type === "bash") {
-        const childResult = interpret(node.ast, env, call, logger);
+        const childResult = interpret(node.ast, env, call, logger, registry);
         return {
             childAnnotations: [childResult.annotation],
             envOut: childResult.envOut,
@@ -90,8 +91,8 @@ function walkChildren(
     const binop = node as BinOp;
 
     if (binop.op === ";" || binop.op === "&&") {
-        const leftResult = interpret(binop.left, env, call, logger);
-        const rightResult = interpret(binop.right, leftResult.envOut, call, logger);
+        const leftResult = interpret(binop.left, env, call, logger, registry);
+        const rightResult = interpret(binop.right, leftResult.envOut, call, logger, registry);
         return {
             childAnnotations: [leftResult.annotation, rightResult.annotation],
             envOut: rightResult.envOut,
@@ -99,8 +100,8 @@ function walkChildren(
     }
 
     // || and |: both sides see parent env; parent env is returned (no propagation)
-    const leftResult = interpret(binop.left, env, call, logger);
-    const rightResult = interpret(binop.right, env, call, logger);
+    const leftResult = interpret(binop.left, env, call, logger, registry);
+    const rightResult = interpret(binop.right, env, call, logger, registry);
     return {
         childAnnotations: [leftResult.annotation, rightResult.annotation],
         envOut: env,
@@ -110,7 +111,7 @@ function walkChildren(
 // interpret recursively walks an AST node, runs rules, and returns an InterpretResult.
 // Leaf nodes default to ask when all rules abstain. Intermediate nodes aggregate child
 // results first (deny short-circuits) then layer their own rule result on top.
-function interpret(node: AstNode, env: Environment, call: ToolCall, logger: IAuditLogger): InterpretResult {
+function interpret(node: AstNode, env: Environment, call: ToolCall, logger: IAuditLogger, registry: IRuleRegistry): InterpretResult {
     if (isLeaf(node)) {
         const rulesResult = registry.runRules(node, env, call, logger);
         const envOut = rulesResult.envUpdate(env);
@@ -122,7 +123,7 @@ function interpret(node: AstNode, env: Environment, call: ToolCall, logger: IAud
         return { annotation, envOut };
     }
 
-    const childrenResult = walkChildren(node, env, call, logger);
+    const childrenResult = walkChildren(node, env, call, logger, registry);
     const childrenAnnotation = aggregateChildren(childrenResult.childAnnotations);
 
     if (childrenAnnotation.decision.action === "deny") {
@@ -157,7 +158,7 @@ function interpret(node: AstNode, env: Environment, call: ToolCall, logger: IAud
 // ToolCall, initialises env0 from the call's cwd, runs the full interpreter pass, and
 // returns the root decision. A root abstain (which should not occur in practice) is
 // promoted to ask as a safe default.
-export function decide(call: ToolCall, logger: IAuditLogger): Decision {
+export function decide(call: ToolCall, logger: IAuditLogger, registry: IRuleRegistry): Decision {
     const timestamp = toLocalISOString(new Date());
 
     logger.log({
@@ -175,7 +176,7 @@ export function decide(call: ToolCall, logger: IAuditLogger): Decision {
         env: {},
     };
 
-    const result = interpret(root, env0, call, logger);
+    const result = interpret(root, env0, call, logger, registry);
     let decision = result.annotation.decision;
 
     if (decision.action === "abstain") {

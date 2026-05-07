@@ -1,6 +1,6 @@
 import { watchFile } from "fs";
 import { AstNode, Environment, Rule, Annotation, ToolCall, IRunRulesResult, rank } from "./types";
-import { IAuditLogger, toLocalISOString } from "./audit-log";
+import { IAuditLogger, toLocalISOString, logConfigLoad } from "./audit-log";
 import { expandCommandOptions, describeNode } from "./build-ast";
 
 // IRuleLayer is the interface implemented by every layer in the registry.
@@ -107,15 +107,18 @@ export class RuleLayer implements IRuleLayer {
 
 // FileLayer watches a YAML config file and reloads its rules whenever the file changes.
 // fs.watchFile (polling-based) is used so the watcher works even when the file does not exist.
+// Each load (initial and subsequent reloads) is recorded to the supplied audit logger.
 export class FileLayer implements IRuleLayer {
     // The current compiled rule list, refreshed on file change.
     private _rules: Rule[];
 
-    constructor(loadFn: () => Rule[], filePath: string | undefined) {
+    constructor(loadFn: () => Rule[], filePath: string | undefined, displayPath: string, logger: IAuditLogger) {
         this._rules = loadFn();
+        logConfigLoad(logger, displayPath, "loaded", this._rules.length);
         if (filePath !== undefined) {
             watchFile(filePath, { persistent: false, interval: 100 }, () => {
                 this._rules = loadFn();
+                logConfigLoad(logger, displayPath, "reloaded", this._rules.length);
             });
         }
     }
@@ -129,7 +132,7 @@ export class FileLayer implements IRuleLayer {
 // persistent env updates between layers. Deny short-circuits across layers.
 export class RuleRegistry implements IRuleRegistry {
     // The ordered list of layers this registry delegates to.
-    private _layers: IRuleLayer[];
+    private readonly _layers: IRuleLayer[];
 
     constructor(layers: IRuleLayer[]) {
         this._layers = layers;
@@ -182,10 +185,5 @@ export class RuleRegistry implements IRuleRegistry {
             envUpdate: (environment: Environment) =>
                 capturedPersistentEnv !== null ? capturedPersistentEnv : environment,
         };
-    }
-
-    // setLayersForTesting replaces the layer list. Used only in unit tests.
-    setLayersForTesting(layers: IRuleLayer[]): void {
-        this._layers = layers;
     }
 }

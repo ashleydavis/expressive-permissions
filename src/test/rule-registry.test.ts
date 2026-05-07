@@ -1,8 +1,45 @@
-import { mkdirSync, writeFileSync, rmSync, unwatchFile } from "fs";
+import { mkdirSync, writeFileSync, rmSync, unwatchFile, utimesSync } from "fs";
 import { join } from "path";
 import { RuleLayer, FileLayer, RuleRegistry, IRuleLayer } from "../rule-registry";
-import { NullAuditLogger } from "../audit-log";
+import { NullAuditLogger, IAuditLogger, IAuditLogEntry, IConfigLoadEntry } from "../audit-log";
 import { AstNode, Environment, Rule, RuleOutcome, ToolCall, ABSTAIN } from "../types";
+
+// CapturingLogger records every audit entry so tests can assert on what FileLayer logs.
+class CapturingLogger implements IAuditLogger {
+    // The list of entries received in the order they were logged.
+    public readonly entries: IAuditLogEntry[] = [];
+
+    log(entry: IAuditLogEntry): void {
+        this.entries.push(entry);
+    }
+}
+
+// triggerReload modifies the watched file in a way that fs.watchFile will reliably notice.
+// The 150ms upfront delay gives the watcher's stat-poll loop (100ms interval) time to
+// establish its baseline before we mutate the file; otherwise the modification races the
+// initial stat and the watcher captures the post-modification state as its baseline,
+// meaning no subsequent change is detected. The mtime is then bumped a few seconds into
+// the future so the change isn't masked by 1-second filesystem mtime granularity.
+async function triggerReload(filePath: string): Promise<void> {
+    await new Promise<void>((resolve) => setTimeout(resolve, 150));
+    writeFileSync(filePath, `changed-${Date.now()}`);
+    const futureTime = new Date(Date.now() + 5000);
+    utimesSync(filePath, futureTime, futureTime);
+}
+
+// waitFor polls the predicate every pollMs ms and resolves when it returns true, or rejects
+// after timeoutMs. Used to wait for fs.watchFile callbacks (whose timing is not deterministic)
+// instead of sleeping a fixed amount.
+async function waitFor(predicate: () => boolean, timeoutMs: number, pollMs: number): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        if (predicate()) {
+            return;
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, pollMs));
+    }
+    throw new Error(`waitFor: predicate did not become true within ${timeoutMs}ms`);
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -104,13 +141,13 @@ test("RuleLayer: envUpdate returns base env when no persistent update", () => {
 // ---------------------------------------------------------------------------
 
 test("FileLayer: loads rules immediately from loadFn", () => {
-    const layer = new FileLayer(() => [allowRule], undefined);
+    const layer = new FileLayer(() => [allowRule], undefined, "test.yaml", new NullAuditLogger());
     const result = layer.runRules(makeReadNode("/foo"), makeEnv(), makeReadCall("/foo"), new NullAuditLogger());
     expect(result.annotation.decision.action).toBe("allow");
 });
 
 test("FileLayer: undefined filePath still loads rules", () => {
-    const layer = new FileLayer(() => [denyRule], undefined);
+    const layer = new FileLayer(() => [denyRule], undefined, "test.yaml", new NullAuditLogger());
     const result = layer.runRules(makeReadNode("/foo"), makeEnv(), makeReadCall("/foo"), new NullAuditLogger());
     expect(result.annotation.decision.action).toBe("deny");
 });
@@ -127,17 +164,56 @@ test("FileLayer: reloads rules when file changes", async () => {
         return callCount === 1 ? [allowRule] : [denyRule];
     };
 
-    const layer = new FileLayer(loadFn, filePath);
+    const layer = new FileLayer(loadFn, filePath, "test.yaml", new NullAuditLogger());
     expect(callCount).toBe(1);
 
     const beforeResult = layer.runRules(makeReadNode("/foo"), makeEnv(), makeReadCall("/foo"), new NullAuditLogger());
     expect(beforeResult.annotation.decision.action).toBe("allow");
 
-    writeFileSync(filePath, "changed");
-    await new Promise<void>((resolve) => setTimeout(resolve, 200));
+    await triggerReload(filePath);
+    await waitFor(() => callCount >= 2, 5000, 50);
 
     const afterResult = layer.runRules(makeReadNode("/foo"), makeEnv(), makeReadCall("/foo"), new NullAuditLogger());
     expect(afterResult.annotation.decision.action).toBe("deny");
+
+    unwatchFile(filePath);
+    rmSync(tmpDir, { recursive: true, force: true });
+});
+
+test("FileLayer: logs a config_load 'loaded' entry on initial construction", () => {
+    const recordingLogger = new CapturingLogger();
+    new FileLayer(() => [allowRule, denyRule], undefined, "~/.claude/permissions.yaml", recordingLogger);
+    const configEntries = recordingLogger.entries.filter((entry: IAuditLogEntry) => entry.type === "config_load") as IConfigLoadEntry[];
+    expect(configEntries.length).toBe(1);
+    expect(configEntries[0].event).toBe("loaded");
+    expect(configEntries[0].filePath).toBe("~/.claude/permissions.yaml");
+    expect(configEntries[0].ruleCount).toBe(2);
+});
+
+test("FileLayer: logs a config_load 'reloaded' entry when watched file changes", async () => {
+    const tmpDir = join("/tmp", `rule-registry-reload-${Date.now()}`);
+    mkdirSync(tmpDir, { recursive: true });
+    const filePath = join(tmpDir, "permissions.yaml");
+    writeFileSync(filePath, "initial");
+    const recordingLogger = new CapturingLogger();
+
+    let callCount = 0;
+    const loadFn = (): Rule[] => {
+        callCount++;
+        return callCount === 1 ? [allowRule] : [allowRule, denyRule];
+    };
+
+    new FileLayer(loadFn, filePath, ".claude/permissions.yaml", recordingLogger);
+    await triggerReload(filePath);
+    await waitFor(() => callCount >= 2, 5000, 50);
+
+    const configEntries = recordingLogger.entries.filter((entry: IAuditLogEntry) => entry.type === "config_load") as IConfigLoadEntry[];
+    expect(configEntries.length).toBe(2);
+    expect(configEntries[0].event).toBe("loaded");
+    expect(configEntries[0].ruleCount).toBe(1);
+    expect(configEntries[1].event).toBe("reloaded");
+    expect(configEntries[1].filePath).toBe(".claude/permissions.yaml");
+    expect(configEntries[1].ruleCount).toBe(2);
 
     unwatchFile(filePath);
     rmSync(tmpDir, { recursive: true, force: true });
@@ -207,9 +283,3 @@ test("RuleRegistry: strictest-wins across layers", () => {
     expect(result.annotation.decision.action).toBe("ask");
 });
 
-test("RuleRegistry: setLayersForTesting replaces layers", () => {
-    const registry = new RuleRegistry([new RuleLayer([allowRule])]);
-    registry.setLayersForTesting([new RuleLayer([denyRule])]);
-    const result = registry.runRules(makeReadNode("/foo"), makeEnv(), makeReadCall("/foo"), new NullAuditLogger());
-    expect(result.annotation.decision.action).toBe("deny");
-});

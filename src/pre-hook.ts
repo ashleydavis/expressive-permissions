@@ -1,7 +1,11 @@
+import { join } from "path";
 import { decide } from "./interpret";
 import { createLogger } from "./audit-log";
 import { ToolCall } from "./types";
 import { resolveDebugLogPath, appendDebugBlock, logDebugError, IDebugField } from "./debug-log";
+import { RuleLayer, FileLayer, RuleRegistry } from "./rule-registry";
+import { builtinRules } from "./rules";
+import { loadHomeConfigRules, loadProjectConfigRules } from "./load-config";
 
 // Abort timer: kills the process if the hook takes longer than 5 seconds.
 const abortTimer: NodeJS.Timeout = setTimeout(() => process.exit(1), 5000);
@@ -37,7 +41,16 @@ export async function runHook(): Promise<void> {
             { key: "process.env", value: process.env },
         ]);
         const logger = createLogger(projectDir, new Date());
-        const decision = decide(call, logger);
+        const homeFilePath = process.env["HOME"] !== undefined
+            ? join(process.env["HOME"], ".claude", "permissions.yaml")
+            : undefined;
+        const projectFilePath = join(projectDir, ".claude", "permissions.yaml");
+        const registry = new RuleRegistry([
+            new RuleLayer(builtinRules),
+            new FileLayer(loadHomeConfigRules, homeFilePath, "~/.claude/permissions.yaml", logger),
+            new FileLayer(loadProjectConfigRules, projectFilePath, ".claude/permissions.yaml", logger),
+        ]);
+        const decision = decide(call, logger, registry);
         const permissionDecision = decision.action;
         const permissionDecisionReason = "reason" in decision ? decision.reason : undefined;
         const exitFields: IDebugField[] = [{ key: "decision", value: permissionDecision }];

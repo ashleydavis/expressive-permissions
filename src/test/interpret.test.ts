@@ -1,12 +1,11 @@
-import { decide, isLeaf, aggregateChildren, combine } from "../interpret";
+import { decide as decideWithRegistry, isLeaf, aggregateChildren, combine } from "../interpret";
 import { expandToken, expandCommandOptions, describeNode } from "../build-ast";
 import { NullAuditLogger, IAuditLogEntry, IAuditLogger, IRuleMatchEntry } from "../audit-log";
-import { registry } from "../rules";
-import { RuleLayer } from "../rule-registry";
+import { RuleLayer, RuleRegistry } from "../rule-registry";
 import { cdRule } from "../rules/builtin/cd";
 import { envPrefixRule } from "../rules/builtin/env-prefix";
 import { envSetRule } from "../rules/builtin/env-set";
-import { AstNode, Environment, Rule, RuleOutcome, ToolCall, ABSTAIN, rank } from "../types";
+import { AstNode, Decision, Environment, Rule, RuleOutcome, ToolCall, ABSTAIN, rank } from "../types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -53,8 +52,14 @@ const testRules: Rule[] = [];
 
 beforeEach(() => {
     testRules.length = 0;
-    registry.setLayersForTesting([new RuleLayer(testRules)]);
 });
+
+// decide wraps the production decide() entry point and injects a fresh RuleRegistry built
+// from the current testRules. Tests mutate testRules then call decide(...) like before.
+function decide(call: ToolCall, logger: IAuditLogger): Decision {
+    const testRegistry = new RuleRegistry([new RuleLayer(testRules)]);
+    return decideWithRegistry(call, logger, testRegistry);
+}
 
 // ---------------------------------------------------------------------------
 // Leaf default

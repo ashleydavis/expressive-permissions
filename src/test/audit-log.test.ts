@@ -15,6 +15,10 @@ import {
     IRuleMatchEntry,
     IAggregationEntry,
     IToolExecutionEntry,
+    IConfigLoadEntry,
+    IAuditLogEntry,
+    IAuditLogger,
+    logConfigLoad,
 } from "../audit-log";
 
 // makeDate builds a local-time Date from explicit year/month(1-based)/day/hour components.
@@ -219,6 +223,38 @@ test("FileAuditLogger.log appends a second entry on a new line without overwriti
     }
 });
 
+// RecordingLogger captures every audit entry passed to it. Used in unit tests in place of a
+// real FileAuditLogger so we can inspect the payload directly.
+class RecordingLogger implements IAuditLogger {
+    // The list of entries received in the order they were logged.
+    public readonly entries: IAuditLogEntry[] = [];
+
+    log(entry: IAuditLogEntry): void {
+        this.entries.push(entry);
+    }
+}
+
+test("logConfigLoad writes a config_load entry to the supplied logger", () => {
+    const recordingLogger = new RecordingLogger();
+    logConfigLoad(recordingLogger, "~/.claude/permissions.yaml", "loaded", 4);
+    expect(recordingLogger.entries.length).toBe(1);
+    const entry = recordingLogger.entries[0] as IConfigLoadEntry;
+    expect(entry.type).toBe("config_load");
+    expect(entry.event).toBe("loaded");
+    expect(entry.filePath).toBe("~/.claude/permissions.yaml");
+    expect(entry.ruleCount).toBe(4);
+    expect(typeof entry.timestamp).toBe("string");
+});
+
+test("logConfigLoad with reloaded event records RELOADED on the supplied logger", () => {
+    const recordingLogger = new RecordingLogger();
+    logConfigLoad(recordingLogger, ".claude/permissions.yaml", "reloaded", 2);
+    const entry = recordingLogger.entries[0] as IConfigLoadEntry;
+    expect(entry.event).toBe("reloaded");
+    expect(entry.filePath).toBe(".claude/permissions.yaml");
+    expect(entry.ruleCount).toBe(2);
+});
+
 test("NullAuditLogger.log does not throw and writes nothing", () => {
     const logger = new NullAuditLogger();
     const entry: IFinalDecisionEntry = {
@@ -413,6 +449,50 @@ test("formatTextEntry tool_execution with isError true appends ERROR suffix", ()
         isError: true,
     };
     expect(formatTextEntry(entry)).toBe('10:23:01  EXECUTE  Bash      "rm -rf /" [ERROR]');
+});
+
+test("formatTextEntry config_load loaded shows CONFIG, event, path, and rule count", () => {
+    const entry: IConfigLoadEntry = {
+        type: "config_load",
+        timestamp: "2025-06-15T10:23:01.000+10:00",
+        event: "loaded",
+        filePath: "~/.claude/permissions.yaml",
+        ruleCount: 7,
+    };
+    expect(formatTextEntry(entry)).toBe("10:23:01  CONFIG             LOADED ~/.claude/permissions.yaml (7 rules)");
+});
+
+test("formatTextEntry config_load reloaded shows RELOADED event", () => {
+    const entry: IConfigLoadEntry = {
+        type: "config_load",
+        timestamp: "2025-06-15T10:23:01.000+10:00",
+        event: "reloaded",
+        filePath: ".claude/permissions.yaml",
+        ruleCount: 3,
+    };
+    expect(formatTextEntry(entry)).toBe("10:23:01  CONFIG             RELOADED .claude/permissions.yaml (3 rules)");
+});
+
+test("formatTextEntry config_load with one rule uses singular 'rule'", () => {
+    const entry: IConfigLoadEntry = {
+        type: "config_load",
+        timestamp: "2025-06-15T10:23:01.000+10:00",
+        event: "loaded",
+        filePath: ".claude/permissions.yaml",
+        ruleCount: 1,
+    };
+    expect(formatTextEntry(entry)).toBe("10:23:01  CONFIG             LOADED .claude/permissions.yaml (1 rule)");
+});
+
+test("formatTextEntry config_load with zero rules uses plural 'rules'", () => {
+    const entry: IConfigLoadEntry = {
+        type: "config_load",
+        timestamp: "2025-06-15T10:23:01.000+10:00",
+        event: "loaded",
+        filePath: ".claude/permissions.yaml",
+        ruleCount: 0,
+    };
+    expect(formatTextEntry(entry)).toBe("10:23:01  CONFIG             LOADED .claude/permissions.yaml (0 rules)");
 });
 
 test("formatTextEntry tool_execution with file_path input uses path as summary", () => {
