@@ -77,11 +77,18 @@ describe("parseBash", () => {
             expect(cmd.cmd).toBe("commit");
         });
 
-        test("short flag without equals keeps value as positional", () => {
+        test("single-char short flag consumes following non-flag token as value", () => {
             const node = parseBash("git commit -m fix");
             const cmd = expectCommand(node, "git");
-            expect(cmd.options).toEqual({ m: true });
-            expect(cmd.cmd).toEqual(["commit", "fix"]);
+            expect(cmd.options).toEqual({ m: "fix" });
+            expect(cmd.cmd).toBe("commit");
+        });
+
+        test("git -C consumes following path as its value, not as positional", () => {
+            const node = parseBash("git -C /home/ash/tickets/arcktl-versions-6690/arkctl status -sb");
+            const cmd = expectCommand(node, "git");
+            expect(cmd.options).toEqual({ C: "/home/ash/tickets/arcktl-versions-6690/arkctl", s: true, b: true });
+            expect(cmd.cmd).toBe("status");
         });
 
         test("double-quoted positional", () => {

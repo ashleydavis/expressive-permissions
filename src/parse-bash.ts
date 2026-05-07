@@ -200,7 +200,18 @@ function parseArgv(argTokens: string[]): IArgvResult {
             const eqIdx = rest.indexOf("=");
             if (eqIdx !== -1) {
                 options[rest.substring(0, eqIdx)] = rest.substring(eqIdx + 1);
-            } else {
+            }
+            else if (rest.length === 1) {
+                const next = argTokens[index + 1];
+                if (next !== undefined && !next.startsWith("-")) {
+                    options[rest] = next;
+                    index++;
+                }
+                else {
+                    options[rest] = true;
+                }
+            }
+            else {
                 for (const ch of rest) {
                     options[ch] = true;
                 }

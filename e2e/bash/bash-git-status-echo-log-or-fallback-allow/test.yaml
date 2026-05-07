@@ -1,0 +1,20 @@
+description: "bash: git status && echo && git log with stderr redirect and || fallback all allow"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: 'git -C /home/ash/tickets/arcktl-versions-6690/arkctl status -sb && echo "---" && git -C /home/ash/tickets/arcktl-versions-6690/arkctl log --oneline origin/main..HEAD 2>/dev/null || git -C /home/ash/tickets/arcktl-versions-6690/arkctl log --oneline -10'
+  cwd: /home/ash/tickets/arcktl-versions-6690/arkctl
+
+rules:
+  bash:
+    git:
+      status:
+        decide: allow
+      log:
+        decide: allow
+    echo:
+      decide: allow
+
+expected:
+  decision: allow
