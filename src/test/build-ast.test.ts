@@ -1,4 +1,4 @@
-import { buildAst } from "../build-ast";
+import { buildAst, expandToken, expandCommandOptions, describeNode } from "../build-ast";
 import { ToolCall, Bash, Read, Write, Edit, MultiEdit, OtherTool } from "../types";
 
 describe("buildAst", () => {
@@ -137,5 +137,61 @@ describe("buildAst", () => {
         const node = result as OtherTool;
         expect(node.tool_name).toBe("mcp__github__list_repos");
         expect(node.tool_input).toEqual({ owner: "octocat" });
+    });
+});
+
+describe("expandToken", () => {
+    test("substitutes $VAR when var exists", () => {
+        expect(expandToken("$FOO", { FOO: "bar" })).toBe("bar");
+    });
+
+    test("substitutes ${VAR} brace syntax", () => {
+        expect(expandToken("${FOO}", { FOO: "bar" })).toBe("bar");
+    });
+
+    test("leaves unknown var as-is", () => {
+        expect(expandToken("$UNKNOWN", {})).toBe("$UNKNOWN");
+    });
+
+    test("returns unchanged string when no vars present", () => {
+        expect(expandToken("hello world", {})).toBe("hello world");
+    });
+});
+
+describe("expandCommandOptions", () => {
+    test("expands binary", () => {
+        const node = { type: "command" as const, binary: "$CMD", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "$CMD" };
+        expect(expandCommandOptions(node, { CMD: "git" }).binary).toBe("git");
+    });
+
+    test("expands positional array element", () => {
+        const node = { type: "command" as const, binary: "git", options: {}, cmd: ["add", "$FILE"], envPrefix: {}, redirects: [], raw: "git add $FILE" };
+        expect(expandCommandOptions(node, { FILE: "foo.ts" }).cmd).toEqual(["add", "foo.ts"]);
+    });
+
+    test("preserves raw field unchanged", () => {
+        const node = { type: "command" as const, binary: "$CMD", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "original $CMD" };
+        expect(expandCommandOptions(node, { CMD: "git" }).raw).toBe("original $CMD");
+    });
+});
+
+describe("describeNode", () => {
+    test("command node returns raw", () => {
+        const node = { type: "command" as const, binary: "ls", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "ls -la" };
+        expect(describeNode(node)).toBe("ls -la");
+    });
+
+    test("read node returns file_path", () => {
+        expect(describeNode({ type: "read", file_path: "/etc/hosts" })).toBe("/etc/hosts");
+    });
+
+    test("other node returns tool_name", () => {
+        expect(describeNode({ type: "other", tool_name: "Grep", tool_input: {} })).toBe("Grep");
+    });
+
+    test("binop node rebuilds left op right", () => {
+        const left = { type: "command" as const, binary: "a", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "a" };
+        const right = { type: "command" as const, binary: "b", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "b" };
+        expect(describeNode({ type: "binop", op: "&&", left, right })).toBe("a && b");
     });
 });

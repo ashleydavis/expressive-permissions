@@ -220,6 +220,31 @@ export interface Rule {
 }
 
 
+// Numeric priority table for strictest-wins comparisons: abstain(0) < allow(1) < ask(2) < deny(3).
+const RANK: Record<string, number> = {
+    abstain: 0,
+    allow: 1,
+    ask: 2,
+    deny: 3,
+};
+
+// rank returns the numeric priority of a decision action for strictest-wins comparisons.
+export function rank(decision: Decision): number {
+    return RANK[decision.action] ?? 0;
+}
+
+// Result returned by runRules for a single node after iterating the full rule list.
+export interface IRunRulesResult {
+    // The strictest-wins annotation produced by all rules at this node.
+    annotation: Annotation;
+    // Applies all persistent env updates from this node's rules to a base environment.
+    // Returns the base unchanged when no rule produced a persistent env update.
+    envUpdate: (environment: Environment) => Environment;
+    // The env after all rules ran at this node, including both persistent and scoped updates.
+    // Used by RuleRegistry to thread env between layers for the same node evaluation.
+    nodeRunningEnv: Environment;
+}
+
 // The raw stdin JSON payload sent by Claude Code's PostToolUse hook
 export interface IPostToolUseCall {
     // The tool name as reported by Claude Code (e.g. "Bash", "Read", "Write")

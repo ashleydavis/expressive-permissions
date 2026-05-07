@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync, rmSync, mkdtempSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { loadConfigRules, validateConfig, resolveCwdPattern, resolveEntryCwdPatterns, resolveRelativeCwdPatterns, aggregateOutcomes, buildBashScopedRule, buildFileScopedRule, notFieldsAllMatch, evaluateFileField, matchesFileField, lineOfOffset, annotateLines, IYamlEntry, IYamlConfig, INotFields, IFileMatch, IConfigError } from "../load-config";
+import { loadConfigRules, loadConfigRulesFromFile, loadHomeConfigRules, loadProjectConfigRules, validateConfig, resolveCwdPattern, resolveEntryCwdPatterns, resolveRelativeCwdPatterns, aggregateOutcomes, buildBashScopedRule, buildFileScopedRule, notFieldsAllMatch, evaluateFileField, matchesFileField, lineOfOffset, annotateLines, IYamlEntry, IYamlConfig, INotFields, IFileMatch, IConfigError } from "../load-config";
 import { parseDocument } from "yaml";
 import { Rule, RuleOutcome, AstNode, Environment, ToolCall, Command } from "../types";
 
@@ -3540,4 +3540,98 @@ test("annotateLines stamps correct line for nested subcommand entry", () => {
     const gitEntry: IYamlEntry = bashSection["git"];
     const diffEntry: IYamlEntry = gitEntry["diff"] as IYamlEntry;
     expect(diffEntry.sourceLine).toBe(4);
+});
+
+// ---------------------------------------------------------------------------
+// loadConfigRulesFromFile
+// ---------------------------------------------------------------------------
+
+test("loadConfigRulesFromFile: returns [] when file does not exist", () => {
+    const result = loadConfigRulesFromFile("/nonexistent/permissions.yaml", "test", "/nonexistent");
+    expect(result).toEqual([]);
+});
+
+test("loadConfigRulesFromFile: compiles rules from an existing file", () => {
+    const tmpDir = join("/tmp", `load-config-file-test-${Date.now()}`);
+    mkdirSync(tmpDir, { recursive: true });
+    const filePath = join(tmpDir, "permissions.yaml");
+    writeFileSync(filePath, "bash:\n  ls:\n    decide: allow\n", "utf-8");
+    const rules = loadConfigRulesFromFile(filePath, "test.yaml", tmpDir);
+    expect(rules.length).toBeGreaterThan(0);
+    const node = { type: "command" as const, binary: "ls", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "ls" };
+    const env = { cwd: tmpDir, cwdResolved: true, env: {} };
+    const call: ToolCall = { tool_name: "Bash", tool_input: { command: "ls" }, cwd: tmpDir };
+    const result = rules[0](node, env, call);
+    expect(result.decision.action).toBe("allow");
+    rmSync(tmpDir, { recursive: true, force: true });
+});
+
+// ---------------------------------------------------------------------------
+// loadHomeConfigRules
+// ---------------------------------------------------------------------------
+
+test("loadHomeConfigRules: returns [] when HOME is unset", () => {
+    const origHome = process.env["HOME"];
+    delete process.env["HOME"];
+    const result = loadHomeConfigRules();
+    if (origHome !== undefined) { process.env["HOME"] = origHome; }
+    expect(result).toEqual([]);
+});
+
+test("loadHomeConfigRules: returns [] when home permissions.yaml is absent", () => {
+    const tmpDir = join("/tmp", `load-home-test-${Date.now()}`);
+    mkdirSync(join(tmpDir, ".claude"), { recursive: true });
+    const origHome = process.env["HOME"];
+    process.env["HOME"] = tmpDir;
+    const result = loadHomeConfigRules();
+    if (origHome !== undefined) { process.env["HOME"] = origHome; } else { delete process.env["HOME"]; }
+    rmSync(tmpDir, { recursive: true, force: true });
+    expect(result).toEqual([]);
+});
+
+test("loadHomeConfigRules: loads rules from home permissions.yaml", () => {
+    const tmpDir = join("/tmp", `load-home-test-${Date.now()}`);
+    mkdirSync(join(tmpDir, ".claude"), { recursive: true });
+    writeFileSync(join(tmpDir, ".claude", "permissions.yaml"), "bash:\n  cat:\n    decide: allow\n", "utf-8");
+    const origHome = process.env["HOME"];
+    process.env["HOME"] = tmpDir;
+    const rules = loadHomeConfigRules();
+    if (origHome !== undefined) { process.env["HOME"] = origHome; } else { delete process.env["HOME"]; }
+    rmSync(tmpDir, { recursive: true, force: true });
+    expect(rules.length).toBeGreaterThan(0);
+});
+
+// ---------------------------------------------------------------------------
+// loadProjectConfigRules
+// ---------------------------------------------------------------------------
+
+test("loadProjectConfigRules: returns [] when CLAUDE_PROJECT_DIR is unset", () => {
+    const origProject = process.env["CLAUDE_PROJECT_DIR"];
+    delete process.env["CLAUDE_PROJECT_DIR"];
+    const result = loadProjectConfigRules();
+    if (origProject !== undefined) { process.env["CLAUDE_PROJECT_DIR"] = origProject; }
+    expect(result).toEqual([]);
+});
+
+test("loadProjectConfigRules: returns [] when project permissions.yaml is absent", () => {
+    const tmpDir = join("/tmp", `load-project-test-${Date.now()}`);
+    mkdirSync(join(tmpDir, ".claude"), { recursive: true });
+    const origProject = process.env["CLAUDE_PROJECT_DIR"];
+    process.env["CLAUDE_PROJECT_DIR"] = tmpDir;
+    const result = loadProjectConfigRules();
+    if (origProject !== undefined) { process.env["CLAUDE_PROJECT_DIR"] = origProject; } else { delete process.env["CLAUDE_PROJECT_DIR"]; }
+    rmSync(tmpDir, { recursive: true, force: true });
+    expect(result).toEqual([]);
+});
+
+test("loadProjectConfigRules: loads rules from project permissions.yaml", () => {
+    const tmpDir = join("/tmp", `load-project-test-${Date.now()}`);
+    mkdirSync(join(tmpDir, ".claude"), { recursive: true });
+    writeFileSync(join(tmpDir, ".claude", "permissions.yaml"), "bash:\n  ls:\n    decide: deny\n", "utf-8");
+    const origProject = process.env["CLAUDE_PROJECT_DIR"];
+    process.env["CLAUDE_PROJECT_DIR"] = tmpDir;
+    const rules = loadProjectConfigRules();
+    if (origProject !== undefined) { process.env["CLAUDE_PROJECT_DIR"] = origProject; } else { delete process.env["CLAUDE_PROJECT_DIR"]; }
+    rmSync(tmpDir, { recursive: true, force: true });
+    expect(rules.length).toBeGreaterThan(0);
 });

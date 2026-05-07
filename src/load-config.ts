@@ -1078,6 +1078,50 @@ function compileConfig(config: IYamlConfig): Rule[] {
     return compiledRules;
 }
 
+// loadConfigRulesFromFile reads and compiles a single YAML permissions file.
+// displayFile is the path shown in log output. baseDir is used to resolve relative cwd patterns.
+// Returns [] if the file does not exist.
+export function loadConfigRulesFromFile(filePath: string, displayFile: string, baseDir: string): Rule[] {
+    const config = readYamlFile(filePath, displayFile);
+    if (config === null) {
+        return [];
+    }
+    resolveRelativeCwdPatterns(config, baseDir);
+    const configErrors = validateConfig(config);
+    for (const configError of configErrors) {
+        process.stderr.write(`[CONFIG ERROR] ${configError.path}: ${configError.message}\n`);
+    }
+    return compileConfig(config);
+}
+
+// loadHomeConfigRules loads rules from $HOME/.claude/permissions.yaml.
+// Returns [] if HOME is unset or the file does not exist.
+export function loadHomeConfigRules(): Rule[] {
+    const homeDir = process.env["HOME"];
+    if (homeDir === undefined) {
+        return [];
+    }
+    return loadConfigRulesFromFile(
+        join(homeDir, ".claude", "permissions.yaml"),
+        "~/.claude/permissions.yaml",
+        homeDir
+    );
+}
+
+// loadProjectConfigRules loads rules from $CLAUDE_PROJECT_DIR/.claude/permissions.yaml.
+// Returns [] if CLAUDE_PROJECT_DIR is unset or the file does not exist.
+export function loadProjectConfigRules(): Rule[] {
+    const projectDir = process.env["CLAUDE_PROJECT_DIR"];
+    if (projectDir === undefined) {
+        return [];
+    }
+    return loadConfigRulesFromFile(
+        join(projectDir, ".claude", "permissions.yaml"),
+        ".claude/permissions.yaml",
+        projectDir
+    );
+}
+
 // Loads .claude/permissions.yaml from home and project dirs, merges (project beats home),
 // compiles each entry into Rule closures, and returns the combined list.
 // Returns [] when env vars are absent or files are missing.

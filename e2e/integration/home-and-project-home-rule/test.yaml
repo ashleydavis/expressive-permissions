@@ -1,0 +1,20 @@
+description: "both configs loaded simultaneously: rule from home config allows cat"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "cat /etc/hosts"
+  cwd: /home/user/project
+
+home_rules:
+  bash:
+    cat:
+      decide: allow
+
+rules:
+  bash:
+    ls:
+      decide: allow
+
+expected:
+  decision: allow

@@ -58,6 +58,8 @@ interface ITestCase {
     input: ITestCaseInput;
     // Written verbatim as project/.claude/permissions.yaml for the test run
     rules: Record<string, unknown>;
+    // Optional: written verbatim as home/.claude/permissions.yaml for the test run
+    home_rules?: Record<string, unknown>;
     // The expected outputs from hook.ts
     expected: ITestCaseExpected;
     // Optional PostToolUse hook input to feed to post-hook.ts after the PreToolUse assertions
@@ -135,6 +137,11 @@ function runTest(testFilePath: string): boolean {
     cpSync(join(REPO_ROOT, "e2e", "fixtures"), join(projectDir, "fixtures"), { recursive: true });
 
     writeFileSync(join(claudeDir, "permissions.yaml"), stringify(testCase.rules));
+
+    if (testCase.home_rules !== undefined) {
+        mkdirSync(join(homeDir, ".claude"), { recursive: true });
+        writeFileSync(join(homeDir, ".claude", "permissions.yaml"), stringify(testCase.home_rules));
+    }
 
         const inputJson = JSON.stringify(testCase.input);
 

@@ -1,10 +1,12 @@
-import { decide, expandToken, expandCommandOptions, rank, isLeaf, aggregateChildren, combine, describeNode } from "../interpret";
+import { decide, isLeaf, aggregateChildren, combine } from "../interpret";
+import { expandToken, expandCommandOptions, describeNode } from "../build-ast";
 import { NullAuditLogger, IAuditLogEntry, IAuditLogger, IRuleMatchEntry } from "../audit-log";
-import { rules } from "../rules";
+import { registry } from "../rules";
+import { RuleLayer } from "../rule-registry";
 import { cdRule } from "../rules/builtin/cd";
 import { envPrefixRule } from "../rules/builtin/env-prefix";
 import { envSetRule } from "../rules/builtin/env-set";
-import { AstNode, Environment, Rule, RuleOutcome, ToolCall, ABSTAIN } from "../types";
+import { AstNode, Environment, Rule, RuleOutcome, ToolCall, ABSTAIN, rank } from "../types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -47,8 +49,11 @@ function nodeMatchRule(
     };
 }
 
+const testRules: Rule[] = [];
+
 beforeEach(() => {
-    rules.length = 0;
+    testRules.length = 0;
+    registry.setLayersForTesting([new RuleLayer(testRules)]);
 });
 
 // ---------------------------------------------------------------------------
@@ -56,7 +61,7 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 test("leaf default: all rules abstain → ask", () => {
-    rules.push(spyRule(ABSTAIN));
+    testRules.push(spyRule(ABSTAIN));
     const result = decide(makeBashCall("ls"), new NullAuditLogger());
     expect(result.action).toBe("ask");
 });
@@ -67,19 +72,19 @@ test("leaf default: no rules → ask", () => {
 });
 
 test("leaf default: allow rule → allow", () => {
-    rules.push(spyRule({ decision: { action: "allow" } }));
+    testRules.push(spyRule({ decision: { action: "allow" } }));
     const result = decide(makeBashCall("ls"), new NullAuditLogger());
     expect(result.action).toBe("allow");
 });
 
 test("leaf default: ask rule → ask", () => {
-    rules.push(spyRule({ decision: { action: "ask" } }));
+    testRules.push(spyRule({ decision: { action: "ask" } }));
     const result = decide(makeBashCall("ls"), new NullAuditLogger());
     expect(result.action).toBe("ask");
 });
 
 test("leaf default: deny rule → deny", () => {
-    rules.push(spyRule({ decision: { action: "deny", reason: "blocked" } }));
+    testRules.push(spyRule({ decision: { action: "deny", reason: "blocked" } }));
     const result = decide(makeBashCall("ls"), new NullAuditLogger());
     expect(result.action).toBe("deny");
 });
@@ -89,7 +94,7 @@ test("leaf default: deny rule → deny", () => {
 // ---------------------------------------------------------------------------
 
 test("intermediate aggregation: any child deny wins", () => {
-    rules.push(nodeMatchRule(
+    testRules.push(nodeMatchRule(
         (node: AstNode) => node.type === "command" && (node as { binary?: string }).binary === "rm",
         { decision: { action: "deny", reason: "no rm" } }
     ));
@@ -98,13 +103,13 @@ test("intermediate aggregation: any child deny wins", () => {
 });
 
 test("intermediate aggregation: all children allow → allow", () => {
-    rules.push(spyRule({ decision: { action: "allow" } }));
+    testRules.push(spyRule({ decision: { action: "allow" } }));
     const result = decide(makeBashCall("ls && pwd"), new NullAuditLogger());
     expect(result.action).toBe("allow");
 });
 
 test("intermediate aggregation: all allow + abstain own rule → allow", () => {
-    rules.push(nodeMatchRule(
+    testRules.push(nodeMatchRule(
         (node: AstNode) => node.type === "command",
         { decision: { action: "allow" } }
     ));
@@ -114,11 +119,11 @@ test("intermediate aggregation: all allow + abstain own rule → allow", () => {
 });
 
 test("intermediate aggregation: all allow + ask own rule → ask", () => {
-    rules.push(nodeMatchRule(
+    testRules.push(nodeMatchRule(
         (node: AstNode) => node.type === "command",
         { decision: { action: "allow" } }
     ));
-    rules.push(nodeMatchRule(
+    testRules.push(nodeMatchRule(
         (node: AstNode) => node.type === "bash",
         { decision: { action: "ask" } }
     ));
@@ -127,7 +132,7 @@ test("intermediate aggregation: all allow + ask own rule → ask", () => {
 });
 
 test("intermediate aggregation: mixed children + abstain own → ask", () => {
-    rules.push(nodeMatchRule(
+    testRules.push(nodeMatchRule(
         (node: AstNode) => node.type === "command" && (node as { binary?: string }).binary === "ls",
         { decision: { action: "allow" } }
     ));
@@ -137,11 +142,11 @@ test("intermediate aggregation: mixed children + abstain own → ask", () => {
 });
 
 test("intermediate aggregation: mixed children + allow own → allow", () => {
-    rules.push(nodeMatchRule(
+    testRules.push(nodeMatchRule(
         (node: AstNode) => node.type === "command" && (node as { binary?: string }).binary === "ls",
         { decision: { action: "allow" } }
     ));
-    rules.push(nodeMatchRule(
+    testRules.push(nodeMatchRule(
         (node: AstNode) => node.type === "bash",
         { decision: { action: "allow" } }
     ));
@@ -155,12 +160,12 @@ test("intermediate aggregation: mixed children + allow own → allow", () => {
 // ---------------------------------------------------------------------------
 
 test("deny short-circuit: child deny propagates to root", () => {
-    rules.push(nodeMatchRule(
+    testRules.push(nodeMatchRule(
         (node: AstNode) => node.type === "command" && (node as { binary?: string }).binary === "rm",
         { decision: { action: "deny", reason: "blocked rm" } }
     ));
     // Even with an allow at the bash root, child deny wins
-    rules.push(nodeMatchRule(
+    testRules.push(nodeMatchRule(
         (node: AstNode) => node.type === "bash",
         { decision: { action: "allow" } }
     ));
@@ -173,23 +178,23 @@ test("deny short-circuit: child deny propagates to root", () => {
 // ---------------------------------------------------------------------------
 
 test("rule iteration: allow then ask → ask (strictest-wins)", () => {
-    rules.push(spyRule({ decision: { action: "allow" } }));
-    rules.push(spyRule({ decision: { action: "ask" } }));
+    testRules.push(spyRule({ decision: { action: "allow" } }));
+    testRules.push(spyRule({ decision: { action: "ask" } }));
     const result = decide(makeBashCall("ls"), new NullAuditLogger());
     expect(result.action).toBe("ask");
 });
 
 test("rule iteration: ask then allow → ask (ask not downgraded)", () => {
-    rules.push(spyRule({ decision: { action: "ask" } }));
-    rules.push(spyRule({ decision: { action: "allow" } }));
+    testRules.push(spyRule({ decision: { action: "ask" } }));
+    testRules.push(spyRule({ decision: { action: "allow" } }));
     const result = decide(makeBashCall("ls"), new NullAuditLogger());
     expect(result.action).toBe("ask");
 });
 
 test("rule iteration: deny short-circuits remaining rules", () => {
     let secondRuleCalled = false;
-    rules.push(spyRule({ decision: { action: "deny", reason: "first" } }));
-    rules.push(function laterRule(_node: AstNode, _env: Environment): RuleOutcome {
+    testRules.push(spyRule({ decision: { action: "deny", reason: "first" } }));
+    testRules.push(function laterRule(_node: AstNode, _env: Environment): RuleOutcome {
         secondRuleCalled = true;
         return { decision: { action: "allow" } };
     });
@@ -199,8 +204,8 @@ test("rule iteration: deny short-circuits remaining rules", () => {
 });
 
 test("rule iteration: same-rank ties go to latest rule", () => {
-    rules.push(spyRule({ decision: { action: "allow" } }));
-    rules.push(spyRule({ decision: { action: "allow" } }));
+    testRules.push(spyRule({ decision: { action: "allow" } }));
+    testRules.push(spyRule({ decision: { action: "allow" } }));
     // Both allow → allow wins (last one recorded since rank is equal and >=)
     const result = decide(makeBashCall("ls"), new NullAuditLogger());
     expect(result.action).toBe("allow");
@@ -212,13 +217,13 @@ test("rule iteration: same-rank ties go to latest rule", () => {
 
 test("persistent env composition: env update applied even if later rule denies", () => {
     const capturedEnvs: Environment[] = [];
-    rules.push(function envInstaller(_node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function envInstaller(_node: AstNode, env: Environment): RuleOutcome {
         return {
             decision: { action: "abstain" },
             env: { ...env, env: { ...env.env, INSTALLED: "yes" } },
         };
     });
-    rules.push(spyRule({ decision: { action: "deny", reason: "blocked" } }, capturedEnvs));
+    testRules.push(spyRule({ decision: { action: "deny", reason: "blocked" } }, capturedEnvs));
     decide(makeBashCall("ls"), new NullAuditLogger());
     // The spy rule ran after envInstaller, so it should see INSTALLED
     expect(capturedEnvs.length).toBeGreaterThan(0);
@@ -233,7 +238,7 @@ test("scoped env: visible to subsequent rules at same node but not siblings", ()
     const capturedAtSameNode: Environment[] = [];
     const capturedAtSibling: Environment[] = [];
 
-    rules.push(function scopeInstaller(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function scopeInstaller(node: AstNode, env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "ls") {
             return {
                 decision: { action: "abstain" },
@@ -244,7 +249,7 @@ test("scoped env: visible to subsequent rules at same node but not siblings", ()
     });
 
     // Second rule at same node (ls) should see SCOPED
-    rules.push(function checkSameNode(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function checkSameNode(node: AstNode, env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "ls") {
             capturedAtSameNode.push(env);
         }
@@ -252,7 +257,7 @@ test("scoped env: visible to subsequent rules at same node but not siblings", ()
     });
 
     // Rule at sibling node (pwd) should NOT see SCOPED
-    rules.push(function checkSibling(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function checkSibling(node: AstNode, env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "pwd") {
             capturedAtSibling.push(env);
         }
@@ -271,7 +276,7 @@ test("scoped env with persistent env: scopedEnv visible at same node, persistent
     const capturedAtSameNode: Environment[] = [];
     const capturedAtSibling: Environment[] = [];
 
-    rules.push(function dualEnvInstaller(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function dualEnvInstaller(node: AstNode, env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "ls") {
             return {
                 decision: { action: "abstain" },
@@ -282,14 +287,14 @@ test("scoped env with persistent env: scopedEnv visible at same node, persistent
         return ABSTAIN;
     });
 
-    rules.push(function checkAtSameNode(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function checkAtSameNode(node: AstNode, env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "ls") {
             capturedAtSameNode.push(env);
         }
         return ABSTAIN;
     });
 
-    rules.push(function checkAtSibling(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function checkAtSibling(node: AstNode, env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "pwd") {
             capturedAtSibling.push(env);
         }
@@ -310,8 +315,8 @@ test("scoped env with persistent env: scopedEnv visible at same node, persistent
 
 test("$VAR expansion: FOO=bar; git add $FOO — rules at git add see cmd === 'bar'", () => {
     const capturedNodes: AstNode[] = [];
-    rules.push(envSetRule);
-    rules.push(function captureGitAdd(node: AstNode, _env: Environment): RuleOutcome {
+    testRules.push(envSetRule);
+    testRules.push(function captureGitAdd(node: AstNode, _env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "git") {
             capturedNodes.push(node);
         }
@@ -330,8 +335,8 @@ test("$VAR expansion: FOO=bar; git add $FOO — rules at git add see cmd === 'ba
 
 test("$VAR reversed: git add $FOO; FOO=bar — $FOO stays literal at git add time", () => {
     const capturedNodes: AstNode[] = [];
-    rules.push(envSetRule);
-    rules.push(function captureGitAdd(node: AstNode, _env: Environment): RuleOutcome {
+    testRules.push(envSetRule);
+    testRules.push(function captureGitAdd(node: AstNode, _env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "git") {
             capturedNodes.push(node);
         }
@@ -349,8 +354,8 @@ test("$VAR reversed: git add $FOO; FOO=bar — $FOO stays literal at git add tim
 
 test("${VAR} brace syntax expanded: BAR=main; git checkout ${BAR}", () => {
     const capturedNodes: AstNode[] = [];
-    rules.push(envSetRule);
-    rules.push(function captureGit(node: AstNode, _env: Environment): RuleOutcome {
+    testRules.push(envSetRule);
+    testRules.push(function captureGit(node: AstNode, _env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "git") {
             capturedNodes.push(node);
         }
@@ -368,7 +373,7 @@ test("${VAR} brace syntax expanded: BAR=main; git checkout ${BAR}", () => {
 
 test("OS-level vars not expanded: git add $HOME — rules see cmd '$HOME'", () => {
     const capturedNodes: AstNode[] = [];
-    rules.push(function captureGit(node: AstNode, _env: Environment): RuleOutcome {
+    testRules.push(function captureGit(node: AstNode, _env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "git") {
             capturedNodes.push(node);
         }
@@ -390,8 +395,8 @@ test("OS-level vars not expanded: git add $HOME — rules see cmd '$HOME'", () =
 
 test("env threading seq: left env propagates to right", () => {
     const capturedEnvs: Environment[] = [];
-    rules.push(cdRule);
-    rules.push(function captureRm(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(cdRule);
+    testRules.push(function captureRm(node: AstNode, env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "rm") {
             capturedEnvs.push(env);
         }
@@ -406,8 +411,8 @@ test("env threading seq: left env propagates to right", () => {
 
 test("env threading and: left env propagates to right", () => {
     const capturedEnvs: Environment[] = [];
-    rules.push(cdRule);
-    rules.push(function captureRm(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(cdRule);
+    testRules.push(function captureRm(node: AstNode, env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "rm") {
             capturedEnvs.push(env);
         }
@@ -422,8 +427,8 @@ test("env threading and: left env propagates to right", () => {
 
 test("env threading pipe: right side does NOT see cd from left side", () => {
     const capturedEnvs: Environment[] = [];
-    rules.push(cdRule);
-    rules.push(function captureEcho(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(cdRule);
+    testRules.push(function captureEcho(node: AstNode, env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "echo") {
             capturedEnvs.push(env);
         }
@@ -438,8 +443,8 @@ test("env threading pipe: right side does NOT see cd from left side", () => {
 
 test("env threading or: right side does NOT see cd from left side", () => {
     const capturedEnvs: Environment[] = [];
-    rules.push(cdRule);
-    rules.push(function captureEcho(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(cdRule);
+    testRules.push(function captureEcho(node: AstNode, env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "echo") {
             capturedEnvs.push(env);
         }
@@ -458,8 +463,8 @@ test("env threading or: right side does NOT see cd from left side", () => {
 
 test("cwd propagation: absolute cd through &&", () => {
     const capturedEnvs: Environment[] = [];
-    rules.push(cdRule);
-    rules.push(function captureRm(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(cdRule);
+    testRules.push(function captureRm(node: AstNode, env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "rm") {
             capturedEnvs.push(env);
         }
@@ -474,8 +479,8 @@ test("cwd propagation: absolute cd through &&", () => {
 
 test("cwd propagation: relative cd from /home/u", () => {
     const capturedEnvs: Environment[] = [];
-    rules.push(cdRule);
-    rules.push(function captureRm(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(cdRule);
+    testRules.push(function captureRm(node: AstNode, env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "ls") {
             capturedEnvs.push(env);
         }
@@ -489,8 +494,8 @@ test("cwd propagation: relative cd from /home/u", () => {
 
 test("cwd propagation: parent cd from /home/u", () => {
     const capturedEnvs: Environment[] = [];
-    rules.push(cdRule);
-    rules.push(function captureLs(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(cdRule);
+    testRules.push(function captureLs(node: AstNode, env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "ls") {
             capturedEnvs.push(env);
         }
@@ -504,8 +509,8 @@ test("cwd propagation: parent cd from /home/u", () => {
 
 test("cwd propagation: cd reset at pipe — echo sees original cwd", () => {
     const capturedEnvs: Environment[] = [];
-    rules.push(cdRule);
-    rules.push(function captureEcho(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(cdRule);
+    testRules.push(function captureEcho(node: AstNode, env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "echo") {
             capturedEnvs.push(env);
         }
@@ -519,8 +524,8 @@ test("cwd propagation: cd reset at pipe — echo sees original cwd", () => {
 
 test("cwd propagation: cd conservative across || — ls sees original cwd", () => {
     const capturedEnvs: Environment[] = [];
-    rules.push(cdRule);
-    rules.push(function captureLs(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(cdRule);
+    testRules.push(function captureLs(node: AstNode, env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "ls") {
             capturedEnvs.push(env);
         }
@@ -535,8 +540,8 @@ test("cwd propagation: cd conservative across || — ls sees original cwd", () =
 
 test("cwd propagation: unresolvable cd — ls sees cwdResolved false", () => {
     const capturedEnvs: Environment[] = [];
-    rules.push(cdRule);
-    rules.push(function captureLs(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(cdRule);
+    testRules.push(function captureLs(node: AstNode, env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "ls") {
             capturedEnvs.push(env);
         }
@@ -551,8 +556,8 @@ test("cwd propagation: unresolvable cd — ls sees cwdResolved false", () => {
 
 test("cwd propagation: cd no-arg → unresolved", () => {
     const capturedEnvs: Environment[] = [];
-    rules.push(cdRule);
-    rules.push(function captureLs(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(cdRule);
+    testRules.push(function captureLs(node: AstNode, env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "ls") {
             capturedEnvs.push(env);
         }
@@ -566,8 +571,8 @@ test("cwd propagation: cd no-arg → unresolved", () => {
 
 test("cwd propagation: chained cds resolve correctly", () => {
     const capturedEnvs: Environment[] = [];
-    rules.push(cdRule);
-    rules.push(function captureLs(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(cdRule);
+    testRules.push(function captureLs(node: AstNode, env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "ls") {
             capturedEnvs.push(env);
         }
@@ -585,8 +590,8 @@ test("cwd propagation: chained cds resolve correctly", () => {
 
 test("envPrefix: FOO=bar npm test — subsequent rules at same leaf see FOO", () => {
     const capturedEnvs: Environment[] = [];
-    rules.push(envPrefixRule);
-    rules.push(function captureNpm(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(envPrefixRule);
+    testRules.push(function captureNpm(node: AstNode, env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "npm") {
             capturedEnvs.push(env);
         }
@@ -600,8 +605,8 @@ test("envPrefix: FOO=bar npm test — subsequent rules at same leaf see FOO", ()
 
 test("envPrefix: FOO=bar npm test && echo $FOO — echo does NOT see FOO", () => {
     const capturedEnvs: Environment[] = [];
-    rules.push(envPrefixRule);
-    rules.push(function captureEcho(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(envPrefixRule);
+    testRules.push(function captureEcho(node: AstNode, env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "echo") {
             capturedEnvs.push(env);
         }
@@ -618,8 +623,8 @@ test("envPrefix: FOO=bar npm test && echo $FOO — echo does NOT see FOO", () =>
 // ---------------------------------------------------------------------------
 
 test("status aggregation: cd /etc && rm -rf / → deny", () => {
-    rules.push(cdRule);
-    rules.push(nodeMatchRule(
+    testRules.push(cdRule);
+    testRules.push(nodeMatchRule(
         (node: AstNode) => {
             if (node.type !== "command") {
                 return false;
@@ -639,7 +644,7 @@ test("status aggregation: cd /etc && rm -rf / → deny", () => {
 });
 
 test("status aggregation: git status → allow", () => {
-    rules.push(nodeMatchRule(
+    testRules.push(nodeMatchRule(
         (node: AstNode) => {
             if (node.type !== "command") {
                 return false;
@@ -659,7 +664,7 @@ test("status aggregation: git status → allow", () => {
 });
 
 test("status aggregation: git status | wc -l → ask", () => {
-    rules.push(nodeMatchRule(
+    testRules.push(nodeMatchRule(
         (node: AstNode) => {
             if (node.type !== "command") {
                 return false;
@@ -684,7 +689,7 @@ test("status aggregation: git status | wc -l → ask", () => {
 // ---------------------------------------------------------------------------
 
 test("allow override: parent bash-root rule allows, overrides mixed-status children ask", () => {
-    rules.push(nodeMatchRule(
+    testRules.push(nodeMatchRule(
         (node: AstNode) => node.type === "bash",
         { decision: { action: "allow" } }
     ));
@@ -695,8 +700,8 @@ test("allow override: parent bash-root rule allows, overrides mixed-status child
 });
 
 test("ask overrides allow: ask at node blocks a later allow", () => {
-    rules.push(spyRule({ decision: { action: "ask" } }));
-    rules.push(spyRule({ decision: { action: "allow" } }));
+    testRules.push(spyRule({ decision: { action: "ask" } }));
+    testRules.push(spyRule({ decision: { action: "allow" } }));
     const result = decide(makeBashCall("ls"), new NullAuditLogger());
     expect(result.action).toBe("ask");
 });
@@ -706,7 +711,7 @@ test("ask overrides allow: ask at node blocks a later allow", () => {
 // ---------------------------------------------------------------------------
 
 test("non-bash leaf: Edit of .env denies", () => {
-    rules.push(nodeMatchRule(
+    testRules.push(nodeMatchRule(
         (node: AstNode) => node.type === "edit" && (node as { file_path?: string }).file_path?.endsWith(".env") === true,
         { decision: { action: "deny", reason: ".env files are protected" } }
     ));
@@ -732,15 +737,15 @@ test("combined: cd blah && env_var=X cmd-1 | cmd-2 — cmd-1 sees cwd and env_va
     const capturedCmd1Envs: Environment[] = [];
     const capturedCmd2Envs: Environment[] = [];
 
-    rules.push(cdRule);
-    rules.push(envPrefixRule);
-    rules.push(function captureCmd1(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(cdRule);
+    testRules.push(envPrefixRule);
+    testRules.push(function captureCmd1(node: AstNode, env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "cmd-1") {
             capturedCmd1Envs.push(env);
         }
         return ABSTAIN;
     });
-    rules.push(function captureCmd2(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function captureCmd2(node: AstNode, env: Environment): RuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "cmd-2") {
             capturedCmd2Envs.push(env);
         }
@@ -1071,7 +1076,7 @@ class SpyAuditLogger implements IAuditLogger {
 
 test("rule_match log entry includes cmd matching the command raw string", () => {
     const spy = new SpyAuditLogger();
-    rules.push(spyRule({ decision: { action: "allow" } }));
+    testRules.push(spyRule({ decision: { action: "allow" } }));
     decide(makeBashCall("head -5 foo.csv"), spy);
     const ruleMatches = spy.entries.filter(
         (entry: IAuditLogEntry) => entry.type === "rule_match"
@@ -1082,7 +1087,7 @@ test("rule_match log entry includes cmd matching the command raw string", () => 
 
 test("rule_match log entries for compound command include per-subcommand raw strings", () => {
     const spy = new SpyAuditLogger();
-    rules.push(spyRule({ decision: { action: "allow" } }));
+    testRules.push(spyRule({ decision: { action: "allow" } }));
     decide(makeBashCall("wc -l foo.csv && head -5 foo.csv"), spy);
     const ruleMatches = spy.entries.filter(
         (entry: IAuditLogEntry) => entry.type === "rule_match"

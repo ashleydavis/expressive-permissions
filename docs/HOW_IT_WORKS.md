@@ -170,12 +170,21 @@ See [USER-DEFINED-RULES.md](USER-DEFINED-RULES.md) for the full conditions table
 
 ### Registry ordering and conflict resolution
 
-Rules run in registry order. The ordering in `src/rules/index.ts`:
+Rules are evaluated through a three-layer delegation chain:
 
-1. Built-in semantic rules (cd, env-prefix, env-set, export) - listed first so env updates are ready before permission rules run.
-2. YAML rules - appended via `...loadConfigRules()`, which merges `~/.claude/permissions.yaml` (home) and `.claude/permissions.yaml` (project), with project beating home on conflict at the top-level key.
+```
+Hook (interpret.ts) → RuleRegistry → RuleLayer | FileLayer → Rule
+```
 
-The plugin ships with no default rules. All permission decisions come from the user's YAML config. Within the compiled rule list, strictest-wins applies: a deny short-circuits any later rules, and an ask cannot be downgraded by a later allow at the same node.
+The three layers in evaluation order:
+
+1. **Built-in layer** (`RuleLayer`) — cd, env-prefix, env-set, export. Static; never reloads. Runs first so env state is correct when YAML rules evaluate it.
+2. **Home layer** (`FileLayer`) — compiled from `~/.claude/permissions.yaml`. Watched via `fs.watchFile`; reloads automatically when the file changes or is created. Returns `[]` when `HOME` is unset or the file is absent.
+3. **Project layer** (`FileLayer`) — compiled from `.claude/permissions.yaml` (relative to `CLAUDE_PROJECT_DIR`). Same watch-and-reload behaviour. Returns `[]` when `CLAUDE_PROJECT_DIR` is unset or the file is absent.
+
+Both YAML config files are compiled independently — neither overrides the other. All rules from both files are evaluated. `RuleRegistry.runRules` iterates the layers in order, threads the persistent env from each layer's result into the next, and applies strictest-wins across layers. A deny in any layer short-circuits the remaining layers.
+
+The plugin ships with no default YAML rules. All permission decisions come from the user's config files. Within each layer, strictest-wins applies: a deny short-circuits later rules, and an ask cannot be downgraded by a later allow at the same node.
 
 ## 8. Audit log
 
