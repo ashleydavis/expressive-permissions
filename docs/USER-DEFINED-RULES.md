@@ -88,6 +88,8 @@ Examples:
 - `"src/**"` - anything under `src/`
 - `"*.{ts,tsx}"` - any TypeScript file in the current directory
 
+Note: `*` and `**` traverse hidden path segments (those beginning with `.`) the same as any other segment. So `"src/**"` matches `src/.git/HEAD`, and `"./**"` matches `./plugin/.claude-plugin/plugin.json`. (This is a deliberate departure from picomatch's default `dot: false`; users almost always mean "anything under here" when they write `./**`.)
+
 ### Regular expressions
 
 Wrap in `/` slashes. The content between the slashes is passed to `new RegExp(...)`.

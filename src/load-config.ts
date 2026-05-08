@@ -156,11 +156,14 @@ function mapDecision(decide: DecideValue, reason?: string): Decision {
 
 // Returns true when value matches the picomatch pattern.
 // For patterns ending in "/**", the base directory itself is excluded (must be a strict child).
+// `dot: true` is passed to picomatch so that "*" and "**" traverse hidden segments
+// (e.g. ".claude-plugin", ".git"); users expect "./**" to mean "any path under here",
+// not "any path that doesn't pass through a dotfile".
 function matchesGlob(pattern: string, value: string): boolean {
     if (pattern.endsWith("/**") && value === pattern.slice(0, -3)) {
         return false;
     }
-    return picomatch(pattern)(value);
+    return picomatch(pattern, { dot: true })(value);
 }
 
 // Matches value against pattern: dispatches to RegExp for /.../ patterns, otherwise calls picomatch.

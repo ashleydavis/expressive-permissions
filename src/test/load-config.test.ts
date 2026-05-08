@@ -307,6 +307,50 @@ bash:
     });
 });
 
+test("bash cmd glob: matches paths containing hidden directory segments", () => {
+    // Regression: picomatch defaults to dot:false, which makes "*" and "**" refuse
+    // to traverse path segments beginning with ".". Users expect "./**" to mean
+    // "any path under here", including ones that pass through .git, .claude-plugin, etc.
+    // (Note: picomatch treats "./**" as equivalent to "**" — it does not require a literal
+    // "./" prefix on the value. The test inputs reflect what shells actually pass through.)
+    const yaml = `
+bash:
+  cat:
+    cmd: "./**"
+    decide: allow
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        // Plain relative path → matches
+        expect(decide(rules[0], makeCommand("cat", "src/index.ts"))).toBe("allow");
+        // Relative path through a hidden directory → must also match
+        expect(decide(rules[0], makeCommand("cat", "plugin/.claude-plugin/plugin.json"))).toBe("allow");
+        // Direct hidden file → must also match
+        expect(decide(rules[0], makeCommand("cat", ".env"))).toBe("allow");
+        // Absolute path with a hidden segment → must also match
+        expect(decide(rules[0], makeCommand("cat", "/home/user/project/plugin/.claude-plugin/plugin.json"))).toBe("allow");
+    });
+});
+
+test("read path glob: matches file paths containing hidden directory segments", () => {
+    // Same dot-segment regression as the bash cmd glob, but on the read path field.
+    const yaml = `
+read:
+  path: "/home/user/project/**"
+  decide: allow
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const plainNode: AstNode = { type: "read", file_path: "/home/user/project/src/index.ts" };
+        const dotDirNode: AstNode = { type: "read", file_path: "/home/user/project/.git/HEAD" };
+        const nestedDotNode: AstNode = { type: "read", file_path: "/home/user/project/plugin/.claude-plugin/plugin.json" };
+        const dotFileNode: AstNode = { type: "read", file_path: "/home/user/project/.env" };
+
+        expect(decide(rules[0], plainNode)).toBe("allow");
+        expect(decide(rules[0], dotDirNode)).toBe("allow");
+        expect(decide(rules[0], nestedDotNode)).toBe("allow");
+        expect(decide(rules[0], dotFileNode)).toBe("allow");
+    });
+});
+
 test("bash cmd string with spaces: matches multiple positionals in order", () => {
     const yaml = `
 bash:

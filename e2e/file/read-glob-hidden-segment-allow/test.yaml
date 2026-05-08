@@ -1,0 +1,15 @@
+description: "file: read path glob '**' matches file_paths through hidden directories"
+
+input:
+  tool_name: Read
+  tool_input:
+    file_path: /home/user/project/plugin/.claude-plugin/plugin.json
+  cwd: /home/user/project
+
+rules:
+  read:
+    path: "/home/user/project/**"
+    decide: allow
+
+expected:
+  decision: allow

@@ -1,0 +1,16 @@
+description: "bash: cmd glob './**' matches paths through hidden directories (.claude-plugin, .git, etc.)"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "cat plugin/.claude-plugin/plugin.json"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    cat:
+      cmd: "./**"
+      decide: allow
+
+expected:
+  decision: allow
