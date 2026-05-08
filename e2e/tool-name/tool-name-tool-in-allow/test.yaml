@@ -1,4 +1,4 @@
-description: "mcp: tool-in OR list allow"
+description: "tool-name rule: tool-in OR list allow"
 
 input:
   tool_name: mcp__my_server__search
@@ -7,7 +7,7 @@ input:
   cwd: /home/user/project
 
 rules:
-  mcp:
+  my-server-allow:
     tool-in:
       - "mcp__my_server__search"
       - "mcp__my_server__fetch"

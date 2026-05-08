@@ -1,4 +1,4 @@
-description: "mcp: tool glob deny with reason"
+description: "tool-name rule: tool glob deny with reason"
 
 input:
   tool_name: mcp__admin__delete
@@ -7,8 +7,7 @@ input:
   cwd: /home/user/project
 
 rules:
-  mcp:
-    tool: "mcp__admin__*"
+  "mcp__admin__*":
     decide: deny
     reason: "admin tools denied"
 

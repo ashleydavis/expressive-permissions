@@ -12,6 +12,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - All Claude configuration goes in this repository only, not in the home directory.
 - Never stash code unless asked.
 - NEVER USE SYNC VERSIONS OF FUNCTIONS (e.g. readFileSync, appendFileSync, mkdirSync). Always use async/await equivalents from `fs/promises`.
+- This project uses the Jest test runner. Never use the Bun test runner.
+- This project is Bun, never use Node or npx.
 
 ## Project Overview
 

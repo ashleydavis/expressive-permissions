@@ -20,7 +20,7 @@ Rules are declared in `.claude/permissions.yaml` in your project root, or `~/.cl
 - [Subcommand matching](#subcommand-matching)
 - [File tool rules](#file-tool-rules-read-write-edit-multi_edit)
 - [WebFetch rules](#webfetch-rules)
-- [MCP tool rules](#mcp-tool-rules)
+- [Tool-name rules](#tool-name-rules)
 - [Matching the working directory](#matching-the-working-directory)
 - [Decision values](#decision-values)
 - [Strictest wins](#strictest-wins)
@@ -31,7 +31,7 @@ Rules are declared in `.claude/permissions.yaml` in your project root, or `~/.cl
 
 ## Structure overview
 
-The top-level keys are either **Bash binary names** (`rm`, `git`, `curl`) or **tool kinds** (`read`, `write`, `edit`, `multi_edit`, `webfetch`, `mcp`).
+The top-level keys are either **section names** (`bash`, `read`, `write`, `edit`, `multi_edit`, `webfetch`) or **tool name patterns** for everything else (`Grep`, `ToolSearch`, `"mcp__*__delete_*"`, ...). Bash rules nest under the `bash:` section keyed by binary name.
 
 For binaries that take subcommands (e.g. `git`, `npm`), nest rules under the subcommand name. For binaries without subcommands (e.g. `rm`, `sudo`), put rules directly under the binary name.
 
@@ -612,30 +612,46 @@ webfetch:
     decide: allow
 ```
 
-## MCP tool rules
+## Tool-name rules
 
-Match on the tool part of the MCP tool name (`mcp__server__tool`):
+Top-level YAML keys that are not section names (`bash`, `read`, `write`, `edit`, `multi_edit`, `webfetch`) are interpreted as tool-name patterns matched against the Claude Code tool name. The key itself is the matcher; quote the key when it contains glob characters.
+
+Exact match against a single tool:
 
 ```yaml
-mcp:
-  - tool: mcp__*__list_*
+ToolSearch:
+  decide: allow
+```
+
+Glob match across multiple tools (the key must be quoted because of `*`):
+
+```yaml
+"mcp__*__delete_*":
+  decide: deny
+  reason: Delete operations not allowed
+```
+
+List form: multiple rules under the same key:
+
+```yaml
+Grep:
+  - cwd: ./**
     decide: allow
-  - tool: mcp__*__delete_*
-    decide: deny
-    reason: Delete operations not allowed
+  - decide: ask
 ```
 
-Use `tool-in` to allow or deny a specific set of tools:
+When the YAML key is just a label and the matching is driven by an explicit `tool` or `tool-in` field, the key becomes a human-readable identifier in audit logs:
 
 ```yaml
-mcp:
-  - tool-in:
-      - mcp__github__create_issue
-      - mcp__github__create_pull_request
-    decide: ask
-    reason: Confirm before creating GitHub resources
-  - decide: allow
+github-write:
+  tool-in:
+    - mcp__github__create_issue
+    - mcp__github__create_pull_request
+  decide: ask
+  reason: Confirm before creating GitHub resources
 ```
+
+Sub-rules under a scoped tool-name entry inherit the parent key as their tool matcher, so `Grep: { rules: [...] }` applies to `Grep` only.
 
 ## Matching the working directory
 
@@ -763,5 +779,5 @@ Every field follows this unified pattern:
 | `cwd_resolved` | boolean | any | When true, only matches when cwd is known to be accurate. When false, only matches when cwd tracking was broken by an unresolvable `cd`. Omit to match either. |
 | `host` | string | webfetch | Exact or glob match against the URL host. |
 | `host-in` | array | webfetch | Host matches any entry (OR). |
-| `tool` | string | mcp | Glob match against the full tool name (e.g. `mcp__github__list_repos`). Use `mcp__*__list_*` to match all list operations across any server. |
-| `tool-in` | array | mcp | Tool name matches any entry (OR). |
+| `tool` | string | any top-level tool-name rule | Glob match against the full tool name (e.g. `mcp__github__list_repos`). Use `mcp__*__list_*` to match all list operations across any server. When set, replaces the YAML key as the matcher; the key becomes a label only. |
+| `tool-in` | array | any top-level tool-name rule | Tool name matches any entry (OR). When set, replaces the YAML key as the matcher; the key becomes a label only. |

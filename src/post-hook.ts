@@ -3,10 +3,6 @@ import { IPostToolUseCall } from "./types";
 import { toLocalISOString } from "./audit-log";
 import { resolveDebugLogPath, appendDebugBlock, logDebugError } from "./debug-log";
 
-// Abort timer: kills the process if the hook takes longer than 5 seconds.
-const abortTimer: NodeJS.Timeout = setTimeout(() => process.exit(1), 5000);
-abortTimer.unref();
-
 // readPostStdin reads all of stdin and returns it as a UTF-8 string.
 export async function readPostStdin(): Promise<string> {
     const chunks: Buffer[] = [];

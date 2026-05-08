@@ -1,4 +1,4 @@
-description: "mcp: no rule defaults to ask"
+description: "tool-name rule: no rule defaults to ask"
 
 input:
   tool_name: mcp__unknown__action

@@ -7,10 +7,6 @@ import { RuleLayer, FileLayer, RuleRegistry } from "./rule-registry";
 import { builtinRules } from "./rules";
 import { loadHomeConfigRules, loadProjectConfigRules } from "./load-config";
 
-// Abort timer: kills the process if the hook takes longer than 5 seconds.
-const abortTimer: NodeJS.Timeout = setTimeout(() => process.exit(1), 5000);
-abortTimer.unref();
-
 // hookEventName identifies the Claude Code hook event this runner handles.
 const hookEventName = "PreToolUse";
 

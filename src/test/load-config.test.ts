@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync, rmSync, mkdtempSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { loadConfigRules, loadConfigRulesFromFile, loadHomeConfigRules, loadProjectConfigRules, validateConfig, resolveCwdPattern, resolveEntryCwdPatterns, resolveRelativeCwdPatterns, aggregateOutcomes, buildBashScopedRule, buildFileScopedRule, notFieldsAllMatch, evaluateFileField, matchesFileField, lineOfOffset, annotateLines, IYamlEntry, IYamlConfig, INotFields, IFileMatch, IConfigError } from "../load-config";
+import { loadConfigRules, loadConfigRulesFromFile, loadHomeConfigRules, loadProjectConfigRules, validateConfig, resolveCwdPattern, resolveEntryCwdPatterns, resolveRelativeCwdPatterns, aggregateOutcomes, buildBashScopedRule, buildFileScopedRule, notFieldsAllMatch, evaluateFileField, matchesFileField, lineOfOffset, annotateLines, compileTopLevelToolRules, IYamlEntry, IYamlConfig, INotFields, IFileMatch, IConfigError } from "../load-config";
 import { parseDocument } from "yaml";
 import { Rule, RuleOutcome, AstNode, Environment, ToolCall, Command } from "../types";
 
@@ -697,13 +697,12 @@ webfetch:
 });
 
 // ---------------------------------------------------------------------------
-// MCP rules
+// Tool-name rules
 // ---------------------------------------------------------------------------
 
-test("mcp tool: fires when tool_name matches pattern", () => {
+test("tool-name rule: fires when tool_name matches glob key", () => {
     const yaml = `
-mcp:
-  tool: "mcp__*__delete*"
+"mcp__*__delete*":
   decide: deny
 `;
     withYamlFixtures(null, yaml, (rules) => {
@@ -841,11 +840,10 @@ webfetch:
       - "malware.org"
     decide: deny
 
-mcp:
-  - tool: "mcp__*__delete*"
-    decide: deny
-  - tool: "mcp__*__read*"
-    decide: allow
+"mcp__*__delete*":
+  decide: deny
+"mcp__*__read*":
+  decide: allow
 `;
 
     withYamlFixtures(null, yaml, (rules) => {
@@ -1424,12 +1422,12 @@ bash:
 });
 
 // ---------------------------------------------------------------------------
-// tool-in for MCP
+// tool-in for tool-name rules
 // ---------------------------------------------------------------------------
 
-test("mcp tool-in: fires when tool_name matches any in list", () => {
+test("tool-name rule tool-in: fires when tool_name matches any in list", () => {
     const yaml = `
-mcp:
+github-write:
   tool-in:
     - "mcp__github__create_issue"
     - "mcp__github__create_pull_request"
@@ -1609,10 +1607,9 @@ webfetch:
     });
 });
 
-test("mcp rule with reason: decision.reason equals the reason value", () => {
+test("tool-name rule with reason: decision.reason equals the reason value", () => {
     const yaml = `
-mcp:
-  tool: "mcp__*__dangerous_tool"
+"mcp__*__dangerous_tool":
   decide: deny
   reason: this mcp tool is blocked
 `;
@@ -1742,20 +1739,18 @@ bash:
 });
 
 // ---------------------------------------------------------------------------
-// MCP catch-all: no tool matcher fires on any MCP tool
+// Wildcard top-level key fires for any tool
 // ---------------------------------------------------------------------------
 
-test("mcp catch-all: fires on any MCP tool when no tool matcher specified", () => {
+test("wildcard top-level key fires for any tool", () => {
     const yaml = `
-mcp:
+"*":
   decide: ask
 `;
     withYamlFixtures(null, yaml, (rules) => {
         const anyMcp: AstNode = { type: "other", tool_name: "mcp__anything__action", tool_input: {} };
         const webFetch: AstNode = { type: "other", tool_name: "WebFetch", tool_input: {} };
         expect(decide(rules[0], anyMcp)).toBe("ask");
-        // WebFetch is also type "other" — mcp catch-all should still fire on it
-        // (filtering by tool_name is the MCP section convention, not enforced by the rule)
         expect(decide(rules[0], webFetch)).toBe("ask");
     });
 });
@@ -2191,17 +2186,16 @@ webfetch:
 });
 
 // ---------------------------------------------------------------------------
-// USER-DEFINED-RULES: MCP list with allow list_*, deny delete_*, ask rest
+// USER-DEFINED-RULES: tool-name list with allow list_*, deny delete_*, ask rest
 // ---------------------------------------------------------------------------
 
 test("USER-DEFINED-RULES: MCP list operations allow, delete deny, others ask", () => {
     const yaml = `
-mcp:
-  - tool: "mcp__*__list_*"
-    decide: allow
-  - tool: "mcp__*__delete_*"
-    decide: deny
-    reason: Delete operations not allowed
+"mcp__*__list_*":
+  decide: allow
+"mcp__*__delete_*":
+  decide: deny
+  reason: Delete operations not allowed
 `;
     withYamlFixtures(null, yaml, (rules) => {
         function strictest(node: AstNode): string {
@@ -2589,10 +2583,10 @@ test("resolveRelativeCwdPatterns: webfetch section cwd resolved", () => {
     expect((config.webfetch as IYamlEntry).cwd).toBe("/base/**");
 });
 
-test("resolveRelativeCwdPatterns: mcp section cwd resolved", () => {
-    const config: IYamlConfig = { mcp: { cwd: "./**", decide: "allow" } };
+test("resolveRelativeCwdPatterns: top-level tool-name key cwd resolved", () => {
+    const config = { Foo: { cwd: "./**", decide: "allow" } } as IYamlConfig & { Foo: IYamlEntry };
     resolveRelativeCwdPatterns(config, "/base");
-    expect((config.mcp as IYamlEntry).cwd).toBe("/base/**");
+    expect(config.Foo.cwd).toBe("/base/**");
 });
 
 test("resolveRelativeCwdPatterns: empty config is a no-op", () => {
@@ -3004,12 +2998,12 @@ webfetch:
 });
 
 // ---------------------------------------------------------------------------
-// not: in MCP rules
+// not: in tool-name rules
 // ---------------------------------------------------------------------------
 
-test("mcp rule not: env: matching → ABSTAIN", () => {
+test("tool-name rule not: env: matching ABSTAIN", () => {
     const yaml = `
-mcp:
+"*":
   decide: deny
   not:
     env:
@@ -3448,13 +3442,13 @@ test("validateConfig: invalid decide in read section reports error", () => {
     expect(errors[0].message).toContain("grant");
 });
 
-test("validateConfig: invalid decide in mcp section reports error", () => {
+test("validateConfig: invalid decide in top-level tool-name rule reports error", () => {
     const config = {
-        mcp: [{ decide: "nope", tool: "SomeTool" }],
-    } as IYamlConfig;
+        SomeTool: { decide: "nope" },
+    } as IYamlConfig & { SomeTool: IYamlEntry };
     const errors = validateConfig(config);
     expect(errors).toHaveLength(1);
-    expect(errors[0].path).toContain("mcp");
+    expect(errors[0].path).toContain("SomeTool");
     expect(errors[0].message).toContain("nope");
 });
 
@@ -3634,4 +3628,187 @@ test("loadProjectConfigRules: loads rules from project permissions.yaml", () => 
     if (origProject !== undefined) { process.env["CLAUDE_PROJECT_DIR"] = origProject; } else { delete process.env["CLAUDE_PROJECT_DIR"]; }
     rmSync(tmpDir, { recursive: true, force: true });
     expect(rules.length).toBeGreaterThan(0);
+});
+
+// ---------------------------------------------------------------------------
+// Top-level tool-name keys (new YAML shape replacing the legacy mcp: section)
+// ---------------------------------------------------------------------------
+
+test("top-level tool key: fires for the named tool only", () => {
+    const yaml = `
+Grep:
+  decide: allow
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const grepNode: AstNode = { type: "other", tool_name: "Grep", tool_input: {} };
+        const agentNode: AstNode = { type: "other", tool_name: "Agent", tool_input: {} };
+        expect(decide(rules[0], grepNode)).toBe("allow");
+        expect(decide(rules[0], agentNode)).toBe("abstain");
+    });
+});
+
+test("top-level tool key: explicit tool field replaces the key as matcher; key becomes a label", () => {
+    const yaml = `
+SomeLabel:
+  tool: ToolSearch
+  decide: allow
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const toolSearchNode: AstNode = { type: "other", tool_name: "ToolSearch", tool_input: {} };
+        const labelAsToolNode: AstNode = { type: "other", tool_name: "SomeLabel", tool_input: {} };
+        expect(decide(rules[0], toolSearchNode)).toBe("allow");
+        expect(decide(rules[0], labelAsToolNode)).toBe("abstain");
+    });
+});
+
+test("top-level tool key: tool-in field replaces the key as matcher; key becomes a label", () => {
+    const yaml = `
+my-label:
+  tool-in:
+    - "ToolA"
+    - "ToolB"
+  decide: deny
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const toolANode: AstNode = { type: "other", tool_name: "ToolA", tool_input: {} };
+        const toolBNode: AstNode = { type: "other", tool_name: "ToolB", tool_input: {} };
+        const labelNode: AstNode = { type: "other", tool_name: "my-label", tool_input: {} };
+        expect(decide(rules[0], toolANode)).toBe("deny");
+        expect(decide(rules[0], toolBNode)).toBe("deny");
+        expect(decide(rules[0], labelNode)).toBe("abstain");
+    });
+});
+
+test("top-level tool key: glob in quoted key matches multiple tools end-to-end", () => {
+    const yaml = `
+"mcp__*__delete_*":
+  decide: deny
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const deleteNode: AstNode = { type: "other", tool_name: "mcp__files__delete_file", tool_input: {} };
+        const otherNode: AstNode = { type: "other", tool_name: "mcp__files__list_directory", tool_input: {} };
+        expect(decide(rules[0], deleteNode)).toBe("deny");
+        expect(decide(rules[0], otherNode)).toBe("abstain");
+    });
+});
+
+test("top-level tool key: scoped form with rules: list applies parent key to sub-rules", () => {
+    const yaml = `
+Grep:
+  rules:
+    - cwd: "/project/a/**"
+      decide: allow
+    - cwd: "/project/b/**"
+      decide: ask
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const grepNode: AstNode = { type: "other", tool_name: "Grep", tool_input: {} };
+        const agentNode: AstNode = { type: "other", tool_name: "Agent", tool_input: {} };
+        expect(decide(rules[0], grepNode, makeEnv("/project/a/src"))).toBe("allow");
+        expect(decide(rules[0], grepNode, makeEnv("/project/b/src"))).toBe("ask");
+        expect(decide(rules[0], grepNode, makeEnv("/elsewhere"))).toBe("abstain");
+        expect(decide(rules[0], agentNode, makeEnv("/project/a/src"))).toBe("abstain");
+    });
+});
+
+test("top-level tool key: list form Grep: [..., ...]", () => {
+    const yaml = `
+Grep:
+  - cwd: "/restricted/**"
+    decide: deny
+  - decide: allow
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const grepNode: AstNode = { type: "other", tool_name: "Grep", tool_input: {} };
+        expect(rules.length).toBe(2);
+        expect(decide(rules[0], grepNode, makeEnv("/restricted/x"))).toBe("deny");
+        expect(decide(rules[0], grepNode, makeEnv("/elsewhere"))).toBe("abstain");
+        expect(decide(rules[1], grepNode, makeEnv("/elsewhere"))).toBe("allow");
+    });
+});
+
+test("top-level tool key: differing keys merge across home + project", () => {
+    const homeYaml = `
+Grep:
+  decide: allow
+`;
+    const projectYaml = `
+Agent:
+  decide: ask
+`;
+    withYamlFixtures(homeYaml, projectYaml, (rules) => {
+        const grepNode: AstNode = { type: "other", tool_name: "Grep", tool_input: {} };
+        const agentNode: AstNode = { type: "other", tool_name: "Agent", tool_input: {} };
+        const grepDecisions = rules.map((rule) => rule(grepNode, makeEnv(), dummyCall).decision.action);
+        const agentDecisions = rules.map((rule) => rule(agentNode, makeEnv(), dummyCall).decision.action);
+        expect(grepDecisions).toContain("allow");
+        expect(agentDecisions).toContain("ask");
+    });
+});
+
+test("top-level tool key: same key in project replaces home", () => {
+    const homeYaml = `
+Grep:
+  decide: ask
+`;
+    const projectYaml = `
+Grep:
+  decide: allow
+`;
+    withYamlFixtures(homeYaml, projectYaml, (rules) => {
+        const grepNode: AstNode = { type: "other", tool_name: "Grep", tool_input: {} };
+        const decisions = rules.map((rule) => rule(grepNode, makeEnv(), dummyCall).decision.action);
+        expect(decisions).toContain("allow");
+        expect(decisions).not.toContain("ask");
+    });
+});
+
+test("top-level tool key: sourceFile/sourceLine annotations propagate", () => {
+    const yaml = `Grep:
+  decide: allow
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        expect(rules.length).toBe(1);
+        expect(rules[0].ruleFile).toBe(".claude/permissions.yaml");
+        expect(rules[0].ruleLine).toBe(2);
+    });
+});
+
+test("loader rejects top-level KNOWN_FIELDS collision", () => {
+    const config = { decide: "allow" } as IYamlConfig & { decide: string };
+    const errors = validateConfig(config);
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.some((error: IConfigError) => error.path === "decide" && error.message.includes("reserved rule field"))).toBe(true);
+});
+
+test("loader rejects unknown fields under a tool-name entry", () => {
+    const config = { Grep: { decide: "allow", bogus_field: 1 } } as IYamlConfig & { Grep: IYamlEntry };
+    const errors = validateConfig(config);
+    expect(errors.some((error: IConfigError) => error.path.includes("bogus_field") && error.message.includes("unknown field"))).toBe(true);
+});
+
+test("bash entry with non-KNOWN_FIELDS key continues to walk it as sub-binary (no regression)", () => {
+    const config = { bash: { docker: { compose: { decide: "deny" } } } } as IYamlConfig;
+    const errors = validateConfig(config);
+    expect(errors.filter((error: IConfigError) => error.message.includes("unknown field"))).toHaveLength(0);
+});
+
+test("compileTopLevelToolRules direct unit test: produces rules for tool keys only, not sections", () => {
+    const config = {
+        bash: { ls: { decide: "allow" } },
+        read: { decide: "allow" },
+        Grep: { decide: "allow" },
+        Agent: { decide: "ask" },
+    } as IYamlConfig & { Grep: IYamlEntry; Agent: IYamlEntry };
+    const rules = compileTopLevelToolRules(config);
+    expect(rules).toHaveLength(2);
+    const grepNode: AstNode = { type: "other", tool_name: "Grep", tool_input: {} };
+    const agentNode: AstNode = { type: "other", tool_name: "Agent", tool_input: {} };
+    const lsNode: AstNode = { type: "command", binary: "ls", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "ls" };
+    const grepActions = rules.map((rule) => rule(grepNode, makeEnv(), dummyCall).decision.action);
+    const agentActions = rules.map((rule) => rule(agentNode, makeEnv(), dummyCall).decision.action);
+    const lsActions = rules.map((rule) => rule(lsNode, makeEnv(), dummyCall).decision.action);
+    expect(grepActions).toContain("allow");
+    expect(agentActions).toContain("ask");
+    expect(lsActions.every((action: string) => action === "abstain")).toBe(true);
 });

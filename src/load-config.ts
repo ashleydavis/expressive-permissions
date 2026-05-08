@@ -90,7 +90,10 @@ export interface IYamlEntry {
     sourceLine?: number;
 }
 
-// Top-level structure of the permissions YAML file
+// Top-level structure of the permissions YAML file. The named fields below are the recognised
+// "sections"; any additional top-level keys are interpreted as tool-name rules (matched against
+// the Claude Code tool name via picomatch). Tool rules are declared as top-level keys
+// (e.g. `Grep:`, `"mcp__*__delete_*":`).
 export interface IYamlConfig {
     // Bash tool rules keyed by binary name
     bash?: Record<string, IYamlEntry | IYamlEntry[]>;
@@ -104,12 +107,19 @@ export interface IYamlConfig {
     multi_edit?: IYamlEntry | IYamlEntry[];
     // WebFetch tool rules
     webfetch?: IYamlEntry | IYamlEntry[];
-    // MCP tool rules
-    mcp?: IYamlEntry | IYamlEntry[];
+    // Top-level tool-name keys are accessed via Object.keys() at runtime; they do not appear
+    // on this typed interface. Any string key that is not a recognised section is treated as
+    // a tool-name pattern matched via picomatch.
 }
 
 // Fields that are matcher/control fields and NOT subcommand keys
 const KNOWN_FIELDS = new Set(["decide", "reason", "rules", "not", "file", "cmd", "cmd-in", "options", "options-in", "cwd", "cwd-in", "cwd_resolved", "env", "path", "path-in", "host", "host-in", "tool", "tool-in", "sourceLine", "sourceFile"]);
+
+// Top-level YAML keys that are recognised section names (handled by dedicated dispatch).
+// Anything outside this set, and outside KNOWN_FIELDS, becomes a tool-name rule. KNOWN_FIELDS
+// names appearing at the top level (e.g. a stray `decide: allow`) are rejected by validateConfig
+// rather than silently becoming a tool named "decide".
+const KNOWN_SECTIONS = new Set(["bash", "read", "write", "edit", "multi_edit", "webfetch"]);
 
 // All accepted values for the decide field
 const VALID_DECIDE_VALUES = new Set<string>(["allow", "deny", "ask", "abstain"]);
@@ -689,7 +699,7 @@ function buildWebFetchRule(entry: IYamlEntry): Rule {
     return rule;
 }
 
-// Returns true when the node and entry conditions all match for an MCP tool rule
+// Returns true when the node and entry conditions all match for a tool-name rule
 function matchesMcpEntry(entry: IYamlEntry, node: AstNode, env: Environment): boolean {
     if (node.type !== "other") {
         return false;
@@ -721,10 +731,10 @@ function matchesMcpEntry(entry: IYamlEntry, node: AstNode, env: Environment): bo
     return true;
 }
 
-// Compiles one rule for an MCP tool entry
+// Compiles one rule for a tool-name entry (matches against ToolCall.tool_name)
 function buildMcpRule(entry: IYamlEntry): Rule {
     const decision = mapDecision(entry.decide as DecideValue, entry.reason);
-    const ruleName = `yaml:mcp:${entry.decide}`;
+    const ruleName = `yaml:tool:${entry.decide}`;
 
     const rule: Rule = function(node: AstNode, env: Environment, _call: ToolCall): RuleOutcome {
         if (!matchesMcpEntry(entry, node, env)) {
@@ -799,15 +809,15 @@ export function buildWebFetchScopedRule(entry: IYamlEntry): Rule {
     return rule;
 }
 
-// Compiles sub-entries for an MCP scoped rule
+// Compiles a list of tool-name entries (used by both top-level keys and scoped sub-rules)
 export function compileMcpEntries(entries: IYamlEntry[]): Rule[] {
     return compileEntries(entries, buildMcpRule, buildMcpScopedRule);
 }
 
-// Builds a scoped MCP rule: checks parent conditions, then aggregates sub-rules
+// Builds a scoped tool-name rule: checks parent conditions, then aggregates sub-rules
 export function buildMcpScopedRule(entry: IYamlEntry): Rule {
     const subRules = compileMcpEntries(entry.rules!);
-    const ruleName = `yaml:mcp:scoped`;
+    const ruleName = `yaml:tool:scoped`;
 
     const rule: Rule = function(node: AstNode, env: Environment, call: ToolCall): RuleOutcome {
         if (!matchesMcpEntry(entry, node, env)) {
@@ -822,7 +832,50 @@ export function buildMcpScopedRule(entry: IYamlEntry): Rule {
     return rule;
 }
 
-// Compiles all rules from the non-bash sections (read, write, edit, multi_edit, webfetch, mcp)
+// Compiles tool-name rules from top-level YAML keys that are not recognised sections.
+// Each non-section, non-reserved key is treated as a tool-name pattern. If the entry omits
+// both `tool` and `tool-in`, the key is set as the implicit `tool` matcher. When either field
+// is present, the key becomes a human-readable label only and the explicit field drives matching.
+// Sub-rules under a scoped entry inherit the parent key when they omit `tool`/`tool-in`,
+// mirroring the bash-section convention where sub-rules inherit their parent binary.
+export function compileTopLevelToolRules(config: IYamlConfig): Rule[] {
+    const compiledRules: Rule[] = [];
+    for (const key of Object.keys(config)) {
+        if (KNOWN_SECTIONS.has(key)) {
+            continue;
+        }
+        if (KNOWN_FIELDS.has(key)) {
+            continue;
+        }
+        const sectionValue = (config as Record<string, IYamlEntry | IYamlEntry[] | undefined>)[key];
+        if (sectionValue === undefined) {
+            continue;
+        }
+        const entries = normalizeToList(sectionValue);
+        for (const entry of entries) {
+            if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+                continue;
+            }
+            if (entry.tool === undefined && entry["tool-in"] === undefined) {
+                entry.tool = key;
+            }
+            if (Array.isArray(entry.rules)) {
+                for (const subEntry of entry.rules) {
+                    if (typeof subEntry !== "object" || subEntry === null || Array.isArray(subEntry)) {
+                        continue;
+                    }
+                    if (subEntry.tool === undefined && subEntry["tool-in"] === undefined) {
+                        subEntry.tool = key;
+                    }
+                }
+            }
+        }
+        compiledRules.push(...compileMcpEntries(entries));
+    }
+    return compiledRules;
+}
+
+// Compiles all rules from the non-bash sections (read, write, edit, multi_edit, webfetch)
 function compileNonBashSections(config: IYamlConfig): Rule[] {
     const compiledRules: Rule[] = [];
 
@@ -861,18 +914,6 @@ function compileNonBashSections(config: IYamlConfig): Rule[] {
         }
     }
 
-    if (config.mcp !== undefined) {
-        const entries = normalizeToList(config.mcp);
-        for (const entry of entries) {
-            if (entry.rules !== undefined) {
-                compiledRules.push(buildMcpScopedRule(entry));
-            }
-            else {
-                compiledRules.push(buildMcpRule(entry));
-            }
-        }
-    }
-
     return compiledRules;
 }
 
@@ -884,8 +925,19 @@ export function resolveCwdPattern(pattern: string, baseDir: string): string {
     return pattern;
 }
 
-// Walks a single IYamlEntry (and its subcommand children) and rewrites "./" cwd patterns to absolute paths
-export function resolveEntryCwdPatterns(entry: IYamlEntry, baseDir: string): void {
+// Options for resolveEntryCwdPatterns / validateEntry to distinguish tool-name entries from
+// bash entries. Tool-name entries do not have subcommand recursion; unknown keys on them are
+// validation errors rather than sub-binary structure.
+export interface IEntryWalkOptions {
+    // When true, the entry is treated as a top-level tool-name rule: unknown keys are errors
+    // (in validateEntry) and the subcommand-recursion branch is skipped (in resolveEntryCwdPatterns).
+    isToolNameEntry: boolean;
+}
+
+// Walks a single IYamlEntry (and its subcommand children) and rewrites "./" cwd patterns to absolute paths.
+// When called with isToolNameEntry=true the subcommand-recursion branch is skipped because tool-name
+// entries do not have a sub-binary layer; only entry.rules sub-entries are walked.
+export function resolveEntryCwdPatterns(entry: IYamlEntry, baseDir: string, options?: IEntryWalkOptions): void {
     if (typeof entry.cwd === "string") {
         entry.cwd = resolveCwdPattern(entry.cwd, baseDir);
     }
@@ -902,8 +954,11 @@ export function resolveEntryCwdPatterns(entry: IYamlEntry, baseDir: string): voi
     }
     if (Array.isArray(entry.rules)) {
         for (const subEntry of entry.rules) {
-            resolveEntryCwdPatterns(subEntry, baseDir);
+            resolveEntryCwdPatterns(subEntry, baseDir, options);
         }
+    }
+    if (options !== undefined && options.isToolNameEntry) {
+        return;
     }
     for (const key of Object.keys(entry)) {
         if (KNOWN_FIELDS.has(key)) {
@@ -930,13 +985,29 @@ export function resolveRelativeCwdPatterns(config: IYamlConfig, baseDir: string)
             }
         }
     }
-    const sectionKeys = ["read", "write", "edit", "multi_edit", "webfetch", "mcp"] as const;
+    const sectionKeys = ["read", "write", "edit", "multi_edit", "webfetch"] as const;
     for (const sectionKey of sectionKeys) {
         const sectionValue = (config as Record<string, IYamlEntry | IYamlEntry[] | undefined>)[sectionKey];
         if (sectionValue !== undefined) {
             for (const entry of normalizeToList(sectionValue)) {
                 resolveEntryCwdPatterns(entry, baseDir);
             }
+        }
+    }
+    const toolNameOptions: IEntryWalkOptions = { isToolNameEntry: true };
+    for (const key of Object.keys(config)) {
+        if (KNOWN_SECTIONS.has(key)) {
+            continue;
+        }
+        if (KNOWN_FIELDS.has(key)) {
+            continue;
+        }
+        const sectionValue = (config as Record<string, IYamlEntry | IYamlEntry[] | undefined>)[key];
+        if (sectionValue === undefined) {
+            continue;
+        }
+        for (const entry of normalizeToList(sectionValue)) {
+            resolveEntryCwdPatterns(entry, baseDir, toolNameOptions);
         }
     }
 }
@@ -997,7 +1068,9 @@ function readYamlFile(filePath: string, displayFile: string): IYamlConfig | null
 
 // Recursively validates a single rule entry and appends any problems to errors.
 // path is the dot-path string used in error messages (e.g. "bash.git[0].log[0]").
-function validateEntry(entry: IYamlEntry, path: string, errors: IConfigError[]): void {
+// When called with isToolNameEntry=true, unknown keys are flagged as errors instead of being
+// walked as bash sub-binary structure (tool-name rules have no sub-binary layer).
+function validateEntry(entry: IYamlEntry, path: string, errors: IConfigError[], options?: IEntryWalkOptions): void {
     if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
         errors.push({ path, message: `expected a rule entry object but got ${Array.isArray(entry) ? "array" : typeof entry}` });
         return;
@@ -1009,13 +1082,20 @@ function validateEntry(entry: IYamlEntry, path: string, errors: IConfigError[]):
         errors.push({ path, message: `'decide' and 'rules' are mutually exclusive; 'decide' will be ignored` });
     }
     const subcommandKeys = Object.keys(entry).filter((key: string) => !KNOWN_FIELDS.has(key));
-    if (entry.decide === undefined && entry.rules === undefined && subcommandKeys.length === 0) {
+    const isToolNameEntry = options !== undefined && options.isToolNameEntry;
+    if (entry.decide === undefined && entry.rules === undefined && (isToolNameEntry || subcommandKeys.length === 0)) {
         errors.push({ path, message: `entry has neither 'decide', 'rules', nor subcommand keys and will always abstain` });
     }
     if (entry.rules !== undefined) {
         for (let index = 0; index < entry.rules.length; index++) {
-            validateEntry(entry.rules[index], `${path}.rules[${index}]`, errors);
+            validateEntry(entry.rules[index], `${path}.rules[${index}]`, errors, options);
         }
+    }
+    if (isToolNameEntry) {
+        for (const unknownKey of subcommandKeys) {
+            errors.push({ path: `${path}.${unknownKey}`, message: `unknown field '${unknownKey}' on tool-name rule '${path}'` });
+        }
+        return;
     }
     for (const subKey of subcommandKeys) {
         const subValue = entry[subKey];
@@ -1041,6 +1121,9 @@ function validateEntry(entry: IYamlEntry, path: string, errors: IConfigError[]):
 
 // validateConfig inspects a fully parsed IYamlConfig and returns a list of IConfigError
 // describing any problems found. An empty list means no issues were detected.
+// Validates: (a) bash section entries, (b) named file-tool sections (read/write/edit/multi_edit/webfetch),
+// (c) top-level tool-name entries (any other top-level key), and (d) KNOWN_FIELDS collisions
+// at the top level (e.g. a stray `decide: allow` instead of nesting under a tool name).
 export function validateConfig(config: IYamlConfig): IConfigError[] {
     const errors: IConfigError[] = [];
     if (config.bash !== undefined) {
@@ -1051,7 +1134,7 @@ export function validateConfig(config: IYamlConfig): IConfigError[] {
             }
         }
     }
-    const nonBashSections = ["read", "write", "edit", "multi_edit", "webfetch", "mcp"];
+    const nonBashSections = ["read", "write", "edit", "multi_edit", "webfetch"];
     for (const section of nonBashSections) {
         const sectionValue = (config as Record<string, IYamlEntry | IYamlEntry[] | undefined>)[section];
         if (sectionValue === undefined) {
@@ -1060,6 +1143,28 @@ export function validateConfig(config: IYamlConfig): IConfigError[] {
         const entries = normalizeToList(sectionValue);
         for (let index = 0; index < entries.length; index++) {
             validateEntry(entries[index], `${section}[${index}]`, errors);
+        }
+    }
+    const toolNameOptions: IEntryWalkOptions = { isToolNameEntry: true };
+    for (const key of Object.keys(config)) {
+        if (KNOWN_SECTIONS.has(key)) {
+            continue;
+        }
+        if (KNOWN_FIELDS.has(key)) {
+            errors.push({
+                path: key,
+                message: `top-level key '${key}' is a reserved rule field; tool-name rules cannot use these as keys`,
+            });
+            continue;
+        }
+        const sectionValue = (config as Record<string, IYamlEntry | IYamlEntry[] | undefined>)[key];
+        if (sectionValue === undefined) {
+            continue;
+        }
+        const entries = normalizeToList(sectionValue);
+        for (let index = 0; index < entries.length; index++) {
+            const entryPath = index > 0 ? `${key}[${index}]` : key;
+            validateEntry(entries[index], entryPath, errors, toolNameOptions);
         }
     }
     return errors;
@@ -1074,6 +1179,7 @@ function compileConfig(config: IYamlConfig): Rule[] {
     }
 
     compiledRules.push(...compileNonBashSections(config));
+    compiledRules.push(...compileTopLevelToolRules(config));
 
     return compiledRules;
 }
@@ -1125,6 +1231,8 @@ export function loadProjectConfigRules(): Rule[] {
 // Loads .claude/permissions.yaml from home and project dirs, merges (project beats home),
 // compiles each entry into Rule closures, and returns the combined list.
 // Returns [] when env vars are absent or files are missing.
+// Validation is performed per-file before merging so that errors in one file are detected
+// even when the other file's keys would shallow-merge over them.
 export function loadConfigRules(): Rule[] {
     let homeConfig: IYamlConfig = {};
     let projectConfig: IYamlConfig = {};
@@ -1134,6 +1242,10 @@ export function loadConfigRules(): Rule[] {
         const homeYaml = readYamlFile(join(homeDir, ".claude", "permissions.yaml"), "~/.claude/permissions.yaml");
         if (homeYaml !== null) {
             resolveRelativeCwdPatterns(homeYaml, homeDir);
+            const homeErrors = validateConfig(homeYaml);
+            for (const configError of homeErrors) {
+                process.stderr.write(`[CONFIG ERROR] (~/.claude/permissions.yaml) ${configError.path}: ${configError.message}\n`);
+            }
             homeConfig = homeYaml;
         }
     }
@@ -1143,6 +1255,10 @@ export function loadConfigRules(): Rule[] {
         const projectYaml = readYamlFile(join(projectDir, ".claude", "permissions.yaml"), ".claude/permissions.yaml");
         if (projectYaml !== null) {
             resolveRelativeCwdPatterns(projectYaml, projectDir);
+            const projectErrors = validateConfig(projectYaml);
+            for (const configError of projectErrors) {
+                process.stderr.write(`[CONFIG ERROR] (.claude/permissions.yaml) ${configError.path}: ${configError.message}\n`);
+            }
             projectConfig = projectYaml;
         }
     }
@@ -1150,10 +1266,6 @@ export function loadConfigRules(): Rule[] {
     const merged: IYamlConfig = { ...homeConfig, ...projectConfig };
     if (homeConfig.bash !== undefined && projectConfig.bash !== undefined) {
         merged.bash = { ...homeConfig.bash, ...projectConfig.bash };
-    }
-    const configErrors = validateConfig(merged);
-    for (const configError of configErrors) {
-        process.stderr.write(`[CONFIG ERROR] ${configError.path}: ${configError.message}\n`);
     }
     return compileConfig(merged);
 }
