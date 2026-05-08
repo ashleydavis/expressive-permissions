@@ -63,12 +63,10 @@ export interface IFinalDecisionEntry extends IAuditLogEntryBase {
     reason?: string;
 }
 
-// Logged when a permissions config file is loaded for the first time or reloaded after a change.
+// Logged when a permissions config file is loaded at hook startup.
 export interface IConfigLoadEntry extends IAuditLogEntryBase {
     // Discriminator for the config_load variant.
     type: "config_load";
-    // Whether this is the initial load at process start or a reload triggered by file change.
-    event: "loaded" | "reloaded";
     // Display path of the config file (e.g. "~/.claude/permissions.yaml").
     filePath: string;
     // Number of compiled rules produced by this load.
@@ -194,7 +192,7 @@ export function formatTextEntry(entry: IAuditLogEntry): string {
         }
         case "config_load": {
             const ruleWord = entry.ruleCount === 1 ? "rule" : "rules";
-            return `${time}  ${"CONFIG".padEnd(9)}${"".padEnd(10)}${entry.event.toUpperCase()} ${entry.filePath} (${entry.ruleCount} ${ruleWord})`;
+            return `${time}  ${"CONFIG".padEnd(9)}${"".padEnd(10)}LOADED ${entry.filePath} (${entry.ruleCount} ${ruleWord})`;
         }
         case "tool_execution": {
             let executeSummary: string;
@@ -288,11 +286,10 @@ export function createLogger(projectDir: string, now: Date): FileAuditLogger {
 }
 
 // logConfigLoad writes a config_load entry to the supplied audit logger.
-export function logConfigLoad(logger: IAuditLogger, displayPath: string, event: "loaded" | "reloaded", ruleCount: number): void {
+export function logConfigLoad(logger: IAuditLogger, displayPath: string, ruleCount: number): void {
     logger.log({
         type: "config_load",
         timestamp: toLocalISOString(new Date()),
-        event,
         filePath: displayPath,
         ruleCount,
     });

@@ -1,4 +1,3 @@
-import { watchFile } from "fs";
 import { AstNode, Environment, Rule, Annotation, ToolCall, IRunRulesResult, rank } from "./types";
 import { IAuditLogger, toLocalISOString, logConfigLoad } from "./audit-log";
 import { expandCommandOptions, describeNode } from "./build-ast";
@@ -105,22 +104,15 @@ export class RuleLayer implements IRuleLayer {
     }
 }
 
-// FileLayer watches a YAML config file and reloads its rules whenever the file changes.
-// fs.watchFile (polling-based) is used so the watcher works even when the file does not exist.
-// Each load (initial and subsequent reloads) is recorded to the supplied audit logger.
+// FileLayer loads its rules once at construction time from the supplied loadFn and records
+// the load to the supplied audit logger.
 export class FileLayer implements IRuleLayer {
-    // The current compiled rule list, refreshed on file change.
-    private _rules: Rule[];
+    // The compiled rule list, populated once at construction time.
+    private readonly _rules: Rule[];
 
-    constructor(loadFn: () => Rule[], filePath: string | undefined, displayPath: string, logger: IAuditLogger) {
+    constructor(loadFn: () => Rule[], displayPath: string, logger: IAuditLogger) {
         this._rules = loadFn();
-        logConfigLoad(logger, displayPath, "loaded", this._rules.length);
-        if (filePath !== undefined) {
-            watchFile(filePath, { persistent: false, interval: 100 }, () => {
-                this._rules = loadFn();
-                logConfigLoad(logger, displayPath, "reloaded", this._rules.length);
-            });
-        }
+        logConfigLoad(logger, displayPath, this._rules.length);
     }
 
     runRules(node: AstNode, env: Environment, call: ToolCall, logger: IAuditLogger): IRunRulesResult {

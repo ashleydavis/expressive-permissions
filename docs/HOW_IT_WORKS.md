@@ -179,8 +179,8 @@ Hook (interpret.ts) → RuleRegistry → RuleLayer | FileLayer → Rule
 The three layers in evaluation order:
 
 1. **Built-in layer** (`RuleLayer`) — cd, env-prefix, env-set, export. Static; never reloads. Runs first so env state is correct when YAML rules evaluate it.
-2. **Home layer** (`FileLayer`) — compiled from `~/.claude/permissions.yaml`. Watched via `fs.watchFile`; reloads automatically when the file changes or is created. Returns `[]` when `HOME` is unset or the file is absent.
-3. **Project layer** (`FileLayer`) — compiled from `.claude/permissions.yaml` (relative to `CLAUDE_PROJECT_DIR`). Same watch-and-reload behaviour. Returns `[]` when `CLAUDE_PROJECT_DIR` is unset or the file is absent.
+2. **Home layer** (`FileLayer`) — compiled from `~/.claude/permissions.yaml` once at hook startup. Returns `[]` when `HOME` is unset or the file is absent.
+3. **Project layer** (`FileLayer`) — compiled from `.claude/permissions.yaml` (relative to `CLAUDE_PROJECT_DIR`) once at hook startup. Returns `[]` when `CLAUDE_PROJECT_DIR` is unset or the file is absent.
 
 Both YAML config files are compiled independently — neither overrides the other. All rules from both files are evaluated. `RuleRegistry.runRules` iterates the layers in order, threads the persistent env from each layer's result into the next, and applies strictest-wins across layers. A deny in any layer short-circuits the remaining layers.
 

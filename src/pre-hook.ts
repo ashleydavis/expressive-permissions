@@ -1,4 +1,3 @@
-import { join } from "path";
 import { decide } from "./interpret";
 import { createLogger } from "./audit-log";
 import { ToolCall } from "./types";
@@ -37,14 +36,10 @@ export async function runHook(): Promise<void> {
             { key: "process.env", value: process.env },
         ]);
         const logger = createLogger(projectDir, new Date());
-        const homeFilePath = process.env["HOME"] !== undefined
-            ? join(process.env["HOME"], ".claude", "permissions.yaml")
-            : undefined;
-        const projectFilePath = join(projectDir, ".claude", "permissions.yaml");
         const registry = new RuleRegistry([
             new RuleLayer(builtinRules),
-            new FileLayer(loadHomeConfigRules, homeFilePath, "~/.claude/permissions.yaml", logger),
-            new FileLayer(loadProjectConfigRules, projectFilePath, ".claude/permissions.yaml", logger),
+            new FileLayer(loadHomeConfigRules, "~/.claude/permissions.yaml", logger),
+            new FileLayer(loadProjectConfigRules, ".claude/permissions.yaml", logger),
         ]);
         const decision = decide(call, logger, registry);
         const permissionDecision = decision.action;
