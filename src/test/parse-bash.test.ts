@@ -1,5 +1,5 @@
 import { parseBash } from "../parse-bash";
-import { BashAstNode, Command, BinOp } from "../types";
+import { BashAstNode, Command, BinOp, ForLoop } from "../types";
 
 // Asserts the node is a Command with the given binary and returns it for further inspection.
 function expectCommand(node: BashAstNode, binary: string): Command {
@@ -271,7 +271,7 @@ describe("parseBash", () => {
             const cmd = expectCommand(node, "cmd");
             expect(cmd.redirects).toEqual([
                 { op: ">", target: "out" },
-                { op: "2>", target: "&1" },
+                { op: "2>&", target: "1" },
             ]);
         });
 
@@ -326,6 +326,55 @@ describe("parseBash", () => {
             const cmd = expectCommand(node, "$(echo hello | head -1)");
             expect(cmd.options).toEqual({});
             expect(cmd.cmd).toBe("arg");
+        });
+    });
+
+    describe("for-loop", () => {
+        test("simple for-loop with single body command", () => {
+            const node = parseBash("for x in a b c; do echo $x; done");
+            expect(node.type).toBe("for_loop");
+            const loop = node as ForLoop;
+            expect(loop.variable).toBe("x");
+            expect(loop.items).toEqual(["a", "b", "c"]);
+            expect(loop.raw).toBe("for x in a b c; do echo $x; done");
+            const body = loop.body as Command;
+            expect(body.type).toBe("command");
+            expect(body.binary).toBe("echo");
+            expect(body.cmd).toBe("$x");
+        });
+
+        test("for-loop body with sequence is left-associative ; tree", () => {
+            const node = parseBash("for x in a b; do echo $x; cat $x; done");
+            const loop = node as ForLoop;
+            expect(loop.items).toEqual(["a", "b"]);
+            const body = loop.body as BinOp;
+            expect(body.type).toBe("binop");
+            expect(body.op).toBe(";");
+            expect((body.left as Command).binary).toBe("echo");
+            expect((body.right as Command).binary).toBe("cat");
+        });
+
+        test("for-loop body with pipeline preserves pipe structure", () => {
+            const node = parseBash("for x in a; do echo $x | grep a; done");
+            const loop = node as ForLoop;
+            const body = loop.body as BinOp;
+            expect(body.type).toBe("binop");
+            expect(body.op).toBe("|");
+            expect((body.left as Command).binary).toBe("echo");
+            expect((body.right as Command).binary).toBe("grep");
+        });
+
+        test("for-loop with empty items list", () => {
+            const node = parseBash("for x in; do echo $x; done");
+            const loop = node as ForLoop;
+            expect(loop.items).toEqual([]);
+            expect(loop.variable).toBe("x");
+        });
+
+        test("2>&1 lexes as a single fd-merge redirect", () => {
+            const node = parseBash("cmd 2>&1");
+            const cmd = node as Command;
+            expect(cmd.redirects).toEqual([{ op: "2>&", target: "1" }]);
         });
     });
 });

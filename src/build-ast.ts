@@ -47,6 +47,8 @@ export function describeNode(node: AstNode): string {
             return node.raw;
         case "binop":
             return `${describeNode((node as BinOp).left)} ${(node as BinOp).op} ${describeNode((node as BinOp).right)}`;
+        case "for_loop":
+            return node.raw;
         case "bash":
             return node.raw;
         case "read":

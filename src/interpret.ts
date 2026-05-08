@@ -25,9 +25,9 @@ export interface InterpretResult {
 
 // isLeaf returns true for AST nodes that have no child nodes to walk.
 // Intermediate nodes carry child references in well-known fields: BinOp uses "left"/"right",
-// Bash uses "ast". Any node without those fields is a leaf.
+// Bash uses "ast", ForLoop uses "body". Any node without those fields is a leaf.
 export function isLeaf(node: AstNode): boolean {
-    return !("left" in node) && !("ast" in node);
+    return node.type !== "binop" && node.type !== "bash" && node.type !== "for_loop";
 }
 
 
@@ -85,6 +85,28 @@ function walkChildren(
         return {
             childAnnotations: [childResult.annotation],
             envOut: childResult.envOut,
+        };
+    }
+
+    if (node.type === "for_loop") {
+        const childAnnotations: Annotation[] = [];
+        for (const item of node.items) {
+            const iterEnv: Environment = {
+                ...env,
+                env: { ...env.env, [node.variable]: item },
+            };
+            const bodyResult = interpret(node.body, iterEnv, call, logger, registry);
+            childAnnotations.push(bodyResult.annotation);
+        }
+
+        // An empty items list means zero iterations; aggregateChildren cannot handle an
+        // empty array, so seed an abstain so the for-loop falls through to the default ask.
+        if (childAnnotations.length === 0) {
+            childAnnotations.push({ decision: { action: "abstain" } });
+        }
+        return {
+            childAnnotations,
+            envOut: env,
         };
     }
 

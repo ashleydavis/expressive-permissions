@@ -1101,3 +1101,95 @@ test("rule_match log entries for compound command include per-subcommand raw str
     expect(cmds).toContain("wc -l foo.csv");
     expect(cmds).toContain("head -5 foo.csv");
 });
+
+// ---------------------------------------------------------------------------
+// for-loop iteration: env var is set per iteration and visible to body rules
+// ---------------------------------------------------------------------------
+
+test("for-loop: body rule sees env[variable] set to each item per iteration", () => {
+    const seenRegions: string[] = [];
+    const captureRule: Rule = function captureRule(node: AstNode, env: Environment): RuleOutcome {
+        if (node.type === "command" && node.binary === "echo") {
+            seenRegions.push(env.env.region);
+            return { decision: { action: "allow" } };
+        }
+        return ABSTAIN;
+    };
+    testRules.push(captureRule);
+    decide(makeBashCall("for region in ap-northwest-1 na-central-1; do echo $region; done"), new NullAuditLogger());
+    expect(seenRegions).toEqual(["ap-northwest-1", "na-central-1"]);
+});
+
+test("for-loop: rule that allows only matching env values returns allow when every iteration matches", () => {
+    const allowOnlyMatching: Rule = function allowOnlyMatching(node: AstNode, env: Environment): RuleOutcome {
+        if (node.type === "command" && node.binary === "echo" && env.env.region !== undefined) {
+            return { decision: { action: "allow" } };
+        }
+        return ABSTAIN;
+    };
+    testRules.push(allowOnlyMatching);
+    const result = decide(
+        makeBashCall("for region in ap-northwest-1 na-central-1; do echo $region; done"),
+        new NullAuditLogger()
+    );
+    expect(result.action).toBe("allow");
+});
+
+test("for-loop: deny on a single iteration's env value pulls the whole loop to deny", () => {
+    const denyOnProd: Rule = function denyOnProd(node: AstNode, env: Environment): RuleOutcome {
+        if (node.type === "command" && node.binary === "echo") {
+            if (env.env.region === "prod") {
+                return { decision: { action: "deny", reason: "no prod" } };
+            }
+            return { decision: { action: "allow" } };
+        }
+        return ABSTAIN;
+    };
+    testRules.push(denyOnProd);
+    const result = decide(
+        makeBashCall("for region in dev prod; do echo $region; done"),
+        new NullAuditLogger()
+    );
+    expect(result.action).toBe("deny");
+    expect(result.reason).toBe("no prod");
+});
+
+test("for-loop: env var set inside the loop does not leak to siblings after the loop", () => {
+    const seenRegions: (string | undefined)[] = [];
+    const captureRule: Rule = function captureRule(node: AstNode, env: Environment): RuleOutcome {
+        if (node.type === "command" && node.binary === "echo") {
+            seenRegions.push(env.env.region);
+            return { decision: { action: "allow" } };
+        }
+        return ABSTAIN;
+    };
+    testRules.push(captureRule);
+    decide(
+        makeBashCall("for region in a b; do echo inside; done; echo outside"),
+        new NullAuditLogger()
+    );
+    expect(seenRegions).toEqual(["a", "b", undefined]);
+});
+
+test("for-loop: $variable inside command options is expanded from the iteration env", () => {
+    const seenContexts: string[] = [];
+    const captureRule: Rule = function captureRule(node: AstNode): RuleOutcome {
+        if (node.type === "command" && node.binary === "kubectl") {
+            const contextValue = node.options.context;
+            if (typeof contextValue === "string") {
+                seenContexts.push(contextValue);
+            }
+            return { decision: { action: "allow" } };
+        }
+        return ABSTAIN;
+    };
+    testRules.push(captureRule);
+    decide(
+        makeBashCall("for region in ap-northwest-1 na-central-1; do kubectl --context arn:aws:eks:$region:1234:cluster/c -n ns get pods; done"),
+        new NullAuditLogger()
+    );
+    expect(seenContexts).toEqual([
+        "arn:aws:eks:ap-northwest-1:1234:cluster/c",
+        "arn:aws:eks:na-central-1:1234:cluster/c",
+    ]);
+});

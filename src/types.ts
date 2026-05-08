@@ -86,8 +86,23 @@ export interface BinOp {
     right: BashAstNode;
 }
 
+// A loop node representing a Bash for-in loop. The interpreter walks the body once per
+// item in items, with env[variable] set to that item for the duration of that iteration.
+export interface ForLoop {
+    // Discriminator for the for-loop node type
+    type: "for_loop";
+    // The loop variable name (e.g. "region" in `for region in ...`)
+    variable: string;
+    // The list of items the variable iterates over
+    items: string[];
+    // The loop body that runs once per item
+    body: BashAstNode;
+    // The original raw command string spanning the entire for-loop
+    raw: string;
+}
+
 // Union of all Bash sub-AST node types
-export type BashAstNode = Command | BinOp;
+export type BashAstNode = Command | BinOp | ForLoop;
 
 // A single edit operation within a MultiEdit tool call
 export interface IEditEntry {

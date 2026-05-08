@@ -1,4 +1,4 @@
-import { BashAstNode, Command, IRedirect } from "./types";
+import { BashAstNode, Command, ForLoop, IRedirect } from "./types";
 
 // A single token produced by the lexer
 interface IToken {
@@ -23,10 +23,10 @@ interface IParserState {
 }
 
 // Operator token strings, longer alternatives listed first to prevent prefix mis-matches
-const OPERATORS = ["&&", "||", ">>", "2>", "&>", "|", ";", ">", "<"];
+const OPERATORS = ["&&", "||", "2>&", ">>", "&>", "2>", "|", ";", ">", "<"];
 
 // The subset of operators that introduce an I/O redirection (consume the next token as target)
-const REDIRECT_OPS = new Set([">>", ">", "<", "2>", "&>"]);
+const REDIRECT_OPS = new Set([">>", ">", "<", "2>", "&>", "2>&"]);
 
 // Returns true when a word token value is a shell environment assignment (KEY=...)
 function isEnvAssignment(value: string): boolean {
@@ -311,12 +311,102 @@ function parseCommand(state: IParserState): Command {
     };
 }
 
-// parsePipe: parseCommand ('|' parseCommand)*  — highest operator precedence
+// parseStatement: dispatches between parseForLoop and parseCommand based on the leading word.
+// A leading word "for" introduces a for-loop; anything else is a single command leaf.
+function parseStatement(state: IParserState): BashAstNode {
+    const next = peek(state);
+    if (next !== null && next.kind === "word" && next.value === "for") {
+        return parseForLoop(state);
+    }
+    return parseCommand(state);
+}
+
+// parseForLoop: parses `for VAR [in ITEMS] ; do BODY ; done` into a ForLoop node.
+// The body is parsed via parseSequenceUntilDone so that nested operators (|, &&, ||, ;)
+// inside the body still build a normal sub-tree.
+function parseForLoop(state: IParserState): BashAstNode {
+    const forToken = consume(state);
+    const startPos = forToken.start;
+
+    if (peek(state) === null || peek(state)!.kind !== "word") {
+        return {
+            type: "for_loop",
+            variable: "",
+            items: [],
+            body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "" },
+            raw: state.raw.substring(startPos, forToken.end),
+        };
+    }
+    const variable = consume(state).value;
+
+    if (peek(state)?.value === "in") {
+        consume(state);
+    }
+
+    const items: string[] = [];
+    while (peek(state) !== null && peek(state)!.kind === "word" && peek(state)!.value !== "do") {
+        items.push(consume(state).value);
+    }
+
+    if (peek(state)?.value === ";") {
+        consume(state);
+    }
+
+    if (peek(state)?.value !== "do") {
+        return {
+            type: "for_loop",
+            variable,
+            items,
+            body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "" },
+            raw: state.raw.substring(startPos, peek(state)?.start ?? state.raw.length),
+        };
+    }
+    consume(state);
+
+    const body = parseSequenceUntilDone(state);
+
+    if (peek(state)?.value !== "done") {
+        return {
+            type: "for_loop",
+            variable,
+            items,
+            body,
+            raw: state.raw.substring(startPos, state.raw.length),
+        };
+    }
+    const doneToken = consume(state);
+
+    const forLoop: ForLoop = {
+        type: "for_loop",
+        variable,
+        items,
+        body,
+        raw: state.raw.substring(startPos, doneToken.end),
+    };
+    return forLoop;
+}
+
+// parseSequenceUntilDone: parses a `;`-separated sequence of statements until the next
+// non-`;` token is the literal word "done", which the caller (parseForLoop) consumes.
+function parseSequenceUntilDone(state: IParserState): BashAstNode {
+    let left: BashAstNode = parseAnd(state);
+    while (peek(state)?.value === ";") {
+        consume(state);
+        if (peek(state) === null || peek(state)!.value === "done") {
+            break;
+        }
+        const right = parseAnd(state);
+        left = { type: "binop", op: ";", left, right };
+    }
+    return left;
+}
+
+// parsePipe: parseStatement ('|' parseStatement)*  — highest operator precedence
 function parsePipe(state: IParserState): BashAstNode {
-    let left: BashAstNode = parseCommand(state);
+    let left: BashAstNode = parseStatement(state);
     while (peek(state)?.value === "|") {
         consume(state);
-        const right = parseCommand(state);
+        const right = parseStatement(state);
         left = { type: "binop", op: "|", left, right };
     }
     return left;

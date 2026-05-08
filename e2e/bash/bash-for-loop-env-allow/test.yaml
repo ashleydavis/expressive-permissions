@@ -1,0 +1,20 @@
+description: "for-loop sets $region per iteration; env-matched rule fires once per iteration; both iterations allow → allow"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: 'for region in ap-northwest-1 na-central-1; do kubectl --context $region get pods; done'
+  cwd: /home/user/project
+
+rules:
+  bash:
+    kubectl:
+      - env:
+          region: ap-northwest-1
+        decide: allow
+      - env:
+          region: na-central-1
+        decide: allow
+
+expected:
+  decision: allow

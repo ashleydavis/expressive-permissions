@@ -1,0 +1,22 @@
+description: "for-loop sets $region per iteration; deny rule fires only on prod-region iteration; strictest-wins → deny"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: 'for region in ap-northwest-1 prod-region; do kubectl --context $region get pods; done'
+  cwd: /home/user/project
+
+rules:
+  bash:
+    kubectl:
+      - env:
+          region: ap-northwest-1
+        decide: allow
+      - env:
+          region: prod-region
+        decide: deny
+        reason: prod-region not allowed
+
+expected:
+  decision: deny
+  reason: prod-region not allowed
