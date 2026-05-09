@@ -1,4 +1,4 @@
-# Writing rules
+# Configuration
 
 Rules are declared in `.claude/permissions.yaml` in your project root, or `~/.claude/permissions.yaml` for user-global rules. Run `/reload-plugins` to pick up changes.
 
@@ -26,6 +26,7 @@ Rules are declared in `.claude/permissions.yaml` in your project root, or `~/.cl
 - [Strictest wins](#strictest-wins)
 - [Field form reference](#field-form-reference)
 - [Field reference](#field-reference)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -783,3 +784,55 @@ Every field follows this unified pattern:
 | `host-in` | array | webfetch | Host matches any entry (OR). |
 | `tool` | string | any top-level tool-name rule | Glob match against the full tool name (e.g. `mcp__github__list_repos`). Use `mcp__*__list_*` to match all list operations across any server. When set, replaces the YAML key as the matcher; the key becomes a label only. |
 | `tool-in` | array | any top-level tool-name rule | Tool name matches any entry (OR). When set, replaces the YAML key as the matcher; the key becomes a label only. |
+
+## Troubleshooting
+
+### Finding tool calls that no rule matched
+
+When a tool call falls through to `ask` because no rule recognised it, the audit log records a `NOMATCH` line for every leaf AST node that every rule abstained on. The fastest way to discover the gaps in your `permissions.yaml` is to read the `.log` files under `.claude/permissions-log/`.
+
+Open the current hour's log:
+
+```sh
+tail -f .claude/permissions-log/$(date +%Y-%m/%d/%H).log
+```
+
+A `NOMATCH` line looks like this — the second column is the AST node type (`command`, `read`, `write`, `edit`, `multiedit`, `other`), the third is the leaf string the engine tried to match:
+
+```
+10:23:01  TOOL     Bash      "ls && pwd"
+10:23:01  RULE               "ls" → .claude/permissions.yaml:4 → allow
+10:23:01  NOMATCH  command   "pwd"
+10:23:01  NODE               "ls && pwd" → ask
+10:23:01  RESULT   Bash      "ls && pwd" → ASK
+```
+
+To list every unmatched leaf across recent logs:
+
+```sh
+grep NOMATCH .claude/permissions-log/**/*.log
+```
+
+Each `NOMATCH` line is a candidate for a new rule. For Bash compounds like `cmd1 && cmd2`, only the unmatched sub-command is logged, so you can target the specific binary or subcommand that needs a rule.
+
+### My rule isn't matching — what should I check?
+
+If a leaf you expected to match still appears as `NOMATCH`, the rule is loaded but its fields are not all matching simultaneously:
+
+- All fields in a rule are AND'd together — a single mismatched `cwd`, `env`, or `options` entry causes the whole rule to abstain. See [Matching multiple fields](#matching-multiple-fields).
+- For binaries with subcommands, rules nest under the subcommand name. A rule under `git:` (no subcommand level) does not match `git push`. See [Subcommand matching](#subcommand-matching).
+- For deeply-nested subcommand paths like `docker compose build`, every key level consumes one positional word from the command line. A `cmd:` matcher inside addresses arguments _after_ the subcommand path words.
+- Glob patterns must be quoted in YAML when they start with `*` or contain `:`.
+- Regex patterns must be wrapped in `/.../` slashes; otherwise they are treated as literal strings.
+
+### Confirming the config is loaded
+
+Each `permissions.yaml` load is recorded as a `CONFIG` line at the top of every hour's log:
+
+```
+10:00:00  CONFIG             LOADED .claude/permissions.yaml (12 rules)
+```
+
+If the rule count is lower than expected, the YAML probably contains a malformed entry that was silently dropped. If no `CONFIG` line appears for the file you edited, the path is wrong or `/reload-plugins` was not run after the edit.
+
+For more on log entry types, see [AUDIT-LOG.md](AUDIT-LOG.md).

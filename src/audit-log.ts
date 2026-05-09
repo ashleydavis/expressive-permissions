@@ -37,6 +37,18 @@ export interface IRuleMatchEntry extends IAuditLogEntryBase {
     cmd?: string;
 }
 
+// Logged once per leaf AST node when every rule abstained, signalling that no rule
+// recognised the node and the engine fell back to the default ask. Surfaces gaps
+// in the user's permissions.yaml.
+export interface INoRuleMatchEntry extends IAuditLogEntryBase {
+    // Discriminator for the no_rule_match variant.
+    type: "no_rule_match";
+    // The discriminator of the leaf AST node (e.g. "command", "read", "other").
+    nodeType: string;
+    // The reconstructed sub-command or path that no rule matched.
+    cmd: string;
+}
+
 // Logged once per intermediate node after combining children and own-rule results.
 export interface IAggregationEntry extends IAuditLogEntryBase {
     // Discriminator for the aggregation variant.
@@ -90,7 +102,7 @@ export interface IToolExecutionEntry extends IAuditLogEntryBase {
 }
 
 // Union of all audit log entry variants.
-export type IAuditLogEntry = IToolRequestEntry | IRuleMatchEntry | IAggregationEntry | IFinalDecisionEntry | IToolExecutionEntry | IConfigLoadEntry;
+export type IAuditLogEntry = IToolRequestEntry | IRuleMatchEntry | INoRuleMatchEntry | IAggregationEntry | IFinalDecisionEntry | IToolExecutionEntry | IConfigLoadEntry;
 
 // Interface for objects that can receive audit log entries.
 export interface IAuditLogger {
@@ -180,6 +192,9 @@ export function formatTextEntry(entry: IAuditLogEntry): string {
                 content = `→ ${entry.decision}${reasonPart}`;
             }
             return `${time}  ${"RULE".padEnd(9)}${"".padEnd(10)}${content}`;
+        }
+        case "no_rule_match": {
+            return `${time}  ${"NOMATCH".padEnd(9)}${entry.nodeType.padEnd(10)}"${entry.cmd}"`;
         }
         case "aggregation": {
             const reasonPart = entry.reason ? ` "${entry.reason}"` : "";

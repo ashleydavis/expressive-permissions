@@ -1,6 +1,6 @@
 import { decide as decideWithRegistry, isLeaf, aggregateChildren, combine } from "../interpret";
 import { expandToken, expandCommandOptions, describeNode } from "../build-ast";
-import { NullAuditLogger, IAuditLogEntry, IAuditLogger, IRuleMatchEntry } from "../audit-log";
+import { NullAuditLogger, IAuditLogEntry, IAuditLogger, IRuleMatchEntry, INoRuleMatchEntry } from "../audit-log";
 import { RuleLayer, RuleRegistry } from "../rule-registry";
 import { cdRule } from "../rules/builtin/cd";
 import { envPrefixRule } from "../rules/builtin/env-prefix";
@@ -1192,4 +1192,65 @@ test("for-loop: $variable inside command options is expanded from the iteration 
         "arn:aws:eks:ap-northwest-1:1234:cluster/c",
         "arn:aws:eks:na-central-1:1234:cluster/c",
     ]);
+});
+
+// ---------------------------------------------------------------------------
+// no_rule_match emission for unmatched leaves
+// ---------------------------------------------------------------------------
+
+test("no_rule_match: emitted for a Bash leaf when every rule abstains", () => {
+    const spy = new SpyAuditLogger();
+    decide(makeBashCall("ls"), spy);
+    const noMatches = spy.entries.filter(
+        (entry: IAuditLogEntry) => entry.type === "no_rule_match"
+    ) as INoRuleMatchEntry[];
+    expect(noMatches.length).toBe(1);
+    expect(noMatches[0].cmd).toBe("ls");
+    expect(noMatches[0].nodeType).toBe("command");
+});
+
+test("no_rule_match: not emitted for a leaf that a rule matched", () => {
+    const spy = new SpyAuditLogger();
+    testRules.push(spyRule({ decision: { action: "allow" } }));
+    decide(makeBashCall("ls"), spy);
+    const noMatches = spy.entries.filter(
+        (entry: IAuditLogEntry) => entry.type === "no_rule_match"
+    );
+    expect(noMatches.length).toBe(0);
+});
+
+test("no_rule_match: emitted per unmatched leaf in a compound command", () => {
+    const spy = new SpyAuditLogger();
+    testRules.push(nodeMatchRule(
+        (node: AstNode) => node.type === "command" && (node as { binary?: string }).binary === "ls",
+        { decision: { action: "allow" } }
+    ));
+    decide(makeBashCall("ls && pwd"), spy);
+    const noMatches = spy.entries.filter(
+        (entry: IAuditLogEntry) => entry.type === "no_rule_match"
+    ) as INoRuleMatchEntry[];
+    const cmds = noMatches.map((entry: INoRuleMatchEntry) => entry.cmd);
+    expect(cmds).toEqual(["pwd"]);
+});
+
+test("no_rule_match: emitted for a Read leaf when no rule matches", () => {
+    const spy = new SpyAuditLogger();
+    decide(makeToolCall("Read", { file_path: "/tmp/x.txt" }), spy);
+    const noMatches = spy.entries.filter(
+        (entry: IAuditLogEntry) => entry.type === "no_rule_match"
+    ) as INoRuleMatchEntry[];
+    expect(noMatches.length).toBe(1);
+    expect(noMatches[0].cmd).toBe("/tmp/x.txt");
+    expect(noMatches[0].nodeType).toBe("read");
+});
+
+test("no_rule_match: emitted for an unknown tool with nodeType 'other'", () => {
+    const spy = new SpyAuditLogger();
+    decide(makeToolCall("Glob", { pattern: "**/*.ts" }), spy);
+    const noMatches = spy.entries.filter(
+        (entry: IAuditLogEntry) => entry.type === "no_rule_match"
+    ) as INoRuleMatchEntry[];
+    expect(noMatches.length).toBe(1);
+    expect(noMatches[0].nodeType).toBe("other");
+    expect(noMatches[0].cmd).toBe("Glob");
 });

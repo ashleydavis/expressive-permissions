@@ -54,6 +54,14 @@ For an allowed tool the full sequence is: `TOOL` (request received) → `RULE`/`
 {"type":"rule_match","timestamp":"2025-06-15T10:23:01.001+10:00","ruleFile":".claude/permissions.yaml","ruleLine":4,"cmd":"ls","decision":"allow"}
 ```
 
+**`no_rule_match`** — logged for each leaf AST node (command, read, write, edit, multiedit, other) where every rule abstained. Surfaces gaps in the user's `permissions.yaml`.
+
+```json
+{"type":"no_rule_match","timestamp":"2025-06-15T10:23:01.001+10:00","nodeType":"command","cmd":"pwd"}
+```
+
+In the `.log` file this appears as a `NOMATCH` line; the second column is the AST node type and the third is the leaf string the engine tried to match.
+
 **`aggregation`** — logged once per intermediate AST node (bash root, binop) after combining children and own-rule results.
 
 ```json

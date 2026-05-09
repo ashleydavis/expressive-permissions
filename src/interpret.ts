@@ -140,6 +140,12 @@ function interpret(node: AstNode, env: Environment, call: ToolCall, logger: IAud
 
         let annotation = rulesResult.annotation;
         if (annotation.decision.action === "abstain") {
+            logger.log({
+                type: "no_rule_match",
+                timestamp: toLocalISOString(new Date()),
+                nodeType: node.type,
+                cmd: describeNode(node),
+            });
             annotation = { decision: ASK };
         }
         return { annotation, envOut };

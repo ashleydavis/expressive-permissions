@@ -194,11 +194,11 @@ git:
     reason: Use specific files instead of "git add ."
 ```
 
-For the full rule syntax (matchers, AND/OR logic, file-path rules, WebFetch rules, cwd scoping) see [docs/USER-DEFINED-RULES.md](docs/USER-DEFINED-RULES.md).
+For the full rule syntax (matchers, AND/OR logic, file-path rules, WebFetch rules, cwd scoping) see [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ## Further reading
 
-- [docs/USER-DEFINED-RULES.md](docs/USER-DEFINED-RULES.md) - Full rule syntax: matchers, AND/OR logic, file-path rules, WebFetch rules, and cwd scoping.
+- [docs/CONFIGURATION.md](docs/CONFIGURATION.md) - Full rule syntax: matchers, AND/OR logic, file-path rules, WebFetch rules, and cwd scoping.
 - [docs/PROTECTING-PRODUCTION.md](docs/PROTECTING-PRODUCTION.md) - Recipes for locking down production environments covering AWS CLI and kubectl.
 - [docs/AUDIT-LOG.md](docs/AUDIT-LOG.md) - Audit log format and retention policy for the machine-readable and human-readable logs.
 - [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) - Architecture deep-dive with AST diagrams, env-threading details, and a guide to writing non-trivial rules.

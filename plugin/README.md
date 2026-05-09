@@ -56,7 +56,7 @@ Ask Claude to run a command with no matching rule (e.g. `echo hello`). You shoul
 
 ## Full documentation
 
-- [Rule syntax reference](https://github.com/ashleydavis/claude-permissions/blob/main/docs/USER-DEFINED-RULES.md)
+- [Rule syntax reference](https://github.com/ashleydavis/claude-permissions/blob/main/docs/CONFIGURATION.md)
 - [How it works](https://github.com/ashleydavis/claude-permissions/blob/main/docs/HOW_IT_WORKS.md)
 - [Protecting production](https://github.com/ashleydavis/claude-permissions/blob/main/docs/PROTECTING-PRODUCTION.md)
 - [Development guide](https://github.com/ashleydavis/claude-permissions/blob/main/docs/DEVELOPMENT.md)

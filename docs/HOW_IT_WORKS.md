@@ -166,7 +166,7 @@ Rules should:
 
 Drop a `.claude/permissions.yaml` in your project root (or `~/.claude/permissions.yaml` for user-global rules). YAML rules are compiled to `Rule` functions at startup and appended to the registry after the semantic built-ins. No rebuild required - just `/reload-plugins`.
 
-See [USER-DEFINED-RULES.md](USER-DEFINED-RULES.md) for the full conditions table and glob semantics.
+See [CONFIGURATION.md](CONFIGURATION.md) for the full conditions table and glob semantics.
 
 ### Registry ordering and conflict resolution
 
