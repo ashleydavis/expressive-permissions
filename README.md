@@ -189,7 +189,7 @@ Ask before any `git add`, but deny `git add .` outright:
 ```yaml
 git:
   add:
-    pos: .
+    cmd: .
     decide: deny
     reason: Use specific files instead of "git add ."
 ```
