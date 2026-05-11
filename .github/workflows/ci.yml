@@ -27,7 +27,7 @@ jobs:
         run: bash scripts/smoke-tests.sh
 
       - name: Smoke tests (bash parser)
-        run: bash smoke-tests-bash-parser.sh
+        run: bash scripts/smoke-tests-bash-parser.sh
 
       - name: Smoke tests (hook sanity)
         run: bash scripts/hook-smoke-tests.sh
