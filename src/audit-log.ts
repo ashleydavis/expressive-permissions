@@ -262,6 +262,28 @@ export class NullAuditLogger implements IAuditLogger {
     }
 }
 
+// CapturingAuditLogger is an IAuditLogger implementation that stores every entry
+// passed to log() in memory, for use in analysis and testing contexts.
+export class CapturingAuditLogger implements IAuditLogger {
+    // The accumulated log entries in the order they were received.
+    private _entries: IAuditLogEntry[] = [];
+
+    // log appends entry to the internal accumulator.
+    log(entry: IAuditLogEntry): void {
+        this._entries.push(entry);
+    }
+
+    // getEntries returns a copy of all accumulated entries in order.
+    getEntries(): IAuditLogEntry[] {
+        return [...this._entries];
+    }
+
+    // reset clears all accumulated entries.
+    reset(): void {
+        this._entries = [];
+    }
+}
+
 // FileAuditLogger writes each entry to both a JSON Lines file (HH.json) and a
 // human-readable plain text file (HH.log), creating directories as needed.
 export class FileAuditLogger implements IAuditLogger {

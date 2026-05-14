@@ -5,8 +5,11 @@
     "scripts": {
         "bundle:pre": "bun build src/pre-hook.ts --outfile plugin/dist/pre-hook.js --target bun",
         "bundle:post": "bun build src/post-hook.ts --outfile plugin/dist/post-hook.js --target bun",
-        "bundle": "bun run bundle:pre && bun run bundle:post",
+        "bundle:mcp": "bun build src/mcp-server.ts --outfile plugin/dist/mcp-server.js --target bun",
+        "bundle": "bun run bundle:pre && bun run bundle:post && bun run bundle:mcp",
         "b": "bun run bundle",
+        "repl": "bun run src/repl.ts",
+        "r": "bun run repl",
         "compile": "tsc --noEmit",
         "c": "bun run compile",
         "test": "jest --passWithNoTests",
@@ -14,12 +17,14 @@
         "test:watch": "jest --watch",
         "tw": "bun run test:watch",
         "smoke": "bash scripts/smoke-tests.sh",
-        "test:all": "bun run test && bash scripts/smoke-tests-bash-parser.sh && bash scripts/hook-smoke-tests.sh && bash scripts/smoke-tests.sh",
+        "smoke:repl": "bash scripts/repl-smoke-tests.sh",
+        "test:all": "bun run test && bash scripts/smoke-tests-bash-parser.sh && bash scripts/hook-smoke-tests.sh && bash scripts/smoke-tests.sh && bash scripts/repl-smoke-tests.sh",
         "ta": "bun run test:all",
         "dev": "claude --plugin-dir /home/ash/projects/claude-permissions/plugin",
         "d": "bun run dev"
     },
     "dependencies": {
+        "@modelcontextprotocol/sdk": "^1.29.0",
         "picomatch": "^4.0.2",
         "shell-quote": "^1.8.1",
         "yaml": "^2.7.0"

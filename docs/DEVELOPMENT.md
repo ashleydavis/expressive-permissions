@@ -156,12 +156,40 @@ If the hook is silently not firing, the most common causes are:
 |---|---|---|
 | `bundle:pre` | — | Bundle `src/pre-hook.ts` → `plugin/dist/pre-hook.js` |
 | `bundle:post` | — | Bundle `src/post-hook.ts` → `plugin/dist/post-hook.js` |
-| `bundle` | `b` | Run both `bundle:pre` and `bundle:post` |
+| `bundle:mcp` | — | Bundle `src/mcp-server.ts` → `plugin/dist/mcp-server.js` |
+| `bundle` | `b` | Run all three bundle scripts |
 | `compile` | `c` | TypeScript type-check (no emit) |
 | `test` | `t` | Run Jest unit tests |
 | `test:watch` | `tw` | Jest in watch mode |
 | `smoke` | — | Bundle then run smoke tests |
+| `repl` | `r` | Run the interactive permission REPL |
 | `dev` | `d` | Start Claude Code with the plugin loaded from this repo |
+
+## Running the MCP server locally
+
+The repo-root `.mcp.json` registers the MCP server against the TypeScript source so you can use it without bundling or installing the plugin:
+
+```json
+{
+    "mcpServers": {
+        "permissions-analyzer": {
+            "command": "bun",
+            "args": ["run", "src/mcp-server.ts"],
+            "type": "stdio"
+        }
+    }
+}
+```
+
+This file is already present in the repo. Run `/reload-plugins` in Claude Code to activate it, then ask Claude a permission question such as "Why would `rm -rf /` be denied?" Claude will call `analyze_permission` and explain the result.
+
+To test `analyze_permission` without Claude, use the REPL instead:
+
+```bash
+bun run repl "rm -rf /"
+```
+
+See [docs/REPL.md](REPL.md) and [docs/MCP-SERVER.md](MCP-SERVER.md) for full usage details.
 
 ## Adding a TypeScript rule
 
@@ -271,12 +299,14 @@ plugin/
 │   └── plugin.json     # manifest
 ├── hooks/
 │   └── hooks.json      # registers the PreToolUse and PostToolUse hooks
+├── .mcp.json           # registers the MCP server for plugin users
 └── dist/
     ├── pre-hook.js     # bundled PreToolUse entry point — commit this
-    └── post-hook.js    # bundled PostToolUse entry point — commit this
+    ├── post-hook.js    # bundled PostToolUse entry point — commit this
+    └── mcp-server.js  # bundled MCP server — commit this
 ```
 
-Commit both `plugin/dist/pre-hook.js` and `plugin/dist/post-hook.js` so users installing from a path or the marketplace don't need to run a build step themselves. Run `bun run bundle` before committing to keep both up to date.
+Commit all three dist files so users installing from a path or the marketplace don't need to run a build step themselves. Run `bun run bundle` before committing to keep all three up to date.
 
 The plugin is distributed via the Claude Code marketplace system. The repo root contains `.claude-plugin/marketplace.json` which lists the plugin at `./plugin`. Users install it with:
 
@@ -285,11 +315,11 @@ The plugin is distributed via the Claude Code marketplace system. The repo root 
 /plugin install claude-permissions
 ```
 
-Before tagging a release, bundle both hooks so the committed dist files are up to date:
+Before tagging a release, bundle all three dist files so the committed files are up to date:
 
 ```bash
 bun run bundle
-git add plugin/dist/pre-hook.js plugin/dist/post-hook.js
+git add plugin/dist/pre-hook.js plugin/dist/post-hook.js plugin/dist/mcp-server.js
 git commit -m "bundle for release"
 git tag v1.2.3
 git push origin v1.2.3

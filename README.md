@@ -1,5 +1,14 @@
 # claude-permissions
 
+A expressive permissions system for Claude that actually works. Easily allow everything that's safe. Easily deny everything that's dangerous. Prompt the user for everything else.
+
+This is a plugin for Claude Code to handle permissions. You delegate all of Claude's permission requests to this plugin and then it will decide, through rules you have laid down in yaml configuration files, whether to allow or deny any particular tool use or command invocation.
+
+This gives you permissions that work, even when:
+- Commands are embedded in a pipeline in a variable order.
+- Arbitrary (and usually hard to match) paths are included in command arguments (both positional and labelled).
+- The working directory or environment variables are changed within the pipeline.
+
 ## Table of contents
 
 - [Why?](#why)
@@ -17,17 +26,9 @@
     - [Global configuration (applies to every project)](#global-configuration-applies-to-every-project)
     - [Local project configuration (applies to one project)](#local-project-configuration-applies-to-one-project)
 - [Quick start: adding a rule](#quick-start-adding-a-rule)
+- [Troubleshooting rules](#troubleshooting-rules)
 - [Further reading](#further-reading)
 - [License](#license)
-
-A permissions system for Claude that actually works. Easily allow everything that's safe. Easily deny everything that's dangerous. Prompt the user for everything else.
-
-This is a plugin for Claude Code to handle permissions. You delegate all of Claude's permission requests to this plugin and then it will decide, through rules you have laid down in yaml configuration files, whether to allow or deny any particular tool use or command invocation.
-
-This gives you permissions that work, even when:
-- Commands are embedded in a pipeline in a variable order.
-- Arbitrary (and usually hard to match) paths are included in command arguments (both positional and labelled).
-- The working directory or environment variables are changed within the pipeline.
 
 ## Why?
 
@@ -151,11 +152,11 @@ The plugin's PreToolUse hook fires on every tool call and enforces your `permiss
 
 ### Global configuration (applies to every project)
 
-Add one of the blocks above to `~/.claude/settings.json`. Place your global rules in `~/.claude/permissions.yaml`. These apply to every project on your machine.
+Add the block above to `~/.claude/settings.json`. Place your global rules in `~/.claude/permissions.yaml`. These apply to every project on your machine.
 
 ### Local project configuration (applies to one project)
 
-Add one of the blocks above to `.claude/settings.json` in your project root. Place your project rules in `.claude/permissions.yaml` at the project root. These are layered on top of your global rules and take precedence when both match.
+Add the block above to `.claude/settings.json` in your project root. Place your project rules in `.claude/permissions.yaml` at the project root. These are layered on top of your global rules and take precedence when both match.
 
 With either (or both) in place, every tool call flows through your `permissions.yaml` rules and nothing prompts twice.
 
@@ -168,41 +169,58 @@ Following are some quick examples of rules.
 Always allow `git status`:
 
 ```yaml
-git:
-  status:
-    decide: allow
+bash:
+  git:
+    status:
+      decide: allow
 ```
 
 Deny `rm -rf`:
 
 ```yaml
-rm:
-  options:
-    - r|recursive
-    - f|force
-  decide: deny
-  reason: rm -rf in any format is not allowed
+bash:
+  rm:
+    options:
+      - r|recursive
+      - f|force
+    decide: deny
+    reason: rm -rf in any format is not allowed
 ```
 
 Ask before any `git add`, but deny `git add .` outright:
 
 ```yaml
-git:
-  add:
-    cmd: .
-    decide: deny
-    reason: Use specific files instead of "git add ."
+bash:
+  git:
+    add:
+      cmd: .
+      decide: deny
+      reason: Use specific files instead of "git add ."
 ```
 
 For the full rule syntax (matchers, AND/OR logic, file-path rules, WebFetch rules, cwd scoping) see [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
+## Troubleshooting rules
+
+Three tools help when a rule is not behaving as expected:
+
+- **Audit log** -- every permission decision and tool result is written to `.claude/permissions-log/`. Check it first when you want to understand what just happened.
+- **Permission REPL** -- interactive terminal session; type a command and see the full rule trace in colour (`bun run repl`). Requires the repo to be cloned locally.
+- **Permission Analyzer MCP server** -- ask Claude to analyze a command: "Use analyze_permission to check why `git push --force` is denied."
+
+See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for the full guide.
+
 ## Further reading
 
+- [docs/PERMISSIONS-QUICKREF.md](docs/PERMISSIONS-QUICKREF.md) - Concise permissions format reference. Point your AI at this doc when asking it to write or edit your `permissions.yaml`.
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md) - Full rule syntax: matchers, AND/OR logic, file-path rules, WebFetch rules, and cwd scoping.
 - [docs/PROTECTING-PRODUCTION.md](docs/PROTECTING-PRODUCTION.md) - Recipes for locking down production environments covering AWS CLI and kubectl.
 - [docs/AUDIT-LOG.md](docs/AUDIT-LOG.md) - Audit log format and retention policy for the machine-readable and human-readable logs.
 - [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) - Architecture deep-dive with AST diagrams, env-threading details, and a guide to writing non-trivial rules.
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) - Instructions on cloning, building, and running the plugin locally.
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) - Troubleshooting rules: audit log, interactive REPL, and MCP server.
+- [docs/REPL.md](docs/REPL.md) - Interactive REPL for testing commands against your `permissions.yaml`.
+- [docs/MCP-SERVER.md](docs/MCP-SERVER.md) - MCP server that lets Claude explain permission decisions in natural language.
 
 ## License
 

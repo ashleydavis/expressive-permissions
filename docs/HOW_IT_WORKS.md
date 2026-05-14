@@ -2,6 +2,22 @@
 
 Architecture deep-dive for someone who wants to write non-trivial rules or debug an unexpected decision.
 
+---
+
+- [1. End-to-end flow](#1-end-to-end-flow)
+- [2. Tool call → AST](#2-tool-call--ast)
+- [3. Walking the AST with an Environment](#3-walking-the-ast-with-an-environment)
+- [4. Per-node rule evaluation](#4-per-node-rule-evaluation)
+- [5. Bubble-up at intermediate nodes](#5-bubble-up-at-intermediate-nodes)
+- [6. Built-in rules](#6-built-in-rules)
+- [7. User extensibility](#7-user-extensibility)
+- [8. Audit log](#8-audit-log)
+- [9. Shared analysis core](#9-shared-analysis-core-srcanalyzets)
+- [10. Permission REPL](#10-permission-repl-srcreplts)
+- [11. Permission Analyzer MCP server](#11-permission-analyzer-mcp-server-srcmcp-serverts)
+
+---
+
 ## 1. End-to-end flow
 
 ```mermaid
@@ -211,3 +227,34 @@ Every hook invocation writes structured entries to `.claude/permissions-log/` in
 ### Retention
 
 The three most recent calendar months are kept. Months older than that are pruned automatically on each hook invocation. Files within a kept month are never deleted.
+
+## 9. Shared analysis core (`src/analyze.ts`)
+
+Both the REPL and the MCP server use the same `analyzePermission` function from `src/analyze.ts` rather than calling `decide()` directly. This guarantees they produce identical results to the live hook.
+
+`analyzePermission(input, cwd, projectDir)` does three things:
+
+1. **Parse input** -- `parseToolCallInput` converts a user string into a `ToolCall`. A bare string becomes a Bash call. Prefixed strings (`read <path>`, `write <path>`, `edit <path>`, `webfetch <url>`, `tool <name>`) become the corresponding typed tool call.
+2. **Build registry** -- `buildAnalysisRegistry` constructs the same three-layer `RuleRegistry` the live hook uses (built-ins → home config → project config), temporarily setting `CLAUDE_PROJECT_DIR` so the file loaders resolve paths correctly.
+3. **Run and capture** -- `decide()` is called with a `CapturingAuditLogger` that records every rule match, aggregation, and final decision. The logger's entries become the `trace` array in the returned `IAnalysisResult`.
+
+## 10. Permission REPL (`src/repl.ts`)
+
+The REPL is a thin shell around `analyzePermission`. It has two modes:
+
+- **Interactive** -- reads lines from stdin, calls `analyzePermission` for each, and prints the trace and final verdict in ANSI colour. The `:cwd <path>` command changes the working directory for subsequent evaluations; `:quit` or Ctrl-D exits.
+- **One-shot** -- when a command is passed as `process.argv[2]`, the REPL calls `analyzePermission` once, prints the result, and exits with code 0 (allow), 1 (deny), or 2 (ask). This is what `scripts/repl-smoke-tests.sh` uses.
+
+Neither mode touches the live hook or writes to the audit log. The `CapturingAuditLogger` inside `analyzePermission` captures all trace entries in memory and they are discarded after printing.
+
+## 11. Permission Analyzer MCP server (`src/mcp-server.ts`)
+
+The MCP server exposes a single tool, `analyze_permission`, over stdio using the `@modelcontextprotocol/sdk` `StdioServerTransport`. Claude Code registers it via `.mcp.json` and calls it automatically when you ask permission questions in natural language.
+
+When `analyze_permission` is called:
+
+1. `analyzePermission(command, cwd, projectDir)` is called with the arguments from the tool input (defaulting `cwd` and `projectDir` to `CLAUDE_PROJECT_DIR` or `process.cwd()`).
+2. The result is formatted as a text block: decision, reason, and a filtered trace. `config_load` and `tool_request` entries are stripped because they appear on every call and do not help explain why a rule matched.
+3. The text block is returned as the tool response. Claude reads it and explains the result in natural language.
+
+The server is bundled into `plugin/dist/mcp-server.js` for distribution. Plugin users get it automatically via `plugin/.mcp.json`; repository developers use the repo-root `.mcp.json` which points at the TypeScript source directly.

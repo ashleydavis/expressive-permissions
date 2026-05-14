@@ -9,6 +9,7 @@ import {
     cleanupOldMonths,
     FileAuditLogger,
     NullAuditLogger,
+    CapturingAuditLogger,
     toLocalISOString,
     IFinalDecisionEntry,
     IToolRequestEntry,
@@ -559,4 +560,58 @@ test("toLocalISOString produces a string parseable as a Date with correct local 
     expect(reparsed.getMinutes()).toBe(original.getMinutes());
     expect(reparsed.getSeconds()).toBe(original.getSeconds());
     expect(reparsed.getMilliseconds()).toBe(original.getMilliseconds());
+});
+
+// ---------------------------------------------------------------------------
+// CapturingAuditLogger
+// ---------------------------------------------------------------------------
+
+test("CapturingAuditLogger.log accumulates entries and getEntries returns them in order", () => {
+    const logger = new CapturingAuditLogger();
+    const entryA: IFinalDecisionEntry = {
+        type: "final_decision",
+        timestamp: "2025-06-15T10:00:00.000+10:00",
+        tool: "Bash",
+        decision: "allow",
+    };
+    const entryB: IFinalDecisionEntry = {
+        type: "final_decision",
+        timestamp: "2025-06-15T10:00:00.001+10:00",
+        tool: "Read",
+        decision: "deny",
+    };
+    logger.log(entryA);
+    logger.log(entryB);
+    const entries = logger.getEntries();
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toEqual(entryA);
+    expect(entries[1]).toEqual(entryB);
+});
+
+test("CapturingAuditLogger.reset clears all accumulated entries", () => {
+    const logger = new CapturingAuditLogger();
+    const entry: IFinalDecisionEntry = {
+        type: "final_decision",
+        timestamp: "2025-06-15T10:00:00.000+10:00",
+        tool: "Bash",
+        decision: "allow",
+    };
+    logger.log(entry);
+    expect(logger.getEntries()).toHaveLength(1);
+    logger.reset();
+    expect(logger.getEntries()).toHaveLength(0);
+});
+
+test("CapturingAuditLogger.getEntries returns a copy so mutations do not affect internal state", () => {
+    const logger = new CapturingAuditLogger();
+    const entry: IFinalDecisionEntry = {
+        type: "final_decision",
+        timestamp: "2025-06-15T10:00:00.000+10:00",
+        tool: "Bash",
+        decision: "allow",
+    };
+    logger.log(entry);
+    const firstCopy = logger.getEntries();
+    firstCopy.pop();
+    expect(logger.getEntries()).toHaveLength(1);
 });
