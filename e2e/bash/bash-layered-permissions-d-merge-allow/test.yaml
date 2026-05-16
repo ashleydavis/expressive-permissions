@@ -1,0 +1,21 @@
+description: "bash: home permissions.d/ls.yaml drop-in allows ls when project main yaml does not mention it"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "ls -la"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    echo:
+      decide: deny
+
+home_dir_files:
+  ls.yaml:
+    bash:
+      ls:
+        decide: allow
+
+expected:
+  decision: allow

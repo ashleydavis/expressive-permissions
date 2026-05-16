@@ -1,0 +1,27 @@
+description: "bash: deny in any drop-in file wins regardless of alphabetical discovery order"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "git status"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    ls:
+      decide: allow
+
+project_dir_files:
+  a-allow.yaml:
+    bash:
+      git:
+        decide: allow
+  b-deny.yaml:
+    bash:
+      git:
+        decide: deny
+        reason: "blocked by b-deny"
+
+expected:
+  decision: deny
+  reason: "blocked by b-deny"

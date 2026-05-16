@@ -60,6 +60,10 @@ interface ITestCase {
     rules: Record<string, unknown>;
     // Optional: written verbatim as home/.claude/permissions.yaml for the test run
     home_rules?: Record<string, unknown>;
+    // Optional: per-file drop-ins written under home/.claude/permissions.d/
+    home_dir_files?: Record<string, Record<string, unknown>>;
+    // Optional: per-file drop-ins written under project/.claude/permissions.d/
+    project_dir_files?: Record<string, Record<string, unknown>>;
     // The expected outputs from hook.ts
     expected: ITestCaseExpected;
     // Optional PostToolUse hook input to feed to post-hook.ts after the PreToolUse assertions
@@ -141,6 +145,22 @@ function runTest(testFilePath: string): boolean {
     if (testCase.home_rules !== undefined) {
         mkdirSync(join(homeDir, ".claude"), { recursive: true });
         writeFileSync(join(homeDir, ".claude", "permissions.yaml"), stringify(testCase.home_rules));
+    }
+
+    if (testCase.home_dir_files !== undefined) {
+        const homeDropInDir = join(homeDir, ".claude", "permissions.d");
+        mkdirSync(homeDropInDir, { recursive: true });
+        for (const [dropInName, dropInBody] of Object.entries(testCase.home_dir_files)) {
+            writeFileSync(join(homeDropInDir, dropInName), stringify(dropInBody));
+        }
+    }
+
+    if (testCase.project_dir_files !== undefined) {
+        const projectDropInDir = join(claudeDir, "permissions.d");
+        mkdirSync(projectDropInDir, { recursive: true });
+        for (const [dropInName, dropInBody] of Object.entries(testCase.project_dir_files)) {
+            writeFileSync(join(projectDropInDir, dropInName), stringify(dropInBody));
+        }
     }
 
         const inputJson = JSON.stringify(testCase.input);

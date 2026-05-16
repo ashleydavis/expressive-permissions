@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, existsSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { parseDocument, isMap, isSeq, isPair, isScalar, Node } from "yaml";
@@ -1229,6 +1229,98 @@ export function loadProjectConfigRules(): Rule[] {
         ".claude/permissions.yaml",
         projectDir
     );
+}
+
+// IConfigFileSource describes one discovered drop-in permissions file.
+// Used by the directory-scan helpers and the FileLayer construction in pre-hook/analyze.
+export interface IConfigFileSource {
+    // Absolute path on disk to the YAML file.
+    filePath: string;
+    // Path used for log output (e.g. "~/.claude/permissions.d/aws.yaml").
+    displayPath: string;
+    // Base directory used to resolve "./" cwd patterns inside the file.
+    baseDir: string;
+}
+
+// Returns true when entryName is a file that should be treated as a permissions drop-in.
+// Excludes dotfiles and entries that are not regular files. The yaml/yml extension check is
+// performed by the caller because it does not need the disk stat.
+function isDropInFileCandidate(dirPath: string, entryName: string): boolean {
+    if (entryName.startsWith(".")) {
+        return false;
+    }
+    const stat = statSync(join(dirPath, entryName));
+    return stat.isFile();
+}
+
+// discoverConfigDirFiles enumerates the YAML drop-in files inside dirPath and returns one
+// IConfigFileSource per file. Files are sorted lexicographically. Returns [] when the directory
+// does not exist or is not a directory.
+export function discoverConfigDirFiles(dirPath: string, displayPrefix: string, baseDir: string): IConfigFileSource[] {
+    if (!existsSync(dirPath)) {
+        return [];
+    }
+    const dirStat = statSync(dirPath);
+    if (!dirStat.isDirectory()) {
+        return [];
+    }
+    const allEntries = readdirSync(dirPath);
+    const matchingNames: string[] = [];
+    for (const entryName of allEntries) {
+        if (!entryName.endsWith(".yaml") && !entryName.endsWith(".yml")) {
+            continue;
+        }
+        if (!isDropInFileCandidate(dirPath, entryName)) {
+            continue;
+        }
+        matchingNames.push(entryName);
+    }
+    matchingNames.sort();
+    const sources: IConfigFileSource[] = [];
+    for (const name of matchingNames) {
+        sources.push({
+            filePath: join(dirPath, name),
+            displayPath: displayPrefix + "/" + name,
+            baseDir,
+        });
+    }
+    return sources;
+}
+
+// discoverHomeConfigDirFiles enumerates $HOME/.claude/permissions.d/*.yaml drop-ins.
+// Returns [] when HOME is unset or the directory does not exist.
+export function discoverHomeConfigDirFiles(): IConfigFileSource[] {
+    const homeDir = process.env["HOME"];
+    if (homeDir === undefined) {
+        return [];
+    }
+    return discoverConfigDirFiles(
+        join(homeDir, ".claude", "permissions.d"),
+        "~/.claude/permissions.d",
+        homeDir
+    );
+}
+
+// discoverProjectConfigDirFiles enumerates $CLAUDE_PROJECT_DIR/.claude/permissions.d/*.yaml drop-ins.
+// Returns [] when CLAUDE_PROJECT_DIR is unset or the directory does not exist.
+export function discoverProjectConfigDirFiles(): IConfigFileSource[] {
+    const projectDir = process.env["CLAUDE_PROJECT_DIR"];
+    if (projectDir === undefined) {
+        return [];
+    }
+    return discoverConfigDirFiles(
+        join(projectDir, ".claude", "permissions.d"),
+        ".claude/permissions.d",
+        projectDir
+    );
+}
+
+// makeConfigFileLoader returns a no-arg loader closure suitable for FileLayer, using the
+// fields of the given source to call loadConfigRulesFromFile.
+export function makeConfigFileLoader(source: IConfigFileSource): () => Rule[] {
+    return function configFileLoader(): Rule[] {
+        return loadConfigRulesFromFile(source.filePath, source.displayPath, source.baseDir);
+    };
 }
 
 // Loads .claude/permissions.yaml from home and project dirs, merges (project beats home),

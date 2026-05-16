@@ -5,6 +5,7 @@ Rules are declared in `.claude/permissions.yaml` in your project root, or `~/.cl
 ---
 
 - [Structure overview](#structure-overview)
+- [Layered files (`permissions.d/`)](#layered-files-permissionsd)
 - [Single rule vs list](#single-rule-vs-list)
 - [Pattern matching](#pattern-matching)
 - [Matching field values](#matching-field-values)
@@ -38,6 +39,21 @@ The top-level keys are either **section names** (`bash`, `read`, `write`, `edit`
 For binaries that take subcommands (e.g. `git`, `npm`), nest rules under the subcommand name. For binaries without subcommands (e.g. `rm`, `sudo`), put rules directly under the binary name.
 
 A **rule** is an object with zero or more fields plus a `decide` field (`allow`, `deny`, or `ask`) and an optional `reason` string.
+
+## Layered files (`permissions.d/`)
+
+In addition to the main `permissions.yaml` files, you can split rules across multiple YAML files inside a `permissions.d/` drop-in directory:
+
+- `~/.claude/permissions.d/*.yaml` (home-level drop-ins)
+- `$CLAUDE_PROJECT_DIR/.claude/permissions.d/*.yaml` (project-level drop-ins)
+
+Each drop-in file is loaded as its own isolated layer:
+
+- **Discovery**: files ending in `.yaml` or `.yml` are picked up. Dotfiles and subdirectories are ignored. Files are loaded in lexicographic order (`aws.yaml`, `bun.yaml`, `git.yaml`).
+- **Per-file isolation**: each file is its own layer. Strictest-wins applies inside a file, deny short-circuits across files. A `deny` rule in any drop-in always wins over `allow` rules in sibling drop-ins.
+- **Layer order**: within each location, drop-ins run **after** the corresponding main `permissions.yaml`. The full order is: home main → home drop-ins (alphabetical) → project main → project drop-ins (alphabetical). Deny anywhere in the chain short-circuits the rest.
+
+This lets you copy a single curated file (e.g. `aws.yaml`, `git.yaml`) into the directory rather than hand-merging a monolithic config.
 
 ## Single rule vs list
 

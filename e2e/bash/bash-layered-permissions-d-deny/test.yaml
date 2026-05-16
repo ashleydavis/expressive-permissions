@@ -1,0 +1,23 @@
+description: "bash: project permissions.d/git.yaml drop-in denies git"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "git status"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    ls:
+      decide: allow
+
+project_dir_files:
+  git.yaml:
+    bash:
+      git:
+        decide: deny
+        reason: "no git"
+
+expected:
+  decision: deny
+  reason: "no git"

@@ -1,6 +1,6 @@
 import { CapturingAuditLogger, IAuditLogEntry, IAuditLogger } from "./audit-log";
-import { loadHomeConfigRules, loadProjectConfigRules } from "./load-config";
-import { RuleLayer, FileLayer, RuleRegistry } from "./rule-registry";
+import { loadHomeConfigRules, loadProjectConfigRules, discoverHomeConfigDirFiles, discoverProjectConfigDirFiles, makeConfigFileLoader } from "./load-config";
+import { RuleLayer, FileLayer, IRuleLayer, RuleRegistry } from "./rule-registry";
 import { builtinRules } from "./rules";
 import { decide } from "./interpret";
 import { ToolCall } from "./types";
@@ -61,11 +61,18 @@ export function buildAnalysisRegistry(projectDir: string, logger: IAuditLogger):
     const originalProjectDir = process.env["CLAUDE_PROJECT_DIR"];
     process.env["CLAUDE_PROJECT_DIR"] = projectDir;
 
-    const registry = new RuleRegistry([
+    const layers: IRuleLayer[] = [
         new RuleLayer(builtinRules),
         new FileLayer(loadHomeConfigRules, "~/.claude/permissions.yaml", logger),
-        new FileLayer(loadProjectConfigRules, ".claude/permissions.yaml", logger),
-    ]);
+    ];
+    for (const homeDropInSource of discoverHomeConfigDirFiles()) {
+        layers.push(new FileLayer(makeConfigFileLoader(homeDropInSource), homeDropInSource.displayPath, logger));
+    }
+    layers.push(new FileLayer(loadProjectConfigRules, ".claude/permissions.yaml", logger));
+    for (const projectDropInSource of discoverProjectConfigDirFiles()) {
+        layers.push(new FileLayer(makeConfigFileLoader(projectDropInSource), projectDropInSource.displayPath, logger));
+    }
+    const registry = new RuleRegistry(layers);
 
     if (originalProjectDir === undefined) {
         delete process.env["CLAUDE_PROJECT_DIR"];

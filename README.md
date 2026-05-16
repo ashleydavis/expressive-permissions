@@ -160,6 +160,8 @@ Add the block above to `.claude/settings.json` in your project root. Place your 
 
 With either (or both) in place, every tool call flows through your `permissions.yaml` rules and nothing prompts twice.
 
+You can also split rules across multiple files inside a `permissions.d/` drop-in directory at either location. See [Layered files (`permissions.d/`)](docs/CONFIGURATION.md#layered-files-permissionsd) for details.
+
 ## Quick start: adding a rule
 
 Add to `.claude/permissions.yaml` in your project root (or `~/.claude/permissions.yaml` for user-global rules), then run `/reload-plugins` to pick up changes.

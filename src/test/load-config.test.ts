@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync, rmSync, mkdtempSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { loadConfigRules, loadConfigRulesFromFile, loadHomeConfigRules, loadProjectConfigRules, validateConfig, resolveCwdPattern, resolveEntryCwdPatterns, resolveRelativeCwdPatterns, aggregateOutcomes, buildBashScopedRule, buildFileScopedRule, notFieldsAllMatch, evaluateFileField, matchesFileField, lineOfOffset, annotateLines, compileTopLevelToolRules, IYamlEntry, IYamlConfig, INotFields, IFileMatch, IConfigError } from "../load-config";
+import { loadConfigRules, loadConfigRulesFromFile, loadHomeConfigRules, loadProjectConfigRules, validateConfig, resolveCwdPattern, resolveEntryCwdPatterns, resolveRelativeCwdPatterns, aggregateOutcomes, buildBashScopedRule, buildFileScopedRule, notFieldsAllMatch, evaluateFileField, matchesFileField, lineOfOffset, annotateLines, compileTopLevelToolRules, discoverConfigDirFiles, discoverHomeConfigDirFiles, discoverProjectConfigDirFiles, makeConfigFileLoader, IYamlEntry, IYamlConfig, INotFields, IFileMatch, IConfigError, IConfigFileSource } from "../load-config";
 import { parseDocument } from "yaml";
 import { Rule, RuleOutcome, AstNode, Environment, ToolCall, Command } from "../types";
 
@@ -27,11 +27,22 @@ function decide(rule: Rule, node: AstNode, env: Environment = makeEnv()): string
     return rule(node, env, dummyCall).decision.action;
 }
 
-// Sets up a temp directory with home and project YAML files, runs the callback, then cleans up
+// Optional drop-in files to populate under <home>/.claude/permissions.d/ and
+// <project>/.claude/permissions.d/ when running withYamlFixtures.
+interface IYamlFixtureExtras {
+    // Map of file name -> YAML body, written under <home>/.claude/permissions.d/
+    homeDirFiles?: Record<string, string>;
+    // Map of file name -> YAML body, written under <project>/.claude/permissions.d/
+    projectDirFiles?: Record<string, string>;
+}
+
+// Sets up a temp directory with home and project YAML files, runs the callback, then cleans up.
+// The optional extras parameter writes per-file drop-ins under permissions.d/ in either tree.
 function withYamlFixtures(
     homeYaml: string | null,
     projectYaml: string | null,
-    callback: (rules: Rule[]) => void
+    callback: (rules: Rule[]) => void,
+    extras?: IYamlFixtureExtras
 ): void {
     const tmpDir = join("/tmp", `claude-perm-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     const homeDir = join(tmpDir, "home");
@@ -51,6 +62,21 @@ function withYamlFixtures(
     }
     if (projectYaml !== null) {
         writeFileSync(join(projectDir, ".claude", "permissions.yaml"), projectYaml, "utf-8");
+    }
+
+    if (extras !== undefined && extras.homeDirFiles !== undefined) {
+        const homeDropInDir = join(homeDir, ".claude", "permissions.d");
+        mkdirSync(homeDropInDir, { recursive: true });
+        for (const [name, body] of Object.entries(extras.homeDirFiles)) {
+            writeFileSync(join(homeDropInDir, name), body, "utf-8");
+        }
+    }
+    if (extras !== undefined && extras.projectDirFiles !== undefined) {
+        const projectDropInDir = join(projectDir, ".claude", "permissions.d");
+        mkdirSync(projectDropInDir, { recursive: true });
+        for (const [name, body] of Object.entries(extras.projectDirFiles)) {
+            writeFileSync(join(projectDropInDir, name), body, "utf-8");
+        }
     }
 
     let rules: Rule[] = [];
@@ -3855,4 +3881,213 @@ test("compileTopLevelToolRules direct unit test: produces rules for tool keys on
     expect(grepActions).toContain("allow");
     expect(agentActions).toContain("ask");
     expect(lsActions.every((action: string) => action === "abstain")).toBe(true);
+});
+
+// ---------------------------------------------------------------------------
+// Layered permissions.d/ discovery
+// ---------------------------------------------------------------------------
+
+// makeTempDir creates a unique temp directory and returns its path.
+function makeTempDir(prefix: string): string {
+    return mkdtempSync(join(tmpdir(), prefix));
+}
+
+test("discoverConfigDirFiles: returns [] when directory does not exist", () => {
+    const missingPath = join(tmpdir(), `perm-dropin-missing-${Date.now()}`);
+    const sources = discoverConfigDirFiles(missingPath, "~/.claude/permissions.d", "/base");
+    expect(sources).toEqual([]);
+});
+
+test("discoverConfigDirFiles: returns [] when path is a file, not a directory", () => {
+    const tmp = makeTempDir("perm-dropin-file-");
+    try {
+        const filePath = join(tmp, "not-a-dir");
+        writeFileSync(filePath, "", "utf-8");
+        const sources = discoverConfigDirFiles(filePath, "~/.claude/permissions.d", "/base");
+        expect(sources).toEqual([]);
+    }
+    finally {
+        rmSync(tmp, { recursive: true, force: true });
+    }
+});
+
+test("discoverConfigDirFiles: filters out non-yaml files", () => {
+    const tmp = makeTempDir("perm-dropin-filter-");
+    try {
+        writeFileSync(join(tmp, "aws.yaml"), "", "utf-8");
+        writeFileSync(join(tmp, "notes.txt"), "", "utf-8");
+        writeFileSync(join(tmp, "README.md"), "", "utf-8");
+        const sources = discoverConfigDirFiles(tmp, "~/.claude/permissions.d", "/base");
+        const names = sources.map((source: IConfigFileSource) => source.filePath.split("/").pop());
+        expect(names).toEqual(["aws.yaml"]);
+    }
+    finally {
+        rmSync(tmp, { recursive: true, force: true });
+    }
+});
+
+test("discoverConfigDirFiles: ignores dotfiles and subdirectories", () => {
+    const tmp = makeTempDir("perm-dropin-dotfile-");
+    try {
+        writeFileSync(join(tmp, "aws.yaml"), "", "utf-8");
+        writeFileSync(join(tmp, ".hidden.yaml"), "", "utf-8");
+        mkdirSync(join(tmp, "subdir.yaml"), { recursive: true });
+        const sources = discoverConfigDirFiles(tmp, "~/.claude/permissions.d", "/base");
+        const names = sources.map((source: IConfigFileSource) => source.filePath.split("/").pop());
+        expect(names).toEqual(["aws.yaml"]);
+    }
+    finally {
+        rmSync(tmp, { recursive: true, force: true });
+    }
+});
+
+test("discoverConfigDirFiles: includes .yml files alongside .yaml files", () => {
+    const tmp = makeTempDir("perm-dropin-yml-");
+    try {
+        writeFileSync(join(tmp, "aws.yaml"), "", "utf-8");
+        writeFileSync(join(tmp, "bun.yml"), "", "utf-8");
+        const sources = discoverConfigDirFiles(tmp, "~/.claude/permissions.d", "/base");
+        const names = sources.map((source: IConfigFileSource) => source.filePath.split("/").pop());
+        expect(names).toEqual(["aws.yaml", "bun.yml"]);
+    }
+    finally {
+        rmSync(tmp, { recursive: true, force: true });
+    }
+});
+
+test("discoverConfigDirFiles: orders results alphabetically", () => {
+    const tmp = makeTempDir("perm-dropin-sort-");
+    try {
+        writeFileSync(join(tmp, "git.yaml"), "", "utf-8");
+        writeFileSync(join(tmp, "aws.yaml"), "", "utf-8");
+        writeFileSync(join(tmp, "bun.yaml"), "", "utf-8");
+        const sources = discoverConfigDirFiles(tmp, "~/.claude/permissions.d", "/base");
+        const names = sources.map((source: IConfigFileSource) => source.filePath.split("/").pop());
+        expect(names).toEqual(["aws.yaml", "bun.yaml", "git.yaml"]);
+    }
+    finally {
+        rmSync(tmp, { recursive: true, force: true });
+    }
+});
+
+test("discoverConfigDirFiles: populates displayPath as prefix/name for each file", () => {
+    const tmp = makeTempDir("perm-dropin-displaypath-");
+    try {
+        writeFileSync(join(tmp, "aws.yaml"), "", "utf-8");
+        writeFileSync(join(tmp, "bun.yaml"), "", "utf-8");
+        const sources = discoverConfigDirFiles(tmp, "~/.claude/permissions.d", "/base");
+        expect(sources[0].displayPath).toBe("~/.claude/permissions.d/aws.yaml");
+        expect(sources[1].displayPath).toBe("~/.claude/permissions.d/bun.yaml");
+        expect(sources[0].baseDir).toBe("/base");
+    }
+    finally {
+        rmSync(tmp, { recursive: true, force: true });
+    }
+});
+
+test("discoverHomeConfigDirFiles: returns [] when HOME is unset", () => {
+    const origHome = process.env["HOME"];
+    delete process.env["HOME"];
+    try {
+        expect(discoverHomeConfigDirFiles()).toEqual([]);
+    }
+    finally {
+        if (origHome !== undefined) {
+            process.env["HOME"] = origHome;
+        }
+    }
+});
+
+test("discoverProjectConfigDirFiles: returns [] when CLAUDE_PROJECT_DIR is unset", () => {
+    const origProjectDir = process.env["CLAUDE_PROJECT_DIR"];
+    delete process.env["CLAUDE_PROJECT_DIR"];
+    try {
+        expect(discoverProjectConfigDirFiles()).toEqual([]);
+    }
+    finally {
+        if (origProjectDir !== undefined) {
+            process.env["CLAUDE_PROJECT_DIR"] = origProjectDir;
+        }
+    }
+});
+
+test("discoverProjectConfigDirFiles: returns one source per drop-in file under project dir", () => {
+    const tmp = makeTempDir("perm-dropin-project-discover-");
+    try {
+        mkdirSync(join(tmp, ".claude", "permissions.d"), { recursive: true });
+        writeFileSync(join(tmp, ".claude", "permissions.d", "git.yaml"), "bash:\n  git:\n    decide: deny\n", "utf-8");
+        const origProjectDir = process.env["CLAUDE_PROJECT_DIR"];
+        process.env["CLAUDE_PROJECT_DIR"] = tmp;
+        try {
+            const sources = discoverProjectConfigDirFiles();
+            expect(sources.length).toBe(1);
+            expect(sources[0].displayPath).toBe(".claude/permissions.d/git.yaml");
+            expect(sources[0].baseDir).toBe(tmp);
+        }
+        finally {
+            if (origProjectDir === undefined) {
+                delete process.env["CLAUDE_PROJECT_DIR"];
+            }
+            else {
+                process.env["CLAUDE_PROJECT_DIR"] = origProjectDir;
+            }
+        }
+    }
+    finally {
+        rmSync(tmp, { recursive: true, force: true });
+    }
+});
+
+test("makeConfigFileLoader: returns a closure that compiles the rules from the file", () => {
+    const tmp = makeTempDir("perm-dropin-loader-");
+    try {
+        const filePath = join(tmp, "git.yaml");
+        writeFileSync(filePath, "bash:\n  git:\n    decide: deny\n    reason: no git\n", "utf-8");
+        const source: IConfigFileSource = {
+            filePath,
+            displayPath: ".claude/permissions.d/git.yaml",
+            baseDir: tmp,
+        };
+        const loader = makeConfigFileLoader(source);
+        const rules = loader();
+        expect(rules.length).toBe(1);
+        const gitNode = makeCommand("git", ["status"]);
+        const outcome = rules[0](gitNode, makeEnv(), dummyCall);
+        expect(outcome.decision.action).toBe("deny");
+    }
+    finally {
+        rmSync(tmp, { recursive: true, force: true });
+    }
+});
+
+test("withYamlFixtures: project drop-in source loader compiles into rules separate from main loadConfigRules", () => {
+    const projectYaml = `
+bash:
+  ls:
+    decide: allow
+`;
+    const dropInYaml = `
+bash:
+  git:
+    decide: deny
+    reason: no git
+`;
+    withYamlFixtures(null, projectYaml, (mainRules) => {
+        // The main loadConfigRules() should not include drop-in rules.
+        const gitNode = makeCommand("git", ["status"]);
+        const mainActions = mainRules.map((rule) => rule(gitNode, makeEnv(), dummyCall).decision.action);
+        expect(mainActions).not.toContain("deny");
+
+        // The drop-in source loader does include them.
+        const dropInSources = discoverProjectConfigDirFiles();
+        expect(dropInSources.length).toBe(1);
+        expect(dropInSources[0].displayPath).toBe(".claude/permissions.d/git.yaml");
+        const dropInRules = makeConfigFileLoader(dropInSources[0])();
+        const dropInActions = dropInRules.map((rule) => rule(gitNode, makeEnv(), dummyCall).decision.action);
+        expect(dropInActions).toContain("deny");
+    }, {
+        projectDirFiles: {
+            "git.yaml": dropInYaml,
+        },
+    });
 });

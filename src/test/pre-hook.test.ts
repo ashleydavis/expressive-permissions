@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 import { readStdin, runHook } from "../pre-hook";
 
 // An async iterable that yields a single Buffer chunk, used to mock process.stdin.
@@ -107,5 +110,43 @@ describe("runHook", () => {
         expect(parsed.hookSpecificOutput.hookEventName).toBe("PreToolUse");
         expect(["allow", "deny", "ask"]).toContain(parsed.hookSpecificOutput.permissionDecision);
         expect(exitSpy).toHaveBeenCalledWith(0);
+    });
+
+    test("project permissions.d/aws.yaml deny rule is honoured end-to-end via runHook", async () => {
+        const projectDir = mkdtempSync(join(tmpdir(), "pre-hook-dropin-"));
+        mkdirSync(join(projectDir, ".claude", "permissions.d"), { recursive: true });
+        writeFileSync(join(projectDir, ".claude", "permissions.yaml"), "bash:\n  ls:\n    decide: allow\n", "utf-8");
+        writeFileSync(
+            join(projectDir, ".claude", "permissions.d", "aws.yaml"),
+            "bash:\n  aws:\n    decide: deny\n    reason: blocked by drop-in\n",
+            "utf-8"
+        );
+        const emptyHomeDir = mkdtempSync(join(tmpdir(), "pre-hook-home-"));
+        const savedHome = process.env["HOME"];
+        process.env["HOME"] = emptyHomeDir;
+        process.env["CLAUDE_PROJECT_DIR"] = projectDir;
+        try {
+            const toolCall = JSON.stringify({
+                tool_name: "Bash",
+                tool_input: { command: "aws s3 ls" },
+                cwd: projectDir,
+            });
+            setStdin(createMockStdin(toolCall));
+            await runHook();
+            const written = stdoutSpy.mock.calls[0][0] as string;
+            const parsed = JSON.parse(written) as { hookSpecificOutput: { permissionDecision: string; permissionDecisionReason?: string } };
+            expect(parsed.hookSpecificOutput.permissionDecision).toBe("deny");
+            expect(parsed.hookSpecificOutput.permissionDecisionReason).toBe("blocked by drop-in");
+        }
+        finally {
+            if (savedHome !== undefined) {
+                process.env["HOME"] = savedHome;
+            }
+            else {
+                delete process.env["HOME"];
+            }
+            rmSync(emptyHomeDir, { recursive: true, force: true });
+            rmSync(projectDir, { recursive: true, force: true });
+        }
     });
 });

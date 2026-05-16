@@ -141,3 +141,39 @@ bash:
         rmSync(projectDir, { recursive: true, force: true });
     }
 });
+
+test("analyzePermission honours a project permissions.d/aws.yaml drop-in deny rule and logs config_load for it", () => {
+    const projectDir = makeTmpProjectDir(`
+bash:
+  ls:
+    decide: allow
+`);
+    const dropInDir = join(projectDir, ".claude", "permissions.d");
+    mkdirSync(dropInDir, { recursive: true });
+    writeFileSync(
+        join(dropInDir, "aws.yaml"),
+        "bash:\n  aws:\n    decide: deny\n    reason: aws blocked by drop-in\n",
+        "utf-8"
+    );
+    const emptyHomeDir = mkdtempSync(join(tmpdir(), "analyze-test-home-"));
+    const savedHome = process.env["HOME"];
+    process.env["HOME"] = emptyHomeDir;
+    try {
+        const result = analyzePermission("aws s3 ls", "/project", projectDir);
+        expect(result.decision).toBe("deny");
+        expect(result.reason).toBe("aws blocked by drop-in");
+        const configLoads = result.trace.filter((entry) => entry.type === "config_load");
+        const matchedDropInLoad = configLoads.find((entry) => entry.filePath === ".claude/permissions.d/aws.yaml");
+        expect(matchedDropInLoad).toBeDefined();
+    }
+    finally {
+        if (savedHome !== undefined) {
+            process.env["HOME"] = savedHome;
+        }
+        else {
+            delete process.env["HOME"];
+        }
+        rmSync(emptyHomeDir, { recursive: true, force: true });
+        rmSync(projectDir, { recursive: true, force: true });
+    }
+});
