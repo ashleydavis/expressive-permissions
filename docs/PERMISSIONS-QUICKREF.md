@@ -1,6 +1,6 @@
 # Permissions Quick Reference
 
-Rules live in `.claude/permissions.yaml` (project) or `~/.claude/permissions.yaml` (global). Run `/reload-plugins` after edits.
+Rules live in `.claude/permissions.yaml` (project) or `~/.claude/permissions.yaml` (global). You can also split rules across `.claude/permissions.d/*.yaml` (or `~/.claude/permissions.d/*.yaml`) — each drop-in file is loaded as its own layer; deny in any file wins. Run `/reload-plugins` after edits.
 
 ---
 

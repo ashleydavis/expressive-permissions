@@ -180,25 +180,27 @@ Rules should:
 
 ### YAML rules
 
-Drop a `.claude/permissions.yaml` in your project root (or `~/.claude/permissions.yaml` for user-global rules). YAML rules are compiled to `Rule` functions at startup and appended to the registry after the semantic built-ins. No rebuild required - just `/reload-plugins`.
+Drop a `.claude/permissions.yaml` in your project root (or `~/.claude/permissions.yaml` for user-global rules). You can also split rules across multiple files under `.claude/permissions.d/*.yaml` (and the home equivalent) — each drop-in file becomes its own isolated layer. YAML rules are compiled to `Rule` functions at startup and appended to the registry after the semantic built-ins. No rebuild required - just `/reload-plugins`.
 
 See [CONFIGURATION.md](CONFIGURATION.md) for the full conditions table and glob semantics.
 
 ### Registry ordering and conflict resolution
 
-Rules are evaluated through a three-layer delegation chain:
+Rules are evaluated through a layered delegation chain:
 
 ```
 Hook (interpret.ts) → RuleRegistry → RuleLayer | FileLayer → Rule
 ```
 
-The three layers in evaluation order:
+The layers in evaluation order:
 
 1. **Built-in layer** (`RuleLayer`) — cd, env-prefix, env-set, export. Static; never reloads. Runs first so env state is correct when YAML rules evaluate it.
-2. **Home layer** (`FileLayer`) — compiled from `~/.claude/permissions.yaml` once at hook startup. Returns `[]` when `HOME` is unset or the file is absent.
-3. **Project layer** (`FileLayer`) — compiled from `.claude/permissions.yaml` (relative to `CLAUDE_PROJECT_DIR`) once at hook startup. Returns `[]` when `CLAUDE_PROJECT_DIR` is unset or the file is absent.
+2. **Home main layer** (`FileLayer`) — compiled from `~/.claude/permissions.yaml` once at hook startup. Returns `[]` when `HOME` is unset or the file is absent.
+3. **Home drop-in layers** (one `FileLayer` per file) — every `~/.claude/permissions.d/*.yaml` or `.yml`, sorted alphabetically. Each file is its own isolated layer.
+4. **Project main layer** (`FileLayer`) — compiled from `.claude/permissions.yaml` (relative to `CLAUDE_PROJECT_DIR`) once at hook startup. Returns `[]` when `CLAUDE_PROJECT_DIR` is unset or the file is absent.
+5. **Project drop-in layers** (one `FileLayer` per file) — every `.claude/permissions.d/*.yaml` or `.yml` under `CLAUDE_PROJECT_DIR`, sorted alphabetically.
 
-Both YAML config files are compiled independently — neither overrides the other. All rules from both files are evaluated. `RuleRegistry.runRules` iterates the layers in order, threads the persistent env from each layer's result into the next, and applies strictest-wins across layers. A deny in any layer short-circuits the remaining layers.
+All YAML config files are compiled independently — none overrides another. All rules from all files are evaluated. `RuleRegistry.runRules` iterates the layers in order, threads the persistent env from each layer's result into the next, and applies strictest-wins across layers. A deny in any layer short-circuits the remaining layers, so a `permissions.d/aws.yaml` deny wins over an allow in a sibling drop-in or the project main file evaluated later.
 
 The plugin ships with no default YAML rules. All permission decisions come from the user's config files. Within each layer, strictest-wins applies: a deny short-circuits later rules, and an ask cannot be downgraded by a later allow at the same node.
 

@@ -102,4 +102,4 @@ Example output for `ls /tmp` with no matching rule:
 ASK
 ```
 
-The REPL rebuilds the rule registry on every input, so edits to `permissions.yaml` are picked up immediately without restarting.
+The REPL rebuilds the rule registry on every input, so edits to `permissions.yaml` or any file under `permissions.d/` are picked up immediately without restarting.
