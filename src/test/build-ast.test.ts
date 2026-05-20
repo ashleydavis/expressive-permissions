@@ -1,5 +1,5 @@
 import { buildAst, expandToken, expandCommandOptions, describeNode } from "../build-ast";
-import { IToolCall, IBash, IRead, IWrite, IEdit, IMultiEdit, IOtherTool } from "../types";
+import { IToolCall, IBash, IRead, IWrite, IEdit, IMultiEdit, IOtherTool, IXargsNode, ICommand } from "../types";
 
 describe("buildAst", () => {
     test("Bash call produces bash root with raw and child sub-AST", () => {
@@ -193,5 +193,11 @@ describe("describeNode", () => {
         const left = { type: "command" as const, binary: "a", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "a" };
         const right = { type: "command" as const, binary: "b", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "b" };
         expect(describeNode({ type: "binop", op: "&&", left, right })).toBe("a && b");
+    });
+
+    test("xargs node returns raw", () => {
+        const child: ICommand = { type: "command", binary: "grep", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "grep" };
+        const xargsNode: IXargsNode = { type: "xargs", options: {}, child, raw: "xargs grep -l pattern" };
+        expect(describeNode(xargsNode)).toBe("xargs grep -l pattern");
     });
 });

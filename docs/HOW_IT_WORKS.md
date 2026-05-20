@@ -42,7 +42,17 @@ flowchart LR
 
 ## 2. Tool call → AST
 
-`buildAst` switches on `tool_name` and lifts the relevant fields into a typed node. For Bash, `parseBash` runs a hand-written recursive descent parser: a flat lexer produces a token stream, then grammar functions (`parseSequence` / `parseAnd` / `parseOr` / `parsePipe` / `parseCommand`) call each other recursively to build a left-associative sub-AST of `Command` leaves connected by `BinOp` nodes (`pipe`, `and`, `or`, `seq`).
+`buildAst` switches on `tool_name` and lifts the relevant fields into a typed node. For Bash, `parseBash` runs a hand-written recursive descent parser: a flat lexer produces a token stream, then grammar functions (`parseSequence` / `parseAnd` / `parseOr` / `parsePipe` / `parseCommand`) call each other recursively to build a left-associative sub-AST of `Command` leaves connected by `BinOp` nodes (`pipe`, `and`, `or`, `seq`). After parsing, `buildAst` applies `transformXargsNodes` to the sub-tree: every `Command` leaf with `binary: "xargs"` is replaced by an `IXargsNode` intermediate node whose `child` is the parsed subcommand.
+
+For `find . | xargs grep -l "pattern"`:
+
+```mermaid
+graph TD
+  Bash["bash<br/>raw: find . | xargs grep -l &quot;pattern&quot;"] --> Pipe["binop<br/>op: |"]
+  Pipe --> Find["command<br/>binary: find<br/>cmd: ."]
+  Pipe --> Xargs["xargs<br/>options: {l: true}<br/>raw: xargs grep -l &quot;pattern&quot;"]
+  Xargs --> Grep["command<br/>binary: grep<br/>options: {l: true}"]
+```
 
 For `cd /etc && rm -rf /`:
 
@@ -163,6 +173,7 @@ These rules handle Bash semantics. They always `abstain` on the decision and onl
 | `envPrefixRule` | `src/rules/builtin/env-prefix.ts` | `FOO=bar cmd` (non-empty binary + envPrefix) | Installs prefix vars into `env.env` for this command only (`scopedEnv` - transient) |
 | `envSetRule` | `src/rules/builtin/env-set.ts` | `FOO=bar` with no binary | Updates `env.env` persistently |
 | `exportRule` | `src/rules/builtin/export.ts` | `export FOO=bar [BAZ=qux …]` | Updates `env.env` persistently |
+| `xargsRule` | `src/rules/builtin/xargs.ts` | `IXargsNode` (any xargs command) | None -- always abstains; child decision propagates |
 
 Built-ins are registered first in `src/rules/index.ts` so their env updates land in `runningEnv` before permission rules read them - e.g. `NODE_ENV=production npm start` makes `NODE_ENV` visible to a permission rule that wants to deny production runs.
 

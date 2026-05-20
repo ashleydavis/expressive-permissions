@@ -1,0 +1,18 @@
+description: "bash: xargs grep with pattern should be allowed"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: 'xargs grep -l "pattern" 2>/dev/null'
+  cwd: ${PROJECT_DIR}
+
+rules: {}
+
+home_dir_files:
+  bash-rules.yaml:
+    bash:
+      grep:
+        decide: allow
+
+expected:
+  decision: allow

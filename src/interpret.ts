@@ -25,9 +25,9 @@ export interface IInterpretResult {
 
 // isLeaf returns true for AST nodes that have no child nodes to walk.
 // Intermediate nodes carry child references in well-known fields: IBinOp uses "left"/"right",
-// Bash uses "ast", ForLoop uses "body". Any node without those fields is a leaf.
+// Bash uses "ast", ForLoop uses "body", xargs uses "child". Any node without those fields is a leaf.
 export function isLeaf(node: AstNode): boolean {
-    return node.type !== "binop" && node.type !== "bash" && node.type !== "for_loop";
+    return node.type !== "binop" && node.type !== "bash" && node.type !== "for_loop" && node.type !== "xargs";
 }
 
 
@@ -66,14 +66,14 @@ export function combine(childrenIAnnotation: IAnnotation, ownRuleIAnnotation: IA
 // semantics. seq/and thread env left→right→up; or/pipe discard subtree env changes.
 // Returns child annotations and the environment to propagate upward.
 // IWalkChildrenResult is the return type of walkChildren.
-interface IWalkChildrenResult {
+export interface IWalkChildrenResult {
     // The annotation produced by each direct child node.
     childIAnnotations: IAnnotation[];
     // The environment to propagate upward after walking all children.
     envOut: IEnvironment;
 }
 
-function walkChildren(
+export function walkChildren(
     node: AstNode,
     env: IEnvironment,
     call: IToolCall,
@@ -82,6 +82,14 @@ function walkChildren(
 ): IWalkChildrenResult {
     if (node.type === "bash") {
         const childResult = interpret(node.ast, env, call, logger, registry);
+        return {
+            childIAnnotations: [childResult.annotation],
+            envOut: childResult.envOut,
+        };
+    }
+
+    if (node.type === "xargs") {
+        const childResult = interpret(node.child, env, call, logger, registry);
         return {
             childIAnnotations: [childResult.annotation],
             envOut: childResult.envOut,

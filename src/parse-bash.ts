@@ -1,7 +1,7 @@
 import { BashAstNode, ICommand, IForLoop, IRedirect } from "./types";
 
 // A single token produced by the lexer
-interface IToken {
+export interface IToken {
     // Whether this is a word or an operator token
     kind: "word" | "op";
     // The resolved token value (quotes and escapes already processed for words)
@@ -36,7 +36,7 @@ function isEnvAssignment(value: string): boolean {
 // Tokenizes a raw Bash command string into a flat stream of word and operator tokens.
 // Handles single/double quotes, backslash escapes, $(...) subshells, and backtick subshells.
 // Whitespace between tokens is consumed and discarded.
-function lex(input: string): IToken[] {
+export function lex(input: string): IToken[] {
     const tokens: IToken[] = [];
     let pos = 0;
 

@@ -1,0 +1,18 @@
+description: "bash: xargs rm should be denied"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "xargs rm -f"
+  cwd: ${PROJECT_DIR}
+
+rules: {}
+
+home_dir_files:
+  bash-rules.yaml:
+    bash:
+      rm:
+        decide: deny
+
+expected:
+  decision: deny

@@ -1,5 +1,149 @@
-import { IToolCall, ToolRoot, IEditEntry, IRead, IEdit, AstNode, IBinOp, ICommand } from "./types";
-import { parseBash } from "./parse-bash";
+import { IToolCall, ToolRoot, IEditEntry, IRead, IEdit, AstNode, IBinOp, ICommand, BashAstNode, IXargsNode } from "./types";
+import { parseBash, lex, IToken } from "./parse-bash";
+
+// Single-character xargs flags that consume the next token as their value.
+const XARGS_VALUE_FLAGS: Set<string> = new Set(["n", "P", "I", "i", "L", "l", "s", "a", "d", "E", "e"]);
+
+// Long xargs option names (without --) that consume the next token as their value.
+const XARGS_VALUE_LONG_FLAGS: Set<string> = new Set([
+    "max-args", "max-procs", "replace", "max-lines", "max-chars", "arg-file", "delimiter", "eof",
+]);
+
+// Result of parseXargsCommand: the xargs-specific options and the parsed subcommand child.
+interface IXargsParseResult {
+    // Options consumed by xargs itself
+    options: Record<string, string | boolean>;
+    // The subcommand Command to be evaluated for permissions
+    child: ICommand;
+}
+
+// Parses the raw xargs command string, splitting xargs-own options from the subcommand.
+// Returns the xargs options map and the parsed child ICommand.
+export function parseXargsCommand(raw: string): IXargsParseResult {
+    const tokens: IToken[] = lex(raw);
+    const options: Record<string, string | boolean> = {};
+    const emptyCommand: ICommand = {
+        type: "command",
+        binary: "",
+        options: {},
+        cmd: [],
+        envPrefix: {},
+        redirects: [],
+        raw: "",
+    };
+
+    // Skip index 0 (the xargs binary word token)
+    let index = 1;
+
+    // Walk tokens while they are word tokens (xargs options)
+    while (index < tokens.length && tokens[index].kind === "word") {
+        const token = tokens[index];
+
+        if (token.value === "--") {
+            index++;
+            break;
+        }
+
+        if (!token.value.startsWith("-")) {
+            break;
+        }
+
+        if (token.value.startsWith("--")) {
+            const longPart = token.value.substring(2);
+            const eqIdx = longPart.indexOf("=");
+            if (eqIdx !== -1) {
+                options[longPart.substring(0, eqIdx)] = longPart.substring(eqIdx + 1);
+                index++;
+            }
+            else if (XARGS_VALUE_LONG_FLAGS.has(longPart)) {
+                const nextValue = index + 1 < tokens.length ? tokens[index + 1].value : "";
+                options[longPart] = nextValue;
+                index += 2;
+            }
+            else {
+                options[longPart] = true;
+                index++;
+            }
+        }
+        else {
+            const rest = token.value.substring(1);
+            if (XARGS_VALUE_FLAGS.has(rest[0])) {
+                if (rest.length > 1) {
+                    options[rest[0]] = rest.substring(1);
+                    index++;
+                }
+                else {
+                    const nextValue = index + 1 < tokens.length ? tokens[index + 1].value : "";
+                    options[rest] = nextValue;
+                    index += 2;
+                }
+            }
+            else {
+                for (const ch of rest) {
+                    options[ch] = true;
+                }
+                index++;
+            }
+        }
+    }
+
+    // Skip any op-kind tokens (redirections before the subcommand)
+    while (index < tokens.length && tokens[index].kind === "op") {
+        index++;
+        if (index < tokens.length && tokens[index].kind === "word") {
+            index++;
+        }
+    }
+
+    if (index >= tokens.length) {
+        return { options, child: emptyCommand };
+    }
+
+    const subcmdStart = tokens[index].start;
+    const subcmdRaw = raw.substring(subcmdStart);
+    const result = parseBash(subcmdRaw);
+
+    if (result.type === "command") {
+        return { options, child: result };
+    }
+
+    return { options, child: emptyCommand };
+}
+
+// Recursively transforms Command nodes with binary "xargs" into IXargsNode intermediate nodes.
+// BinOp and ForLoop nodes are walked to transform their children; other nodes are returned unchanged.
+export function transformXargsNodes(node: BashAstNode): BashAstNode {
+    if (node.type === "command") {
+        if (node.binary !== "xargs") {
+            return node;
+        }
+        const { options, child } = parseXargsCommand(node.raw);
+        const xargsNode: IXargsNode = {
+            type: "xargs",
+            options,
+            child,
+            raw: node.raw,
+        };
+        return xargsNode;
+    }
+
+    if (node.type === "binop") {
+        return {
+            ...node,
+            left: transformXargsNodes(node.left),
+            right: transformXargsNodes(node.right),
+        };
+    }
+
+    if (node.type === "for_loop") {
+        return {
+            ...node,
+            body: transformXargsNodes(node.body),
+        };
+    }
+
+    return node;
+}
 
 // expandToken substitutes $VAR and ${VAR} references in a single string using the
 // provided vars dict. Unknown variable references are left as-is.
@@ -45,6 +189,8 @@ export function describeNode(node: AstNode): string {
     switch (node.type) {
         case "command":
             return node.raw;
+        case "xargs":
+            return node.raw;
         case "binop":
             return `${describeNode((node as IBinOp).left)} ${(node as IBinOp).op} ${describeNode((node as IBinOp).right)}`;
         case "for_loop":
@@ -74,7 +220,7 @@ export function buildAst(call: IToolCall): ToolRoot {
             return {
                 type: "bash",
                 raw: command,
-                ast: parseBash(command),
+                ast: transformXargsNodes(parseBash(command)),
             };
         }
         case "Read": {

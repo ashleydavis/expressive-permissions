@@ -1,0 +1,18 @@
+description: "bash: xargs with no subcommand defaults to ask"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "xargs"
+  cwd: ${PROJECT_DIR}
+
+rules: {}
+
+home_dir_files:
+  bash-rules.yaml:
+    bash:
+      grep:
+        decide: allow
+
+expected:
+  decision: ask

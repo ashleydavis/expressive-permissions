@@ -101,8 +101,21 @@ export interface IForLoop {
     raw: string;
 }
 
+// An intermediate node representing an xargs invocation. The child is the parsed subcommand
+// that xargs will invoke; its decision bubbles up to become the decision of this node.
+export interface IXargsNode {
+    // Discriminator for the xargs node type
+    type: "xargs";
+    // Options that belong to xargs itself (not to the subcommand), e.g. { n: "1", I: "{}" }
+    options: Record<string, string | boolean>;
+    // The parsed subcommand Command that xargs will run
+    child: ICommand;
+    // The original raw command string including the xargs binary and all arguments
+    raw: string;
+}
+
 // Union of all Bash sub-AST node types
-export type BashAstNode = ICommand | IBinOp | IForLoop;
+export type BashAstNode = ICommand | IBinOp | IForLoop | IXargsNode;
 
 // A single edit operation within a MultiEdit tool call
 export interface IEditEntry {

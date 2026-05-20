@@ -1,0 +1,20 @@
+description: "bash: find piped to xargs grep should be allowed when both are allowed"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "find . -name '*.ts' | xargs grep -l 'pattern'"
+  cwd: ${PROJECT_DIR}
+
+rules: {}
+
+home_dir_files:
+  bash-rules.yaml:
+    bash:
+      find:
+        decide: allow
+      grep:
+        decide: allow
+
+expected:
+  decision: allow

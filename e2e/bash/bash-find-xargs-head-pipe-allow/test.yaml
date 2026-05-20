@@ -11,7 +11,7 @@ rules:
     find:
       cmd: "./**"
       decide: allow
-    xargs:
+    grep:
       decide: allow
     head:
       decide: allow

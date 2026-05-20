@@ -5,7 +5,7 @@ import { RuleLayer, RuleRegistry } from "../rule-registry";
 import { cdRule } from "../rules/builtin/cd";
 import { envPrefixRule } from "../rules/builtin/env-prefix";
 import { envSetRule } from "../rules/builtin/env-set";
-import { AstNode, Decision, IEnvironment, IRule, IRuleOutcome, IToolCall, ABSTAIN, rank, IBash, IBinOp, ICommand, IEdit, IMultiEdit, IOtherTool, IRead, IWrite } from "../types";
+import { AstNode, Decision, IEnvironment, IRule, IRuleOutcome, IToolCall, ABSTAIN, rank, IBash, IBinOp, ICommand, IEdit, IMultiEdit, IOtherTool, IRead, IWrite, IXargsNode } from "../types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -910,6 +910,12 @@ test("isLeaf: multiedit node is a leaf", () => {
 
 test("isLeaf: other node is a leaf", () => {
     expect(isLeaf({ type: "other", tool_name: "Grep", tool_input: {} })).toBe(true);
+});
+
+test("isLeaf: xargs node is not a leaf", () => {
+    const child: ICommand = { type: "command", binary: "grep", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "grep" };
+    const xargsNode: IXargsNode = { type: "xargs", options: {}, child, raw: "xargs grep" };
+    expect(isLeaf(xargsNode)).toBe(false);
 });
 
 // ---------------------------------------------------------------------------
