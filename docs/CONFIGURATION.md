@@ -928,7 +928,7 @@ bun run repl "git push --force"
 
 To test non-Bash tool calls, use a prefix: `read /etc/passwd`, `write /tmp/out`, `webfetch https://api.example.com`, `tool mcp__github__delete_repo`.
 
-See [REPL.md](REPL.md) for full details including `:cwd` and one-shot mode.
+See [REPL.md](REPL.md) for full details including `:project` / `:cwd` and one-shot mode.
 
 ### Permission Analyzer MCP server
 

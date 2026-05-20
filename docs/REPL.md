@@ -63,11 +63,12 @@ These control the session and are not evaluated as commands:
 
 | Command | Effect |
 |---|---|
-| `:cwd <path>` | Change the working directory used for subsequent evaluations |
+| `:project <path>` (alias `:proj <path>`) | Change both the project directory (used by `${{PROJECT_DIR}}` expansion) and the cwd to the given path |
+| `:cwd <path>` | Change only the working directory used for subsequent evaluations |
 | `:quit` or `:q` | Exit the REPL |
 | Ctrl-D | Exit the REPL |
 
-Changing `:cwd` is useful when a rule uses `cwd` matching and you want to test it from different directories without leaving the session.
+Use `:project` when you want to "move into" a different project so that path-anchored rules (e.g. `cmd: "${{PROJECT_DIR}}/**"`) match relative to that location. Use `:cwd` when you want to keep the same project anchor but pretend a tool call is being made from a different working directory.
 
 ## Reading the output
 

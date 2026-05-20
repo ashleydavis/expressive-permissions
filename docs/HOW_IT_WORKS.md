@@ -244,7 +244,7 @@ Both the REPL and the MCP server use the same `analyzePermission` function from 
 
 The REPL is a thin shell around `analyzePermission`. It has two modes:
 
-- **Interactive** -- reads lines from stdin, calls `analyzePermission` for each, and prints the trace and final verdict in ANSI colour. The `:cwd <path>` command changes the working directory for subsequent evaluations; `:quit` or Ctrl-D exits.
+- **Interactive** -- reads lines from stdin, calls `analyzePermission` for each, and prints the trace and final verdict in ANSI colour. The `:cwd <path>` command changes the working directory for subsequent evaluations; `:project <path>` (alias `:proj <path>`) changes both the project dir (used to expand `${{PROJECT_DIR}}`) and the cwd together; `:quit` or Ctrl-D exits.
 - **One-shot** -- when a command is passed as `process.argv[2]`, the REPL calls `analyzePermission` once, prints the result, and exits with code 0 (allow), 1 (deny), or 2 (ask). This is what `scripts/repl-smoke-tests.sh` uses.
 
 Neither mode touches the live hook or writes to the audit log. The `CapturingAuditLogger` inside `analyzePermission` captures all trace entries in memory and they are discarded after printing.

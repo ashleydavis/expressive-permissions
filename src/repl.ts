@@ -60,9 +60,82 @@ export function runOnce(input: string, cwd: string, projectDir: string): void {
     process.stdout.write(formatVerdict(result) + "\n");
 }
 
+// ReplCommandKind enumerates the discrete command variants produced by parseReplCommand.
+export type ReplCommandKind = "empty" | "quit" | "set-cwd" | "set-project" | "analyze";
+
+// IReplCommandEmpty represents a blank input line that should reprompt without action.
+export interface IReplCommandEmpty {
+    // Discriminator for the empty variant.
+    kind: "empty";
+}
+
+// IReplCommandQuit represents a request to exit the REPL session.
+export interface IReplCommandQuit {
+    // Discriminator for the quit variant.
+    kind: "quit";
+}
+
+// IReplCommandSetCwd represents a request to change the runtime cwd only.
+export interface IReplCommandSetCwd {
+    // Discriminator for the set-cwd variant.
+    kind: "set-cwd";
+    // The new cwd path supplied by the user (already trimmed of surrounding whitespace).
+    path: string;
+}
+
+// IReplCommandSetProject represents a request to change both the project dir and cwd.
+export interface IReplCommandSetProject {
+    // Discriminator for the set-project variant.
+    kind: "set-project";
+    // The new project-dir path supplied by the user (also used as the new cwd).
+    path: string;
+}
+
+// IReplCommandAnalyze represents a tool-call input to analyze through the engine.
+export interface IReplCommandAnalyze {
+    // Discriminator for the analyze variant.
+    kind: "analyze";
+    // The raw tool-call input string (trimmed but otherwise unmodified).
+    input: string;
+}
+
+// ReplCommand is the discriminated union of every command that the REPL line handler dispatches on.
+export type ReplCommand = IReplCommandEmpty | IReplCommandQuit | IReplCommandSetCwd | IReplCommandSetProject | IReplCommandAnalyze;
+
+// parseReplCommand classifies a raw REPL input line into a ReplCommand variant.
+// Recognised prefixes: :quit/:q, :cwd <path>, :project <path>, :proj <path>.
+// Anything else is treated as a tool-call input for analysis.
+export function parseReplCommand(line: string): ReplCommand {
+    const trimmed = line.trim();
+
+    if (trimmed === "") {
+        return { kind: "empty" };
+    }
+
+    if (trimmed === ":quit" || trimmed === ":q") {
+        return { kind: "quit" };
+    }
+
+    if (trimmed.startsWith(":cwd ")) {
+        return { kind: "set-cwd", path: trimmed.slice(":cwd ".length).trim() };
+    }
+
+    if (trimmed.startsWith(":project ")) {
+        return { kind: "set-project", path: trimmed.slice(":project ".length).trim() };
+    }
+
+    if (trimmed.startsWith(":proj ")) {
+        return { kind: "set-project", path: trimmed.slice(":proj ".length).trim() };
+    }
+
+    return { kind: "analyze", input: trimmed };
+}
+
 // runRepl starts an interactive REPL session. On each line it analyzes the input and
-// prints the trace and verdict. :quit/:q exits, :cwd <path> changes the working directory.
-export async function runRepl(projectDir: string, initialCwd: string): Promise<void> {
+// prints the trace and verdict. :quit/:q exits, :cwd <path> changes the runtime cwd,
+// and :project <path> (alias :proj) changes both the project dir and the cwd together.
+export async function runRepl(initialProjectDir: string, initialCwd: string): Promise<void> {
+    let currentProjectDir = initialProjectDir;
     let currentCwd = initialCwd;
 
     const rl = readline.createInterface({
@@ -72,9 +145,9 @@ export async function runRepl(projectDir: string, initialCwd: string): Promise<v
 
     process.stdout.write(
         `${ANSI.bold}permissions REPL${ANSI.reset}\n` +
-        `${ANSI.dim}project: ${projectDir}${ANSI.reset}\n` +
+        `${ANSI.dim}project: ${currentProjectDir}${ANSI.reset}\n` +
         `${ANSI.dim}cwd:     ${currentCwd}${ANSI.reset}\n` +
-        `Type a command to analyze, :cwd <path> to change directory, :quit to exit.\n\n`
+        `Type a command to analyze, :project <path> to set project+cwd, :cwd <path> to change cwd only, :quit to exit.\n\n`
     );
 
     const prompt = (): void => {
@@ -82,26 +155,35 @@ export async function runRepl(projectDir: string, initialCwd: string): Promise<v
     };
 
     const handleLine = (line: string): void => {
-        const trimmed = line.trim();
+        const command = parseReplCommand(line);
 
-        if (trimmed === "") {
+        if (command.kind === "empty") {
             prompt();
             return;
         }
 
-        if (trimmed === ":quit" || trimmed === ":q") {
+        if (command.kind === "quit") {
             rl.close();
             return;
         }
 
-        if (trimmed.startsWith(":cwd ")) {
-            currentCwd = trimmed.slice(":cwd ".length).trim();
+        if (command.kind === "set-cwd") {
+            currentCwd = command.path;
             process.stdout.write(`${ANSI.dim}cwd changed to: ${currentCwd}${ANSI.reset}\n`);
             prompt();
             return;
         }
 
-        runOnce(trimmed, currentCwd, projectDir);
+        if (command.kind === "set-project") {
+            currentProjectDir = command.path;
+            currentCwd = command.path;
+            process.stdout.write(`${ANSI.dim}project changed to: ${currentProjectDir}${ANSI.reset}\n`);
+            process.stdout.write(`${ANSI.dim}cwd changed to:     ${currentCwd}${ANSI.reset}\n`);
+            prompt();
+            return;
+        }
+
+        runOnce(command.input, currentCwd, currentProjectDir);
         process.stdout.write("\n");
         prompt();
     };

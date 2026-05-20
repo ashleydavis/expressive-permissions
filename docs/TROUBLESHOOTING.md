@@ -33,7 +33,7 @@ One-shot mode (no interactive session, useful in scripts or CI):
 bun run repl "git push --force"
 ```
 
-See [docs/REPL.md](REPL.md) for the full reference including non-Bash tool prefixes and `:cwd` session commands.
+See [docs/REPL.md](REPL.md) for the full reference including non-Bash tool prefixes and `:project` / `:cwd` session commands.
 
 ## Permission Analyzer MCP server
 
