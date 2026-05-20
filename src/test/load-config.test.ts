@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync, rmSync, mkdtempSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { loadConfigRules, loadConfigRulesFromFile, loadHomeConfigRules, loadProjectConfigRules, validateConfig, resolveCwdPattern, resolveEntryCwdPatterns, resolveRelativeCwdPatterns, aggregateOutcomes, buildBashScopedRule, buildFileScopedRule, notFieldsAllMatch, evaluateFileField, matchesFileField, lineOfOffset, annotateLines, compileTopLevelToolRules, discoverConfigDirFiles, discoverHomeConfigDirFiles, discoverProjectConfigDirFiles, makeConfigFileLoader, IYamlEntry, IYamlConfig, INotFields, IFileMatch, IConfigError, IConfigFileSource } from "../load-config";
+import { loadConfigRules, loadConfigRulesFromFile, loadHomeConfigRules, loadProjectConfigRules, validateConfig, resolveCwdPattern, resolveEntryCwdPatterns, resolveRelativeCwdPatterns, isCmdPathPattern, resolveCmdPathPattern, resolveEntryCmdPatterns, resolveRelativeCmdPatterns, aggregateOutcomes, buildBashScopedRule, buildFileScopedRule, notFieldsAllMatch, evaluateFileField, matchesFileField, lineOfOffset, annotateLines, compileTopLevelToolRules, discoverConfigDirFiles, discoverHomeConfigDirFiles, discoverProjectConfigDirFiles, makeConfigFileLoader, IYamlEntry, IYamlConfig, INotFields, IFileMatch, IConfigError, IConfigFileSource } from "../load-config";
 import { parseDocument } from "yaml";
 import { Rule, RuleOutcome, AstNode, Environment, ToolCall, Command } from "../types";
 
@@ -337,8 +337,8 @@ test("bash cmd glob: matches paths containing hidden directory segments", () => 
     // Regression: picomatch defaults to dot:false, which makes "*" and "**" refuse
     // to traverse path segments beginning with ".". Users expect "./**" to mean
     // "any path under here", including ones that pass through .git, .claude-plugin, etc.
-    // (Note: picomatch treats "./**" as equivalent to "**" — it does not require a literal
-    // "./" prefix on the value. The test inputs reflect what shells actually pass through.)
+    // Under path-aware cmd: matching, ./** resolves to <projectDir>/** at load time, and
+    // each positional arg is resolved against env.cwd before being matched against it.
     const yaml = `
 bash:
   cat:
@@ -346,14 +346,17 @@ bash:
     decide: allow
 `;
     withYamlFixtures(null, yaml, (rules) => {
+        const projectDir = process.env["CLAUDE_PROJECT_DIR"]!;
+        const projectEnv = makeEnv(projectDir, true, {});
         // Plain relative path → matches
-        expect(decide(rules[0], makeCommand("cat", "src/index.ts"))).toBe("allow");
+        expect(decide(rules[0], makeCommand("cat", "src/index.ts"), projectEnv)).toBe("allow");
         // Relative path through a hidden directory → must also match
-        expect(decide(rules[0], makeCommand("cat", "plugin/.claude-plugin/plugin.json"))).toBe("allow");
+        expect(decide(rules[0], makeCommand("cat", "plugin/.claude-plugin/plugin.json"), projectEnv)).toBe("allow");
         // Direct hidden file → must also match
-        expect(decide(rules[0], makeCommand("cat", ".env"))).toBe("allow");
-        // Absolute path with a hidden segment → must also match
-        expect(decide(rules[0], makeCommand("cat", "/home/user/project/plugin/.claude-plugin/plugin.json"))).toBe("allow");
+        expect(decide(rules[0], makeCommand("cat", ".env"), projectEnv)).toBe("allow");
+        // Absolute path with a hidden segment, under the project dir → must also match
+        const absoluteHiddenPath = projectDir + "/plugin/.claude-plugin/plugin.json";
+        expect(decide(rules[0], makeCommand("cat", absoluteHiddenPath), projectEnv)).toBe("allow");
     });
 });
 
@@ -852,7 +855,7 @@ bash:
     - options:
         - r|recursive
       decide: deny
-    - cmd: "/**"
+    - cmd: "/etc/**"
       decide: deny
     - decide: ask
   git:
@@ -2672,6 +2675,270 @@ test("resolveRelativeCwdPatterns: absolute patterns in all sections left unchang
     resolveRelativeCwdPatterns(config, "/base");
     expect((config.bash!["rm"] as IYamlEntry).cwd).toBe("/etc/**");
     expect((config.read as IYamlEntry).cwd).toBe("/secrets/**");
+});
+
+// ---------------------------------------------------------------------------
+// isCmdPathPattern
+// ---------------------------------------------------------------------------
+
+test("isCmdPathPattern: returns true for ./", () => {
+    expect(isCmdPathPattern("./")).toBe(true);
+});
+
+test("isCmdPathPattern: returns true for ./**", () => {
+    expect(isCmdPathPattern("./**")).toBe(true);
+});
+
+test("isCmdPathPattern: returns true for ./foo", () => {
+    expect(isCmdPathPattern("./foo")).toBe(true);
+});
+
+test("isCmdPathPattern: returns true for /foo", () => {
+    expect(isCmdPathPattern("/foo")).toBe(true);
+});
+
+test("isCmdPathPattern: returns false for empty string", () => {
+    expect(isCmdPathPattern("")).toBe(false);
+});
+
+test("isCmdPathPattern: returns false for plain glob foo-*", () => {
+    expect(isCmdPathPattern("foo-*")).toBe(false);
+});
+
+test("isCmdPathPattern: returns false for *.yaml", () => {
+    expect(isCmdPathPattern("*.yaml")).toBe(false);
+});
+
+test("isCmdPathPattern: returns false for plain word foo", () => {
+    expect(isCmdPathPattern("foo")).toBe(false);
+});
+
+test("isCmdPathPattern: returns false for regex pattern /.../", () => {
+    expect(isCmdPathPattern("/^ftp:/")).toBe(false);
+});
+
+// ---------------------------------------------------------------------------
+// resolveCmdPathPattern
+// ---------------------------------------------------------------------------
+
+test("resolveCmdPathPattern: ./** anchored to project dir", () => {
+    expect(resolveCmdPathPattern("./**", "/proj")).toBe("/proj/**");
+});
+
+test("resolveCmdPathPattern: ./foo/bar anchored to project dir", () => {
+    expect(resolveCmdPathPattern("./foo/bar", "/proj")).toBe("/proj/foo/bar");
+});
+
+test("resolveCmdPathPattern: absolute /etc/hosts passthrough", () => {
+    expect(resolveCmdPathPattern("/etc/hosts", "/proj")).toBe("/etc/hosts");
+});
+
+test("resolveCmdPathPattern: plain glob foo-* passthrough", () => {
+    expect(resolveCmdPathPattern("foo-*", "/proj")).toBe("foo-*");
+});
+
+// ---------------------------------------------------------------------------
+// resolveEntryCmdPatterns
+// ---------------------------------------------------------------------------
+
+test("resolveEntryCmdPatterns: cmd string form rewritten", () => {
+    const entry: IYamlEntry = { cmd: "./**", decide: "allow" };
+    resolveEntryCmdPatterns(entry, "/proj");
+    expect(entry.cmd).toBe("/proj/**");
+});
+
+test("resolveEntryCmdPatterns: cmd string form with multiple tokens rewrites each path-style token", () => {
+    const entry: IYamlEntry = { cmd: "./src ./test other-*", decide: "allow" };
+    resolveEntryCmdPatterns(entry, "/proj");
+    expect(entry.cmd).toBe("/proj/src /proj/test other-*");
+});
+
+test("resolveEntryCmdPatterns: cmd array form rewritten per-element", () => {
+    const entry: IYamlEntry = { cmd: ["./src/**", "/etc/hosts", "foo-*"], decide: "deny" };
+    resolveEntryCmdPatterns(entry, "/proj");
+    expect(entry.cmd).toEqual(["/proj/src/**", "/etc/hosts", "foo-*"]);
+});
+
+test("resolveEntryCmdPatterns: cmd-in array each path pattern rewritten", () => {
+    const entry: IYamlEntry = { "cmd-in": ["./a/**", "/etc/**", "./b/**", "foo-*"], decide: "allow" };
+    resolveEntryCmdPatterns(entry, "/proj");
+    expect(entry["cmd-in"]).toEqual(["/proj/a/**", "/etc/**", "/proj/b/**", "foo-*"]);
+});
+
+test("resolveEntryCmdPatterns: not.cmd rewritten", () => {
+    const entry: IYamlEntry = { not: { cmd: "./**" }, decide: "deny" };
+    resolveEntryCmdPatterns(entry, "/proj");
+    expect(entry.not!.cmd).toBe("/proj/**");
+});
+
+test("resolveEntryCmdPatterns: not.cmd-in rewritten", () => {
+    const entry: IYamlEntry = { not: { "cmd-in": ["./x/**", "foo-*"] }, decide: "deny" };
+    resolveEntryCmdPatterns(entry, "/proj");
+    expect(entry.not!["cmd-in"]).toEqual(["/proj/x/**", "foo-*"]);
+});
+
+test("resolveEntryCmdPatterns: rules sub-entries recursed into", () => {
+    const entry: IYamlEntry = { rules: [{ cmd: "./a", decide: "allow" }, { cmd: "./b", decide: "deny" }] };
+    resolveEntryCmdPatterns(entry, "/proj");
+    expect((entry.rules![0] as IYamlEntry).cmd).toBe("/proj/a");
+    expect((entry.rules![1] as IYamlEntry).cmd).toBe("/proj/b");
+});
+
+test("resolveEntryCmdPatterns: subcommand children recursed when not a tool-name entry", () => {
+    const entry: IYamlEntry = { push: { cmd: "./**", decide: "deny" } };
+    resolveEntryCmdPatterns(entry, "/proj");
+    const subEntry = entry["push"] as IYamlEntry;
+    expect(subEntry.cmd).toBe("/proj/**");
+});
+
+test("resolveEntryCmdPatterns: tool-name entry skips subcommand recursion", () => {
+    const entry: IYamlEntry = { push: { cmd: "./**", decide: "deny" } };
+    resolveEntryCmdPatterns(entry, "/proj", { isToolNameEntry: true });
+    const subEntry = entry["push"] as IYamlEntry;
+    expect(subEntry.cmd).toBe("./**");
+});
+
+test("resolveEntryCmdPatterns: cwd field not affected by cmd walker", () => {
+    const entry: IYamlEntry = { cwd: "./src/**", decide: "allow" };
+    resolveEntryCmdPatterns(entry, "/proj");
+    expect(entry.cwd).toBe("./src/**");
+});
+
+// ---------------------------------------------------------------------------
+// resolveRelativeCmdPatterns
+// ---------------------------------------------------------------------------
+
+test("resolveRelativeCmdPatterns: bash section cmd resolved", () => {
+    const config: IYamlConfig = { bash: { find: { cmd: "./**", decide: "allow" } } };
+    resolveRelativeCmdPatterns(config, "/proj");
+    expect((config.bash!["find"] as IYamlEntry).cmd).toBe("/proj/**");
+});
+
+test("resolveRelativeCmdPatterns: read section cmd resolved", () => {
+    const config: IYamlConfig = { read: { cmd: "./**", decide: "allow" } };
+    resolveRelativeCmdPatterns(config, "/proj");
+    expect((config.read as IYamlEntry).cmd).toBe("/proj/**");
+});
+
+test("resolveRelativeCmdPatterns: write section cmd resolved", () => {
+    const config: IYamlConfig = { write: { cmd: "./**", decide: "deny" } };
+    resolveRelativeCmdPatterns(config, "/proj");
+    expect((config.write as IYamlEntry).cmd).toBe("/proj/**");
+});
+
+test("resolveRelativeCmdPatterns: edit section cmd resolved", () => {
+    const config: IYamlConfig = { edit: { cmd: "./**", decide: "allow" } };
+    resolveRelativeCmdPatterns(config, "/proj");
+    expect((config.edit as IYamlEntry).cmd).toBe("/proj/**");
+});
+
+test("resolveRelativeCmdPatterns: multi_edit section cmd resolved", () => {
+    const config: IYamlConfig = { multi_edit: { cmd: "./**", decide: "deny" } };
+    resolveRelativeCmdPatterns(config, "/proj");
+    expect((config.multi_edit as IYamlEntry).cmd).toBe("/proj/**");
+});
+
+test("resolveRelativeCmdPatterns: webfetch section cmd resolved", () => {
+    const config: IYamlConfig = { webfetch: { cmd: "./**", decide: "allow" } };
+    resolveRelativeCmdPatterns(config, "/proj");
+    expect((config.webfetch as IYamlEntry).cmd).toBe("/proj/**");
+});
+
+test("resolveRelativeCmdPatterns: top-level tool-name key cmd resolved", () => {
+    const config = { Foo: { cmd: "./**", decide: "allow" } } as IYamlConfig & { Foo: IYamlEntry };
+    resolveRelativeCmdPatterns(config, "/proj");
+    expect(config.Foo.cmd).toBe("/proj/**");
+});
+
+test("resolveRelativeCmdPatterns: empty config is a no-op", () => {
+    const config: IYamlConfig = {};
+    expect(() => resolveRelativeCmdPatterns(config, "/proj")).not.toThrow();
+});
+
+// ---------------------------------------------------------------------------
+// matchesCmd path-aware semantics (via end-to-end YAML evaluation)
+// ---------------------------------------------------------------------------
+
+test("matchesCmd path-aware: arg '.' under project resolves and matches ./**", () => {
+    const yaml = `
+bash:
+  find:
+    cmd: "./**"
+    decide: allow
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const projectDir = process.env["CLAUDE_PROJECT_DIR"]!;
+        const subDirEnv = makeEnv(projectDir + "/foo/bar", true, {});
+        expect(decide(rules[0], makeCommand("find", "."), subDirEnv)).toBe("allow");
+    });
+});
+
+test("matchesCmd path-aware: arg '.' outside project does not match ./**", () => {
+    const yaml = `
+bash:
+  find:
+    cmd: "./**"
+    decide: allow
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const tmpEnv = makeEnv("/tmp", true, {});
+        expect(decide(rules[0], makeCommand("find", "."), tmpEnv)).toBe("abstain");
+    });
+});
+
+test("matchesCmd path-aware: absolute arg under project matches ./**", () => {
+    const yaml = `
+bash:
+  find:
+    cmd: "./**"
+    decide: allow
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const projectDir = process.env["CLAUDE_PROJECT_DIR"]!;
+        const someEnv = makeEnv("/some/other/place", true, {});
+        expect(decide(rules[0], makeCommand("find", projectDir + "/sub/file"), someEnv)).toBe("allow");
+    });
+});
+
+test("matchesCmd path-aware: arg /etc/passwd does not match ./**", () => {
+    const yaml = `
+bash:
+  find:
+    cmd: "./**"
+    decide: allow
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const projectDir = process.env["CLAUDE_PROJECT_DIR"]!;
+        const projectEnv = makeEnv(projectDir, true, {});
+        expect(decide(rules[0], makeCommand("find", "/etc/passwd"), projectEnv)).toBe("abstain");
+    });
+});
+
+test("matchesCmd path-aware: string-glob pattern foo-* still matches arg foo-1 (no regression)", () => {
+    const yaml = `
+bash:
+  custom:
+    cmd: "foo-*"
+    decide: allow
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        expect(decide(rules[0], makeCommand("custom", "foo-1"))).toBe("allow");
+    });
+});
+
+test("matchesCmd path-aware: project root itself matches ./** (base dir included)", () => {
+    const yaml = `
+bash:
+  find:
+    cmd: "./**"
+    decide: allow
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const projectDir = process.env["CLAUDE_PROJECT_DIR"]!;
+        const rootEnv = makeEnv(projectDir, true, {});
+        // arg "." resolves to projectDir itself; matchesPathGlob includes base dir
+        expect(decide(rules[0], makeCommand("find", "."), rootEnv)).toBe("allow");
+    });
 });
 
 // ---------------------------------------------------------------------------

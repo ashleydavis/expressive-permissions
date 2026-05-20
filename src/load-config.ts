@@ -1,5 +1,5 @@
 import { readFileSync, existsSync, readdirSync, statSync } from "fs";
-import { join } from "path";
+import { join, resolve } from "path";
 import { homedir } from "os";
 import { parseDocument, isMap, isSeq, isPair, isScalar, Node } from "yaml";
 import picomatch from "picomatch";
@@ -166,6 +166,16 @@ function matchesGlob(pattern: string, value: string): boolean {
     return picomatch(pattern, { dot: true })(value);
 }
 
+// Path-aware glob match for resolved absolute paths. Same as matchesGlob but, for patterns
+// ending in "/**", the base directory itself counts as a match. Used by path-aware cmd: matching
+// where "<proj>/**" should cover "<proj>" itself (so "find ." run from the project root is allowed).
+function matchesPathGlob(pattern: string, value: string): boolean {
+    if (pattern.endsWith("/**") && value === pattern.slice(0, -3)) {
+        return true;
+    }
+    return picomatch(pattern, { dot: true })(value);
+}
+
 // Matches value against pattern: dispatches to RegExp for /.../ patterns, otherwise calls picomatch.
 function matchesPattern(pattern: string, value: string): boolean {
     if (pattern.length >= 2 && pattern.startsWith("/") && pattern.endsWith("/")) {
@@ -307,14 +317,29 @@ function matchesOptions(entry: IYamlEntry, node: Command): boolean {
     return true;
 }
 
-// Returns true when the cmd/cmd-in entry fields match the positional arguments at the given offset
-function matchesCmd(entry: IYamlEntry, node: Command, cmdOffset: number): boolean {
+// Returns true when value matches pattern using path-aware semantics if the pattern is a
+// path-style pattern (./* or /*), otherwise falls through to the string-glob matchesPattern.
+// Used inside matchesCmd to dispatch per pattern–arg pair. The resolved pattern is assumed
+// to already be absolute (rewritten at load time by resolveCmdPathPattern); the value is
+// resolved against env.cwd here so positional args like "." or "src/foo" become absolute.
+function matchesCmdPattern(pattern: string, arg: string, env: Environment): boolean {
+    if (!isCmdPathPattern(pattern)) {
+        return matchesPattern(pattern, arg);
+    }
+    const resolvedArg = resolve(env.cwd, arg);
+    return matchesPathGlob(pattern, resolvedArg);
+}
+
+// Returns true when the cmd/cmd-in entry fields match the positional arguments at the given offset.
+// env is threaded in so path-aware patterns (./* or /*) can resolve relative positional args
+// against env.cwd before matching.
+function matchesCmd(entry: IYamlEntry, node: Command, cmdOffset: number, env: Environment): boolean {
     const cmdArray = Array.isArray(node.cmd) ? node.cmd : [node.cmd];
 
     if (entry["cmd-in"] !== undefined) {
         const slice = cmdArray.slice(cmdOffset);
         return entry["cmd-in"].some((pattern: string) =>
-            slice.some((positional: string) => matchesPattern(pattern, positional))
+            slice.some((positional: string) => matchesCmdPattern(pattern, positional, env))
         );
     }
 
@@ -330,7 +355,7 @@ function matchesCmd(entry: IYamlEntry, node: Command, cmdOffset: number): boolea
             if (target === undefined) {
                 return false;
             }
-            if (!matchesPattern(patterns[idx], target)) {
+            if (!matchesCmdPattern(patterns[idx], target, env)) {
                 return false;
             }
         }
@@ -398,7 +423,7 @@ function buildBashRule(binary: string, subcommandPath: string[], entry: IYamlEnt
         if (!matchesSubcommandPath(cmdArray, subcommandPath)) {
             return ABSTAIN;
         }
-        if (!matchesCmd(entry, node, cmdOffset)) {
+        if (!matchesCmd(entry, node, cmdOffset, env)) {
             return ABSTAIN;
         }
         if (!matchesOptions(entry, node)) {
@@ -477,7 +502,7 @@ export function buildBashScopedRule(binary: string, subcommandPath: string[], en
         if (!matchesSubcommandPath(cmdArray, subcommandPath)) {
             return ABSTAIN;
         }
-        if (!matchesCmd(entry, node, cmdOffset)) {
+        if (!matchesCmd(entry, node, cmdOffset, env)) {
             return ABSTAIN;
         }
         if (!matchesOptions(entry, node)) {
@@ -571,7 +596,7 @@ export function notFieldsAllMatch(not: INotFields, node: AstNode, env: Environme
         }
     }
     if (node.type === "command") {
-        if (!matchesCmd(not as IYamlEntry, node as Command, cmdOffset)) {
+        if (!matchesCmd(not as IYamlEntry, node as Command, cmdOffset, env)) {
             return false;
         }
         if (!matchesOptions(not as IYamlEntry, node as Command)) {
@@ -1015,6 +1040,120 @@ export function resolveRelativeCwdPatterns(config: IYamlConfig, baseDir: string)
     }
 }
 
+// Classifies a cmd: / cmd-in: pattern as path-aware (true) or string-glob/regex (false).
+// Patterns starting with "./" or "/" are interpreted as paths, except regex patterns of the
+// form "/.../" which are kept on the string-glob path so matchesPattern can dispatch to RegExp.
+export function isCmdPathPattern(pattern: string): boolean {
+    if (pattern.length >= 2 && pattern.startsWith("/") && pattern.endsWith("/")) {
+        return false;
+    }
+    return pattern.startsWith("./") || pattern.startsWith("/");
+}
+
+// Rewrites a single cmd: / cmd-in: pattern that starts with "./" by replacing the prefix
+// with the project directory. Absolute patterns are returned unchanged; non-path patterns
+// (e.g. "foo-*") are also returned unchanged so the existing string-glob branch keeps working.
+export function resolveCmdPathPattern(pattern: string, projectDir: string): string {
+    if (pattern.startsWith("./")) {
+        return projectDir + "/" + pattern.slice(2);
+    }
+    return pattern;
+}
+
+// Rewrites every positional pattern inside one cmd:/cmd-in: field through resolveCmdPathPattern.
+// For the string form, tokens are split on whitespace, rewritten individually, then rejoined
+// with single spaces so the downstream split inside matchesCmd produces the resolved patterns.
+function rewriteCmdField(cmdField: string | string[], projectDir: string): string | string[] {
+    if (Array.isArray(cmdField)) {
+        return cmdField.map((pattern: string) => resolveCmdPathPattern(pattern, projectDir));
+    }
+    const tokens = cmdField.trim().split(/\s+/);
+    const rewrittenTokens = tokens.map((token: string) => resolveCmdPathPattern(token, projectDir));
+    return rewrittenTokens.join(" ");
+}
+
+// Walks one IYamlEntry (and its descendants) and rewrites every cmd: / cmd-in: (plus not.cmd
+// and not.cmd-in) path-style pattern to its absolute form anchored at projectDir. Mirrors
+// resolveEntryCwdPatterns. When called with isToolNameEntry=true the subcommand-recursion branch
+// is skipped because tool-name entries do not have a sub-binary layer.
+export function resolveEntryCmdPatterns(entry: IYamlEntry, projectDir: string, options?: IEntryWalkOptions): void {
+    if (entry.cmd !== undefined) {
+        entry.cmd = rewriteCmdField(entry.cmd, projectDir);
+    }
+    if (Array.isArray(entry["cmd-in"])) {
+        entry["cmd-in"] = entry["cmd-in"].map((pattern: string) => resolveCmdPathPattern(pattern, projectDir));
+    }
+    if (entry.not !== undefined) {
+        if (entry.not.cmd !== undefined) {
+            entry.not.cmd = rewriteCmdField(entry.not.cmd, projectDir);
+        }
+        if (Array.isArray(entry.not["cmd-in"])) {
+            entry.not["cmd-in"] = entry.not["cmd-in"].map((pattern: string) => resolveCmdPathPattern(pattern, projectDir));
+        }
+    }
+    if (Array.isArray(entry.rules)) {
+        for (const subEntry of entry.rules) {
+            resolveEntryCmdPatterns(subEntry, projectDir, options);
+        }
+    }
+    if (options !== undefined && options.isToolNameEntry) {
+        return;
+    }
+    for (const key of Object.keys(entry)) {
+        if (KNOWN_FIELDS.has(key)) {
+            continue;
+        }
+        const subValue = entry[key] as IYamlEntry | IYamlEntry[];
+        if (Array.isArray(subValue)) {
+            for (const subEntry of subValue) {
+                resolveEntryCmdPatterns(subEntry, projectDir);
+            }
+        }
+        else if (typeof subValue === "object" && subValue !== null) {
+            resolveEntryCmdPatterns(subValue, projectDir);
+        }
+    }
+}
+
+// Walks every IYamlEntry in config and rewrites "./"-prefixed cmd:/cmd-in: patterns to
+// absolute paths under projectDir. Mirrors resolveRelativeCwdPatterns but anchors at the
+// project directory rather than the file's own baseDir, so cmd: ./** in a home YAML still
+// resolves to the project root.
+export function resolveRelativeCmdPatterns(config: IYamlConfig, projectDir: string): void {
+    if (config.bash !== undefined) {
+        for (const entries of Object.values(config.bash)) {
+            for (const entry of normalizeToList(entries)) {
+                resolveEntryCmdPatterns(entry, projectDir);
+            }
+        }
+    }
+    const sectionKeys = ["read", "write", "edit", "multi_edit", "webfetch"] as const;
+    for (const sectionKey of sectionKeys) {
+        const sectionValue = (config as Record<string, IYamlEntry | IYamlEntry[] | undefined>)[sectionKey];
+        if (sectionValue !== undefined) {
+            for (const entry of normalizeToList(sectionValue)) {
+                resolveEntryCmdPatterns(entry, projectDir);
+            }
+        }
+    }
+    const toolNameOptions: IEntryWalkOptions = { isToolNameEntry: true };
+    for (const key of Object.keys(config)) {
+        if (KNOWN_SECTIONS.has(key)) {
+            continue;
+        }
+        if (KNOWN_FIELDS.has(key)) {
+            continue;
+        }
+        const sectionValue = (config as Record<string, IYamlEntry | IYamlEntry[] | undefined>)[key];
+        if (sectionValue === undefined) {
+            continue;
+        }
+        for (const entry of normalizeToList(sectionValue)) {
+            resolveEntryCmdPatterns(entry, projectDir, toolNameOptions);
+        }
+    }
+}
+
 // lineOfOffset returns the 1-based line number for a character offset in a source string.
 export function lineOfOffset(source: string, offset: number): number {
     let line = 1;
@@ -1196,6 +1335,10 @@ export function loadConfigRulesFromFile(filePath: string, displayFile: string, b
         return [];
     }
     resolveRelativeCwdPatterns(config, baseDir);
+    const projectDir = process.env["CLAUDE_PROJECT_DIR"];
+    if (projectDir !== undefined) {
+        resolveRelativeCmdPatterns(config, projectDir);
+    }
     const configErrors = validateConfig(config);
     for (const configError of configErrors) {
         process.stderr.write(`[CONFIG ERROR] ${configError.path}: ${configError.message}\n`);
@@ -1337,6 +1480,10 @@ export function loadConfigRules(): Rule[] {
         const homeYaml = readYamlFile(join(homeDir, ".claude", "permissions.yaml"), "~/.claude/permissions.yaml");
         if (homeYaml !== null) {
             resolveRelativeCwdPatterns(homeYaml, homeDir);
+            const homeProjectDir = process.env["CLAUDE_PROJECT_DIR"];
+            if (homeProjectDir !== undefined) {
+                resolveRelativeCmdPatterns(homeYaml, homeProjectDir);
+            }
             const homeErrors = validateConfig(homeYaml);
             for (const configError of homeErrors) {
                 process.stderr.write(`[CONFIG ERROR] (~/.claude/permissions.yaml) ${configError.path}: ${configError.message}\n`);
@@ -1350,6 +1497,7 @@ export function loadConfigRules(): Rule[] {
         const projectYaml = readYamlFile(join(projectDir, ".claude", "permissions.yaml"), ".claude/permissions.yaml");
         if (projectYaml !== null) {
             resolveRelativeCwdPatterns(projectYaml, projectDir);
+            resolveRelativeCmdPatterns(projectYaml, projectDir);
             const projectErrors = validateConfig(projectYaml);
             for (const configError of projectErrors) {
                 process.stderr.write(`[CONFIG ERROR] (.claude/permissions.yaml) ${configError.path}: ${configError.message}\n`);

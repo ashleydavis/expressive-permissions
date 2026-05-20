@@ -9,8 +9,10 @@ interface ITestCaseInput {
     tool_name: string;
     // The tool-specific input arguments
     tool_input: Record<string, unknown>;
-    // The working directory for the tool call
-    cwd: string;
+    // The working directory for the tool call. Optional; defaults to the auto-generated
+    // tmp/project directory. The token ${PROJECT_DIR} is substituted with the absolute
+    // path of that directory.
+    cwd?: string;
 }
 
 // IPostToolUseInput describes the PostToolUse hook input fields in a test case YAML file.
@@ -163,7 +165,15 @@ function runTest(testFilePath: string): boolean {
         }
     }
 
-        const inputJson = JSON.stringify(testCase.input);
+        const substituted = JSON.parse(
+            JSON.stringify(testCase.input).split("${PROJECT_DIR}").join(projectDir)
+        ) as ITestCaseInput;
+        const hookInput: Record<string, unknown> = {
+            tool_name: substituted.tool_name,
+            tool_input: substituted.tool_input,
+            cwd: substituted.cwd ?? projectDir,
+        };
+        const inputJson = JSON.stringify(hookInput);
 
         const testEnv: Record<string, string> = {};
         for (const [key, value] of Object.entries(process.env)) {

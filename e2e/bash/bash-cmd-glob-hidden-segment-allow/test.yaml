@@ -4,7 +4,7 @@ input:
   tool_name: Bash
   tool_input:
     command: "cat plugin/.claude-plugin/plugin.json"
-  cwd: /home/user/project
+  cwd: ${PROJECT_DIR}
 
 rules:
   bash:

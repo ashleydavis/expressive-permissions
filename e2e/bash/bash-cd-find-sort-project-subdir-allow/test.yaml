@@ -1,0 +1,27 @@
+description: "bash: cd into project subdir, then find . | sort should be allowed"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "cd ${PROJECT_DIR}/foo/bar && find . -name '*.yaml' -type f | sort"
+  cwd: ${PROJECT_DIR}
+
+rules: {}
+
+home_dir_files:
+  bash-readonly.yaml:
+    bash:
+      cd:
+        cmd: ./**
+        decide: allow
+        reason: cd targets under the project (same ./** semantics as cat/find)
+      find:
+        cmd: ./**
+        decide: allow
+        reason: Readonly search within current directory (relative paths only)
+      sort:
+        decide: allow
+        reason: Sorting output
+
+expected:
+  decision: allow
