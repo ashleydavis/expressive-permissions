@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync, rmSync, mkdtempSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { loadConfigRules, loadConfigRulesFromFile, loadHomeConfigRules, loadProjectConfigRules, validateConfig, resolveCwdPattern, resolveEntryCwdPatterns, resolveRelativeCwdPatterns, isCmdPathPattern, resolveCmdPathPattern, resolveEntryCmdPatterns, resolveRelativeCmdPatterns, aggregateOutcomes, buildBashScopedRule, buildFileScopedRule, notFieldsAllMatch, evaluateFileField, matchesFileField, lineOfOffset, annotateLines, compileTopLevelToolRules, discoverConfigDirFiles, discoverHomeConfigDirFiles, discoverProjectConfigDirFiles, makeConfigFileLoader, IYamlEntry, IYamlConfig, INotFields, IFileMatch, IConfigError, IConfigFileSource } from "../load-config";
+import { loadConfigRules, loadConfigRulesFromFile, loadHomeConfigRules, loadProjectConfigRules, validateConfig, resolveCwdPattern, resolveEntryCwdPatterns, resolveRelativeCwdPatterns, isCmdPathPattern, resolveCmdPathPattern, resolveEntryCmdPatterns, resolveRelativeCmdPatterns, expandEntryEnvTokens, expandConfigEnvTokens, aggregateOutcomes, buildBashScopedRule, buildFileScopedRule, notFieldsAllMatch, evaluateFileField, matchesFileField, lineOfOffset, annotateLines, compileTopLevelToolRules, discoverConfigDirFiles, discoverHomeConfigDirFiles, discoverProjectConfigDirFiles, makeConfigFileLoader, IYamlEntry, IYamlConfig, INotFields, IFileMatch, IConfigError, IConfigFileSource } from "../load-config";
 import { parseDocument } from "yaml";
 import { Rule, RuleOutcome, AstNode, Environment, ToolCall, Command } from "../types";
 
@@ -3897,6 +3897,25 @@ test("loadConfigRulesFromFile: compiles rules from an existing file", () => {
     rmSync(tmpDir, { recursive: true, force: true });
 });
 
+test("loadConfigRulesFromFile: ${{PROJECT_DIR}} token in cmd is expanded and matches", () => {
+    const origProject = process.env["CLAUDE_PROJECT_DIR"];
+    const tmpDir = join("/tmp", `load-config-token-test-${Date.now()}`);
+    mkdirSync(tmpDir, { recursive: true });
+    process.env["CLAUDE_PROJECT_DIR"] = tmpDir;
+    const filePath = join(tmpDir, "permissions.yaml");
+    const TOK = "${{PROJECT_DIR}}";
+    writeFileSync(filePath, `bash:\n  find:\n    cmd: "${TOK}/**"\n    decide: allow\n`, "utf-8");
+    const rules = loadConfigRulesFromFile(filePath, "test.yaml", tmpDir);
+    const node = { type: "command" as const, binary: "find", options: {}, cmd: [join(tmpDir, "src")], envPrefix: {}, redirects: [], raw: "find" };
+    const env = { cwd: tmpDir, cwdResolved: true, env: {} };
+    const call: ToolCall = { tool_name: "Bash", tool_input: { command: "find" }, cwd: tmpDir };
+    const result = rules[0](node, env, call);
+    expect(result.decision.action).toBe("allow");
+    rmSync(tmpDir, { recursive: true, force: true });
+    if (origProject !== undefined) { process.env["CLAUDE_PROJECT_DIR"] = origProject; }
+    else { delete process.env["CLAUDE_PROJECT_DIR"]; }
+});
+
 // ---------------------------------------------------------------------------
 // loadHomeConfigRules
 // ---------------------------------------------------------------------------
@@ -4356,5 +4375,380 @@ bash:
         projectDirFiles: {
             "git.yaml": dropInYaml,
         },
+    });
+});
+
+// ---------------------------------------------------------------------------
+// expandEntryEnvTokens / expandConfigEnvTokens
+// ---------------------------------------------------------------------------
+
+// String tokens used in YAML fixtures to avoid TypeScript template-literal parse errors.
+const TOK_PROJECT_DIR = "${{PROJECT_DIR}}";
+const TOK_HOME = "${{HOME}}";
+
+// Helper: call expandEntryEnvTokens with projectDir and homeDir, return collected warnings.
+function expandEntry(
+    entry: IYamlEntry,
+    projectDir: string | undefined,
+    homeDir: string | undefined,
+    options?: { isToolNameEntry: boolean }
+): Set<string> {
+    const warnings = new Set<string>();
+    expandEntryEnvTokens(entry, projectDir, homeDir, "test.yaml", warnings, options);
+    return warnings;
+}
+
+// --- expandEnvTokens behaviour (tested via expandEntryEnvTokens cmd field) ---
+
+test("expandEnvTokens: ${{PROJECT_DIR}}/foo with projectDir /proj → /proj/foo", () => {
+    const entry: IYamlEntry = { cmd: "${{PROJECT_DIR}}/foo", decide: "allow" };
+    expandEntry(entry, "/proj", undefined);
+    expect(entry.cmd).toBe("/proj/foo");
+});
+
+test("expandEnvTokens: ${{HOME}}/.config with homeDir /home/ash → /home/ash/.config", () => {
+    const entry: IYamlEntry = { cwd: "${{HOME}}/.config", decide: "allow" };
+    expandEntry(entry, undefined, "/home/ash");
+    expect(entry.cwd).toBe("/home/ash/.config");
+});
+
+test("expandEnvTokens: both tokens in same string expand both", () => {
+    const entry: IYamlEntry = { cmd: "${{PROJECT_DIR}}/${{HOME}}", decide: "allow" };
+    expandEntry(entry, "/proj", "/home/ash");
+    expect(entry.cmd).toBe("/proj//home/ash");
+});
+
+test("expandEnvTokens: string with no tokens returned unchanged", () => {
+    const entry: IYamlEntry = { cmd: "foo-*", decide: "allow" };
+    expandEntry(entry, "/proj", "/home/ash");
+    expect(entry.cmd).toBe("foo-*");
+});
+
+test("expandEnvTokens: regex pattern /.../  returned unchanged", () => {
+    const entry: IYamlEntry = { cmd: "/^foo.*/", decide: "allow" };
+    expandEntry(entry, "/proj", "/home/ash");
+    expect(entry.cmd).toBe("/^foo.*/");
+});
+
+test("expandEnvTokens: unresolved ${{PROJECT_DIR}} left in place and warning recorded", () => {
+    const entry: IYamlEntry = { cmd: "${{PROJECT_DIR}}/x", decide: "allow" };
+    const warnings = expandEntry(entry, undefined, "/home/ash");
+    expect(entry.cmd).toBe("${{PROJECT_DIR}}/x");
+    const warningValues = Array.from(warnings);
+    expect(warningValues.some((warningValue) => warningValue.includes("PROJECT_DIR"))).toBe(true);
+});
+
+// --- expandEntryEnvTokens field coverage ---
+
+test("expandEntryEnvTokens: cmd (string) rewritten", () => {
+    const entry: IYamlEntry = { cmd: "${{PROJECT_DIR}}/**", decide: "allow" };
+    expandEntry(entry, "/proj", undefined);
+    expect(entry.cmd).toBe("/proj/**");
+});
+
+test("expandEntryEnvTokens: cmd (array) each element rewritten", () => {
+    const entry: IYamlEntry = { cmd: ["${{PROJECT_DIR}}/a", "${{HOME}}/b"], decide: "allow" };
+    expandEntry(entry, "/proj", "/home/ash");
+    expect(entry.cmd).toEqual(["/proj/a", "/home/ash/b"]);
+});
+
+test("expandEntryEnvTokens: cmd-in elements rewritten", () => {
+    const entry: IYamlEntry = { "cmd-in": ["${{PROJECT_DIR}}/**", "other"], decide: "allow" };
+    expandEntry(entry, "/proj", undefined);
+    expect(entry["cmd-in"]).toEqual(["/proj/**", "other"]);
+});
+
+test("expandEntryEnvTokens: cwd rewritten", () => {
+    const entry: IYamlEntry = { cwd: "${{PROJECT_DIR}}/**", decide: "allow" };
+    expandEntry(entry, "/proj", undefined);
+    expect(entry.cwd).toBe("/proj/**");
+});
+
+test("expandEntryEnvTokens: cwd-in elements rewritten", () => {
+    const entry: IYamlEntry = { "cwd-in": ["${{HOME}}/**"], decide: "allow" };
+    expandEntry(entry, undefined, "/home/ash");
+    expect(entry["cwd-in"]).toEqual(["/home/ash/**"]);
+});
+
+test("expandEntryEnvTokens: path rewritten", () => {
+    const entry: IYamlEntry = { path: "${{PROJECT_DIR}}/secrets/*", decide: "allow" };
+    expandEntry(entry, "/proj", undefined);
+    expect(entry.path).toBe("/proj/secrets/*");
+});
+
+test("expandEntryEnvTokens: path-in elements rewritten", () => {
+    const entry: IYamlEntry = { "path-in": ["${{PROJECT_DIR}}/a", "${{HOME}}/b"], decide: "allow" };
+    expandEntry(entry, "/proj", "/home/ash");
+    expect(entry["path-in"]).toEqual(["/proj/a", "/home/ash/b"]);
+});
+
+test("expandEntryEnvTokens: env map values rewritten", () => {
+    const entry: IYamlEntry = { env: { MY_VAR: "${{PROJECT_DIR}}/data" }, decide: "allow" };
+    expandEntry(entry, "/proj", undefined);
+    expect(entry.env).toEqual({ MY_VAR: "/proj/data" });
+});
+
+test("expandEntryEnvTokens: file map keys rewritten (map rebuilt)", () => {
+    const entry: IYamlEntry = { file: { "${{PROJECT_DIR}}/lock": true }, decide: "allow" };
+    expandEntry(entry, "/proj", undefined);
+    expect(Object.keys(entry.file!)).toEqual(["/proj/lock"]);
+    expect(entry.file!["/proj/lock"]).toBe(true);
+});
+
+test("expandEntryEnvTokens: not.cmd rewritten", () => {
+    const entry: IYamlEntry = { not: { cmd: "${{PROJECT_DIR}}/**" }, decide: "allow" };
+    expandEntry(entry, "/proj", undefined);
+    expect(entry.not!.cmd).toBe("/proj/**");
+});
+
+test("expandEntryEnvTokens: not.cmd-in elements rewritten", () => {
+    const entry: IYamlEntry = { not: { "cmd-in": ["${{HOME}}/**"] }, decide: "allow" };
+    expandEntry(entry, undefined, "/home/ash");
+    expect(entry.not!["cmd-in"]).toEqual(["/home/ash/**"]);
+});
+
+test("expandEntryEnvTokens: not.cwd rewritten", () => {
+    const entry: IYamlEntry = { not: { cwd: "${{PROJECT_DIR}}/**" }, decide: "allow" };
+    expandEntry(entry, "/proj", undefined);
+    expect(entry.not!.cwd).toBe("/proj/**");
+});
+
+test("expandEntryEnvTokens: not.cwd-in elements rewritten", () => {
+    const entry: IYamlEntry = { not: { "cwd-in": ["${{HOME}}/**"] }, decide: "allow" };
+    expandEntry(entry, undefined, "/home/ash");
+    expect(entry.not!["cwd-in"]).toEqual(["/home/ash/**"]);
+});
+
+test("expandEntryEnvTokens: not.path rewritten", () => {
+    const entry: IYamlEntry = { not: { path: "${{PROJECT_DIR}}/secrets/*" }, decide: "allow" };
+    expandEntry(entry, "/proj", undefined);
+    expect(entry.not!.path).toBe("/proj/secrets/*");
+});
+
+test("expandEntryEnvTokens: not.env map values rewritten", () => {
+    const entry: IYamlEntry = { not: { env: { MY_VAR: "${{PROJECT_DIR}}/data" } }, decide: "allow" };
+    expandEntry(entry, "/proj", undefined);
+    expect(entry.not!.env!["MY_VAR"]).toBe("/proj/data");
+});
+
+test("expandEntryEnvTokens: not.file map keys rewritten", () => {
+    const entry: IYamlEntry = { not: { file: { "${{HOME}}/.config": true } }, decide: "allow" };
+    expandEntry(entry, undefined, "/home/ash");
+    expect(Object.keys(entry.not!.file!)).toEqual(["/home/ash/.config"]);
+});
+
+test("expandEntryEnvTokens: env map with non-string values (e.g. sourceLine number) passes through unchanged", () => {
+    const entry: IYamlEntry = { env: { MY_VAR: "${{PROJECT_DIR}}/data", sourceLine: 42 as unknown as string }, decide: "allow" };
+    expandEntry(entry, "/proj", undefined);
+    expect(entry.env!["MY_VAR"]).toBe("/proj/data");
+    expect(entry.env!["sourceLine"]).toBe(42 as unknown as string);
+});
+
+test("expandEntryEnvTokens: not.path-in elements rewritten", () => {
+    const entry: IYamlEntry = { not: { "path-in": ["${{PROJECT_DIR}}/a"] }, decide: "allow" };
+    expandEntry(entry, "/proj", undefined);
+    expect(entry.not!["path-in"]).toEqual(["/proj/a"]);
+});
+
+test("expandEntryEnvTokens: rules sub-entries recursed", () => {
+    const subEntry: IYamlEntry = { cmd: "${{PROJECT_DIR}}/foo", decide: "allow" };
+    const entry: IYamlEntry = { rules: [subEntry] };
+    expandEntry(entry, "/proj", undefined);
+    expect(subEntry.cmd).toBe("/proj/foo");
+});
+
+test("expandEntryEnvTokens: subcommand children recursed when isToolNameEntry is false", () => {
+    const childEntry: IYamlEntry = { cmd: "${{PROJECT_DIR}}/foo", decide: "allow" };
+    const entry: IYamlEntry = { subdir: childEntry };
+    expandEntry(entry, "/proj", undefined, { isToolNameEntry: false });
+    expect(childEntry.cmd).toBe("/proj/foo");
+});
+
+test("expandEntryEnvTokens: subcommand children NOT recursed when isToolNameEntry is true", () => {
+    const childEntry: IYamlEntry = { cmd: "${{PROJECT_DIR}}/foo", decide: "allow" };
+    const entry: IYamlEntry = { subdir: childEntry };
+    expandEntry(entry, "/proj", undefined, { isToolNameEntry: true });
+    expect(childEntry.cmd).toBe("${{PROJECT_DIR}}/foo");
+});
+
+test("expandEntryEnvTokens: reason, decide, host, tool fields are not rewritten", () => {
+    const entry: IYamlEntry = {
+        reason: "${{PROJECT_DIR}} note",
+        decide: "allow",
+        host: "${{HOME}}.example.com",
+        tool: "${{PROJECT_DIR}}-tool",
+    };
+    expandEntry(entry, "/proj", "/home/ash");
+    expect(entry.reason).toBe("${{PROJECT_DIR}} note");
+    expect(entry.decide).toBe("allow");
+    expect(entry.host).toBe("${{HOME}}.example.com");
+    expect(entry.tool).toBe("${{PROJECT_DIR}}-tool");
+});
+
+// --- expandConfigEnvTokens ---
+
+test("expandConfigEnvTokens: empty config is a no-op", () => {
+    const config: IYamlConfig = {};
+    expandConfigEnvTokens(config, "/proj", "/home/ash", "test.yaml");
+    expect(config).toEqual({});
+});
+
+test("expandConfigEnvTokens: rewrites bash section", () => {
+    const config: IYamlConfig = {
+        bash: { find: { cmd: "${{PROJECT_DIR}}/**", decide: "allow" } },
+    };
+    expandConfigEnvTokens(config, "/proj", "/home/ash", "test.yaml");
+    expect(config.bash!.find).toMatchObject({ cmd: "/proj/**" });
+});
+
+test("expandConfigEnvTokens: rewrites read, write, edit, multi_edit, webfetch sections", () => {
+    const config: IYamlConfig = {
+        read: { path: "${{PROJECT_DIR}}/src/*", decide: "allow" },
+        write: { path: "${{HOME}}/data/*", decide: "allow" },
+        edit: { cwd: "${{PROJECT_DIR}}/**", decide: "allow" },
+        multi_edit: { cwd: "${{HOME}}/**", decide: "allow" },
+        webfetch: { cwd: "${{PROJECT_DIR}}/**", decide: "allow" },
+    };
+    expandConfigEnvTokens(config, "/proj", "/home/ash", "test.yaml");
+    const readEntry = config.read as IYamlEntry;
+    expect(readEntry.path).toBe("/proj/src/*");
+    const writeEntry = config.write as IYamlEntry;
+    expect(writeEntry.path).toBe("/home/ash/data/*");
+    const editEntry = config.edit as IYamlEntry;
+    expect(editEntry.cwd).toBe("/proj/**");
+    const multiEditEntry = config.multi_edit as IYamlEntry;
+    expect(multiEditEntry.cwd).toBe("/home/ash/**");
+    const webfetchEntry = config.webfetch as IYamlEntry;
+    expect(webfetchEntry.cwd).toBe("/proj/**");
+});
+
+test("expandConfigEnvTokens: rewrites top-level tool-name keys", () => {
+    const toolEntry: IYamlEntry = { cwd: "${{PROJECT_DIR}}/**", decide: "allow" };
+    const config: IYamlConfig = {};
+    (config as Record<string, IYamlEntry>)["MyTool"] = toolEntry;
+    expandConfigEnvTokens(config, "/proj", "/home/ash", "test.yaml");
+    expect(toolEntry.cwd).toBe("/proj/**");
+});
+
+test("expandConfigEnvTokens: emits one CONFIG WARN per unresolved token+file pair", () => {
+    const stderrWrites: string[] = [];
+    const stderrSpy = jest.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+        stderrWrites.push(String(chunk));
+        return true;
+    });
+    try {
+        const config: IYamlConfig = {
+            bash: { find: { cmd: "${{PROJECT_DIR}}/**", decide: "allow" } },
+        };
+        expandConfigEnvTokens(config, undefined, undefined, "myfile.yaml");
+        const combined = stderrWrites.join("");
+        expect(combined).toContain("[CONFIG WARN]");
+        expect(combined).toContain("myfile.yaml");
+        expect(combined).toContain("PROJECT_DIR");
+    }
+    finally {
+        stderrSpy.mockRestore();
+    }
+});
+
+test("expandConfigEnvTokens: warning emitted only once per token+file even if token appears in multiple entries", () => {
+    const stderrWrites: string[] = [];
+    const stderrSpy = jest.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+        stderrWrites.push(String(chunk));
+        return true;
+    });
+    try {
+        const config: IYamlConfig = {
+            bash: {
+                find: { cmd: "${{PROJECT_DIR}}/**", decide: "allow" },
+                ls: { cwd: "${{PROJECT_DIR}}/**", decide: "allow" },
+            },
+        };
+        expandConfigEnvTokens(config, undefined, undefined, "myfile.yaml");
+        const combined = stderrWrites.join("");
+        const occurrences = (combined.match(/PROJECT_DIR/g) || []).length;
+        expect(occurrences).toBe(1);
+    }
+    finally {
+        stderrSpy.mockRestore();
+    }
+});
+
+// --- Backward-compat regression ---
+
+test("expandConfigEnvTokens: config with only ./** patterns produces identical compiled rules after pre-pass", () => {
+    withYamlFixtures(null, `
+bash:
+  find:
+    cmd: ./**
+    decide: allow
+`, (rules) => {
+        expect(rules.length).toBe(1);
+        const projectDir = process.env["CLAUDE_PROJECT_DIR"]!;
+        const findNode = makeCommand("find", [`${projectDir}/src`]);
+        const outcome = rules[0](findNode, makeEnv(projectDir, true), dummyCall);
+        expect(outcome.decision.action).toBe("allow");
+    });
+});
+
+// --- Cross-feature integration ---
+
+test("${{PROJECT_DIR}}/** in cmd resolves and matches like ./**", () => {
+    withYamlFixtures(null, `
+bash:
+  find:
+    cmd: ${TOK_PROJECT_DIR}/**
+    decide: allow
+`, (rules) => {
+        const projectDir = process.env["CLAUDE_PROJECT_DIR"]!;
+        const findNode = makeCommand("find", [`${projectDir}/src`]);
+        const outcome = rules[0](findNode, makeEnv(projectDir, true), dummyCall);
+        expect(outcome.decision.action).toBe("allow");
+    });
+});
+
+test("${{HOME}}/** in cwd resolves and matches a cwd under home", () => {
+    withYamlFixtures(null, `
+bash:
+  ls:
+    cwd: ${TOK_HOME}/**
+    decide: allow
+`, (rules) => {
+        const homeDir = process.env["HOME"]!;
+        const lsNode = makeCommand("ls", []);
+        const outcome = rules[0](lsNode, makeEnv(`${homeDir}/projects`, true), dummyCall);
+        expect(outcome.decision.action).toBe("allow");
+    });
+});
+
+test("${{PROJECT_DIR}}/secrets/* in path matches a read file under project", () => {
+    withYamlFixtures(null, `
+read:
+  path: ${TOK_PROJECT_DIR}/secrets/*
+  decide: deny
+`, (rules) => {
+        const projectDir = process.env["CLAUDE_PROJECT_DIR"]!;
+        const readNode = { type: "read" as const, file_path: `${projectDir}/secrets/key.pem` };
+        const outcome = rules[0](readNode as AstNode, makeEnv(projectDir, true), dummyCall);
+        expect(outcome.decision.action).toBe("deny");
+    });
+});
+
+test("cmd-in mixing ${{PROJECT_DIR}} and ./** resolves both patterns", () => {
+    withYamlFixtures(null, `
+bash:
+  find:
+    cmd-in:
+      - ${TOK_PROJECT_DIR}/src/**
+      - ./test/**
+    decide: allow
+`, (rules) => {
+        const projectDir = process.env["CLAUDE_PROJECT_DIR"]!;
+        const nodeInSrc = makeCommand("find", [`${projectDir}/src/main.ts`]);
+        const nodeInTest = makeCommand("find", [`${projectDir}/test/foo.ts`]);
+        const outcomeInSrc = rules[0](nodeInSrc, makeEnv(projectDir, true), dummyCall);
+        const outcomeInTest = rules[0](nodeInTest, makeEnv(projectDir, true), dummyCall);
+        expect(outcomeInSrc.decision.action).toBe("allow");
+        expect(outcomeInTest.decision.action).toBe("allow");
     });
 });

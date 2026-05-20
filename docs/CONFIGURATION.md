@@ -707,26 +707,40 @@ Sub-rules under a scoped tool-name entry inherit the parent key as their tool ma
 
 ## Matching the working directory
 
-The `cwd` field accepts any pattern form. 
+The `cwd` field accepts any pattern form.
 
-In a `.claude/permissions.yaml` at your repo root, `cwd: ./**` means "anywhere within the current project":
+### Anchoring rules to the project directory
+
+Use `${{PROJECT_DIR}}` to anchor a rule to the project root. The engine substitutes the token with the value of `CLAUDE_PROJECT_DIR` before any pattern matching runs:
 
 ```yaml
 bash:
   git:
     add:
-      cwd: ./**
+      cwd: ${{PROJECT_DIR}}/**
       decide: allow
     commit:
-      cwd: ./**
+      cwd: ${{PROJECT_DIR}}/**
       decide: allow
     push:
-      cwd: ./**
+      cwd: ${{PROJECT_DIR}}/**
       decide: ask
       reason: Confirm push from project directory
 ```
 
-That example rule allows `git add` and `commit` within the project you are currenlty working in (and no other project on your computer). `git push` is set to always `ask`.
+That example allows `git add` and `commit` within the project you are currently working in (and no other project on your computer). `git push` is set to always `ask`.
+
+Similarly, `${{HOME}}` expands to the value of the `HOME` environment variable:
+
+```yaml
+bash:
+  rm:
+    cwd: ${{HOME}}/**
+    decide: ask
+    reason: Confirm before deleting from home directories
+```
+
+**Legacy shorthand**: `./` at the start of a `cwd:` pattern is still supported and resolves to the directory containing the YAML file. For most cases the explicit `${{PROJECT_DIR}}` is clearer and less surprising.
 
 A glob matches any path under a directory:
 

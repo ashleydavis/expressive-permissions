@@ -1,0 +1,19 @@
+description: "bash: find ${{PROJECT_DIR}}/foo with rule cmd: ${{PROJECT_DIR}}/** should allow"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "find ${PROJECT_DIR}/foo -type f"
+  cwd: ${PROJECT_DIR}
+
+rules: {}
+
+home_dir_files:
+  bash-explicit-find.yaml:
+    bash:
+      find:
+        cmd: "${{PROJECT_DIR}}/**"
+        decide: allow
+
+expected:
+  decision: allow

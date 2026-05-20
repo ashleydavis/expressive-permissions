@@ -82,7 +82,7 @@ All fields in a rule are AND'd.
 | `options-in: [force, force-with-lease]` | Any flag present; OR |
 | `options: {m\|message: "/wip/"}` | Flag with specific value |
 | `env: {CI: "true"}` | All env vars match; AND |
-| `cwd: ./**` | cwd matches pattern; `./**` = anywhere inside this project |
+| `cwd: ${{PROJECT_DIR}}/**` | cwd matches pattern; `${{PROJECT_DIR}}/**` = anywhere inside this project |
 | `cwd-in: [/etc/**, /usr/**]` | cwd matches any entry; OR |
 | `file: {"~/.kube/config": true}` | File exists |
 | `file: {"~/.kube/config": {contains: "current-context: sandbox"}}` | File exists and contains pattern |

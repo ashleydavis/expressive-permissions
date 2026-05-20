@@ -1154,6 +1154,190 @@ export function resolveRelativeCmdPatterns(config: IYamlConfig, projectDir: stri
     }
 }
 
+// Expands ${{PROJECT_DIR}} and ${{HOME}} tokens in a single string value.
+// Regex patterns (/.../  form) are returned unchanged. If a token is present but the
+// corresponding env var is undefined, the literal token is left in place and a warning
+// key is added to the warnings set so the caller can emit one stderr line per file.
+function expandEnvTokens(
+    value: string,
+    projectDir: string | undefined,
+    homeDir: string | undefined,
+    displayFile: string,
+    warnings: Set<string>
+): string {
+    if (value.length >= 2 && value.startsWith("/") && value.endsWith("/")) {
+        return value;
+    }
+    let result = value;
+    const projectDirToken = "${{PROJECT_DIR}}";
+    const homeToken = "${{HOME}}";
+    if (result.includes(projectDirToken)) {
+        if (projectDir !== undefined) {
+            result = result.split(projectDirToken).join(projectDir);
+        }
+        else {
+            warnings.add(projectDirToken + "@" + displayFile);
+        }
+    }
+    if (result.includes(homeToken)) {
+        if (homeDir !== undefined) {
+            result = result.split(homeToken).join(homeDir);
+        }
+        else {
+            warnings.add(homeToken + "@" + displayFile);
+        }
+    }
+    return result;
+}
+
+// Subset of IYamlEntry / INotFields fields that can contain ${{PROJECT_DIR}} / ${{HOME}} tokens.
+// Both interfaces satisfy this structurally, allowing a single expand helper for entry and not: blocks.
+interface IExpandableFields {
+    // Positional arg matcher (string or array form)
+    cmd?: string | string[];
+    // OR form of cmd
+    "cmd-in"?: string[];
+    // Glob pattern matched against env.cwd
+    cwd?: string;
+    // OR form of cwd
+    "cwd-in"?: string[];
+    // Glob pattern matched against node.file_path
+    path?: string;
+    // OR form of path
+    "path-in"?: string[];
+    // Map of env var name → glob pattern
+    env?: Record<string, string>;
+    // Map of file path → IFileMatch or true
+    file?: Record<string, IFileMatch | true>;
+}
+
+// Expands ${{PROJECT_DIR}} / ${{HOME}} tokens in all string-valued matcher fields of target in-place.
+function expandMatcherFields(target: IExpandableFields, expand: (value: string) => string): void {
+    if (typeof target.cmd === "string") {
+        target.cmd = expand(target.cmd);
+    }
+    else if (Array.isArray(target.cmd)) {
+        target.cmd = target.cmd.map(expand);
+    }
+    if (Array.isArray(target["cmd-in"])) {
+        target["cmd-in"] = target["cmd-in"].map(expand);
+    }
+    if (typeof target.cwd === "string") {
+        target.cwd = expand(target.cwd);
+    }
+    if (Array.isArray(target["cwd-in"])) {
+        target["cwd-in"] = target["cwd-in"].map(expand);
+    }
+    if (typeof target.path === "string") {
+        target.path = expand(target.path);
+    }
+    if (Array.isArray(target["path-in"])) {
+        target["path-in"] = target["path-in"].map(expand);
+    }
+    if (target.env !== undefined) {
+        const newEnv: Record<string, string> = {};
+        for (const [envKey, envValue] of Object.entries(target.env)) {
+            newEnv[envKey] = typeof envValue === "string" ? expand(envValue) : envValue;
+        }
+        target.env = newEnv;
+    }
+    if (target.file !== undefined) {
+        const newFile: Record<string, IFileMatch | true> = {};
+        for (const [fileKey, fileValue] of Object.entries(target.file)) {
+            newFile[expand(fileKey)] = fileValue;
+        }
+        target.file = newFile;
+    }
+}
+
+// Walks one IYamlEntry and rewrites every string-valued matcher field through expandEnvTokens.
+// Recurses into not: blocks, rules: sub-entries, and (when isToolNameEntry is false) subcommand children.
+export function expandEntryEnvTokens(
+    entry: IYamlEntry,
+    projectDir: string | undefined,
+    homeDir: string | undefined,
+    displayFile: string,
+    warnings: Set<string>,
+    options?: IEntryWalkOptions
+): void {
+    const expand = (value: string): string => expandEnvTokens(value, projectDir, homeDir, displayFile, warnings);
+    expandMatcherFields(entry, expand);
+    if (entry.not !== undefined) {
+        expandMatcherFields(entry.not, expand);
+    }
+    if (Array.isArray(entry.rules)) {
+        for (const subEntry of entry.rules) {
+            expandEntryEnvTokens(subEntry, projectDir, homeDir, displayFile, warnings, options);
+        }
+    }
+    if (options !== undefined && options.isToolNameEntry) {
+        return;
+    }
+    for (const key of Object.keys(entry)) {
+        if (KNOWN_FIELDS.has(key)) {
+            continue;
+        }
+        const subValue = entry[key] as IYamlEntry | IYamlEntry[];
+        if (Array.isArray(subValue)) {
+            for (const subEntry of subValue) {
+                expandEntryEnvTokens(subEntry, projectDir, homeDir, displayFile, warnings);
+            }
+        }
+        else if (typeof subValue === "object" && subValue !== null) {
+            expandEntryEnvTokens(subValue, projectDir, homeDir, displayFile, warnings);
+        }
+    }
+}
+
+// Walks all entries in config and expands ${{PROJECT_DIR}} / ${{HOME}} tokens in matcher fields.
+// Emits one [CONFIG WARN] line to stderr per unique unresolved token+file combination.
+export function expandConfigEnvTokens(
+    config: IYamlConfig,
+    projectDir: string | undefined,
+    homeDir: string | undefined,
+    displayFile: string
+): void {
+    const warnings = new Set<string>();
+
+    if (config.bash !== undefined) {
+        for (const entries of Object.values(config.bash)) {
+            for (const entry of normalizeToList(entries)) {
+                expandEntryEnvTokens(entry, projectDir, homeDir, displayFile, warnings);
+            }
+        }
+    }
+    const sectionKeys = ["read", "write", "edit", "multi_edit", "webfetch"] as const;
+    for (const sectionKey of sectionKeys) {
+        const sectionValue = (config as Record<string, IYamlEntry | IYamlEntry[] | undefined>)[sectionKey];
+        if (sectionValue !== undefined) {
+            for (const entry of normalizeToList(sectionValue)) {
+                expandEntryEnvTokens(entry, projectDir, homeDir, displayFile, warnings);
+            }
+        }
+    }
+    const toolNameOptions: IEntryWalkOptions = { isToolNameEntry: true };
+    for (const key of Object.keys(config)) {
+        if (KNOWN_SECTIONS.has(key)) {
+            continue;
+        }
+        if (KNOWN_FIELDS.has(key)) {
+            continue;
+        }
+        const sectionValue = (config as Record<string, IYamlEntry | IYamlEntry[] | undefined>)[key];
+        if (sectionValue === undefined) {
+            continue;
+        }
+        for (const entry of normalizeToList(sectionValue)) {
+            expandEntryEnvTokens(entry, projectDir, homeDir, displayFile, warnings, toolNameOptions);
+        }
+    }
+    for (const warningKey of warnings) {
+        const atIndex = warningKey.indexOf("@");
+        const token = warningKey.slice(0, atIndex);
+        process.stderr.write(`[CONFIG WARN] (${displayFile}) unresolved ${token}\n`);
+    }
+}
+
 // lineOfOffset returns the 1-based line number for a character offset in a source string.
 export function lineOfOffset(source: string, offset: number): number {
     let line = 1;
@@ -1334,6 +1518,7 @@ export function loadConfigRulesFromFile(filePath: string, displayFile: string, b
     if (config === null) {
         return [];
     }
+    expandConfigEnvTokens(config, process.env["CLAUDE_PROJECT_DIR"], process.env["HOME"], displayFile);
     resolveRelativeCwdPatterns(config, baseDir);
     const projectDir = process.env["CLAUDE_PROJECT_DIR"];
     if (projectDir !== undefined) {
@@ -1479,6 +1664,7 @@ export function loadConfigRules(): Rule[] {
     if (homeDir !== undefined) {
         const homeYaml = readYamlFile(join(homeDir, ".claude", "permissions.yaml"), "~/.claude/permissions.yaml");
         if (homeYaml !== null) {
+            expandConfigEnvTokens(homeYaml, process.env["CLAUDE_PROJECT_DIR"], process.env["HOME"], "~/.claude/permissions.yaml");
             resolveRelativeCwdPatterns(homeYaml, homeDir);
             const homeProjectDir = process.env["CLAUDE_PROJECT_DIR"];
             if (homeProjectDir !== undefined) {
@@ -1496,6 +1682,7 @@ export function loadConfigRules(): Rule[] {
     if (projectDir !== undefined) {
         const projectYaml = readYamlFile(join(projectDir, ".claude", "permissions.yaml"), ".claude/permissions.yaml");
         if (projectYaml !== null) {
+            expandConfigEnvTokens(projectYaml, projectDir, process.env["HOME"], ".claude/permissions.yaml");
             resolveRelativeCwdPatterns(projectYaml, projectDir);
             resolveRelativeCmdPatterns(projectYaml, projectDir);
             const projectErrors = validateConfig(projectYaml);
