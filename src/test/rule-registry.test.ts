@@ -1,6 +1,6 @@
 import { RuleLayer, FileLayer, RuleRegistry, IRuleLayer } from "../rule-registry";
 import { NullAuditLogger, IAuditLogger, IAuditLogEntry, IConfigLoadEntry } from "../audit-log";
-import { AstNode, Environment, Rule, RuleOutcome, ToolCall, ABSTAIN } from "../types";
+import { AstNode, IEnvironment, IRule, IRuleOutcome, IToolCall, ABSTAIN } from "../types";
 
 // CapturingLogger records every audit entry so tests can assert on what FileLayer logs.
 class CapturingLogger implements IAuditLogger {
@@ -17,17 +17,17 @@ class CapturingLogger implements IAuditLogger {
 // ---------------------------------------------------------------------------
 
 // makeEnv builds a minimal Environment.
-function makeEnv(cwd: string = "/project"): Environment {
+function makeEnv(cwd: string = "/project"): IEnvironment {
     return { cwd, cwdResolved: true, env: {} };
 }
 
 // makeBashCall builds a minimal ToolCall.
-function makeBashCall(command: string): ToolCall {
+function makeBashCall(command: string): IToolCall {
     return { tool_name: "Bash", tool_input: { command }, cwd: "/project" };
 }
 
 // makeReadCall builds a Read ToolCall.
-function makeReadCall(filePath: string): ToolCall {
+function makeReadCall(filePath: string): IToolCall {
     return { tool_name: "Read", tool_input: { file_path: filePath }, cwd: "/project" };
 }
 
@@ -37,17 +37,17 @@ function makeReadNode(filePath: string): AstNode {
 }
 
 // allowRule always returns allow.
-const allowRule: Rule = function allowRule(_node: AstNode, _env: Environment): RuleOutcome {
+const allowRule: IRule = function allowRule(_node: AstNode, _env: IEnvironment): IRuleOutcome {
     return { decision: { action: "allow" } };
 };
 
 // denyRule always returns deny.
-const denyRule: Rule = function denyRule(_node: AstNode, _env: Environment): RuleOutcome {
+const denyRule: IRule = function denyRule(_node: AstNode, _env: IEnvironment): IRuleOutcome {
     return { decision: { action: "deny", reason: "blocked" } };
 };
 
 // askRule always returns ask.
-const askRule: Rule = function askRule(_node: AstNode, _env: Environment): RuleOutcome {
+const askRule: IRule = function askRule(_node: AstNode, _env: IEnvironment): IRuleOutcome {
     return { decision: { action: "ask" } };
 };
 
@@ -69,7 +69,7 @@ test("RuleLayer: single allow rule → allow annotation", () => {
 
 test("RuleLayer: deny rule short-circuits remaining rules", () => {
     let secondRuleCalled = false;
-    const afterDeny: Rule = function afterDeny(_node: AstNode, _env: Environment): RuleOutcome {
+    const afterDeny: IRule = function afterDeny(_node: AstNode, _env: IEnvironment): IRuleOutcome {
         secondRuleCalled = true;
         return { decision: { action: "allow" } };
     };
@@ -86,7 +86,7 @@ test("RuleLayer: allow then ask → ask (strictest-wins)", () => {
 });
 
 test("RuleLayer: persistent env update propagates via envUpdate", () => {
-    const envInstallerRule: Rule = function envInstallerRule(_node: AstNode, env: Environment): RuleOutcome {
+    const envInstallerRule: IRule = function envInstallerRule(_node: AstNode, env: IEnvironment): IRuleOutcome {
         return {
             decision: { action: "abstain" },
             env: { ...env, env: { ...env.env, INSTALLED: "yes" } },
@@ -145,11 +145,11 @@ test("RuleRegistry: single layer with allow → allow", () => {
 test("RuleRegistry: deny in first layer short-circuits second layer", () => {
     let secondLayerCalled = false;
     const spyLayer: IRuleLayer = {
-        runRules(_node: AstNode, _env: Environment, _call: ToolCall): import("../types").IRunRulesResult {
+        runRules(_node: AstNode, _env: IEnvironment, _call: IToolCall): import("../types").IRunRulesResult {
             secondLayerCalled = true;
             return {
                 annotation: { decision: { action: "allow" } },
-                envUpdate: (environment: Environment) => environment,
+                envUpdate: (environment: IEnvironment) => environment,
                 nodeRunningEnv: makeEnv(),
             };
         },
@@ -161,14 +161,14 @@ test("RuleRegistry: deny in first layer short-circuits second layer", () => {
 });
 
 test("RuleRegistry: env threads from first layer to second layer", () => {
-    const capturedEnvs: Environment[] = [];
-    const envInstallerRule: Rule = function envInstallerRule(_node: AstNode, env: Environment): RuleOutcome {
+    const capturedEnvs: IEnvironment[] = [];
+    const envInstallerRule: IRule = function envInstallerRule(_node: AstNode, env: IEnvironment): IRuleOutcome {
         return {
             decision: { action: "abstain" },
             env: { ...env, env: { ...env.env, LAYER1: "set" } },
         };
     };
-    const capturingRule: Rule = function capturingRule(_node: AstNode, env: Environment): RuleOutcome {
+    const capturingRule: IRule = function capturingRule(_node: AstNode, env: IEnvironment): IRuleOutcome {
         capturedEnvs.push(env);
         return ABSTAIN;
     };

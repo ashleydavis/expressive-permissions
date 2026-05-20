@@ -3,7 +3,7 @@ import { join, resolve } from "path";
 import { homedir } from "os";
 import { parseDocument, isMap, isSeq, isPair, isScalar, Node } from "yaml";
 import picomatch from "picomatch";
-import { Rule, RuleOutcome, AstNode, Environment, ToolCall, ABSTAIN, Decision, Command } from "./types";
+import { IRule, IRuleOutcome, AstNode, IEnvironment, IToolCall, ABSTAIN, Decision, ICommand } from "./types";
 
 // Valid decide values in YAML config
 type DecideValue = "allow" | "deny" | "ask" | "abstain";
@@ -185,7 +185,7 @@ function matchesPattern(pattern: string, value: string): boolean {
 }
 
 // Returns true when env.cwd matches the cwd/cwd-in entry fields
-function matchesCwd(entry: IYamlEntry, env: Environment): boolean {
+function matchesCwd(entry: IYamlEntry, env: IEnvironment): boolean {
     if (entry["cwd-in"] !== undefined) {
         return entry["cwd-in"].some((pattern: string) => matchesPattern(pattern, env.cwd));
     }
@@ -196,7 +196,7 @@ function matchesCwd(entry: IYamlEntry, env: Environment): boolean {
 }
 
 // Returns true when env.cwdResolved matches the cwd_resolved entry field; omitting matches either
-function matchesCwdResolved(entry: IYamlEntry, env: Environment): boolean {
+function matchesCwdResolved(entry: IYamlEntry, env: IEnvironment): boolean {
     if (entry.cwd_resolved === undefined) {
         return true;
     }
@@ -243,7 +243,7 @@ export function matchesFileField(entry: IYamlEntry): boolean {
 }
 
 // Returns true when all env var patterns in the entry match the current environment vars
-function matchesEnvVars(entry: IYamlEntry, env: Environment): boolean {
+function matchesEnvVars(entry: IYamlEntry, env: IEnvironment): boolean {
     if (entry.env === undefined) {
         return true;
     }
@@ -280,7 +280,7 @@ function flagValue(aliasExpr: string, namedOptions: Record<string, string | bool
 }
 
 // Returns true when the options/options-in entry fields match the given Command node's flags
-function matchesOptions(entry: IYamlEntry, node: Command): boolean {
+function matchesOptions(entry: IYamlEntry, node: ICommand): boolean {
     if (entry["options-in"] !== undefined) {
         return entry["options-in"].some((aliasExpr: string) => flagPresent(aliasExpr, node.options));
     }
@@ -322,7 +322,7 @@ function matchesOptions(entry: IYamlEntry, node: Command): boolean {
 // Used inside matchesCmd to dispatch per pattern–arg pair. The resolved pattern is assumed
 // to already be absolute (rewritten at load time by resolveCmdPathPattern); the value is
 // resolved against env.cwd here so positional args like "." or "src/foo" become absolute.
-function matchesCmdPattern(pattern: string, arg: string, env: Environment): boolean {
+function matchesCmdPattern(pattern: string, arg: string, env: IEnvironment): boolean {
     if (!isCmdPathPattern(pattern)) {
         return matchesPattern(pattern, arg);
     }
@@ -333,7 +333,7 @@ function matchesCmdPattern(pattern: string, arg: string, env: Environment): bool
 // Returns true when the cmd/cmd-in entry fields match the positional arguments at the given offset.
 // env is threaded in so path-aware patterns (./* or /*) can resolve relative positional args
 // against env.cwd before matching.
-function matchesCmd(entry: IYamlEntry, node: Command, cmdOffset: number, env: Environment): boolean {
+function matchesCmd(entry: IYamlEntry, node: ICommand, cmdOffset: number, env: IEnvironment): boolean {
     const cmdArray = Array.isArray(node.cmd) ? node.cmd : [node.cmd];
 
     if (entry["cmd-in"] !== undefined) {
@@ -366,7 +366,7 @@ function matchesCmd(entry: IYamlEntry, node: Command, cmdOffset: number, env: En
 }
 
 // Strictest-wins aggregation: deny > ask > allow > abstain
-export function aggregateOutcomes(firstOutcome: RuleOutcome, secondOutcome: RuleOutcome): RuleOutcome {
+export function aggregateOutcomes(firstOutcome: IRuleOutcome, secondOutcome: IRuleOutcome): IRuleOutcome {
     const firstAction = firstOutcome.decision.action;
     const secondAction = secondOutcome.decision.action;
     if (firstAction === "deny") {
@@ -404,13 +404,13 @@ function matchesSubcommandPath(cmdArray: string[], subcommandPath: string[]): bo
 }
 
 // Compiles one bash rule for a specific binary + subcommand path + entry
-function buildBashRule(binary: string, subcommandPath: string[], entry: IYamlEntry): Rule {
+function buildBashRule(binary: string, subcommandPath: string[], entry: IYamlEntry): IRule {
     const decision = mapDecision(entry.decide as DecideValue, entry.reason);
     const pathLabel = subcommandPath.length > 0 ? `:${subcommandPath.join(":")}` : "";
     const ruleName = `yaml:${binary}${pathLabel}:${entry.decide}`;
     const cmdOffset = subcommandPath.length;
 
-    const rule: Rule = function(node: AstNode, env: Environment, _call: ToolCall): RuleOutcome {
+    const rule: IRule = function(node: AstNode, env: IEnvironment, _call: IToolCall): IRuleOutcome {
         if (node.type !== "command") {
             return ABSTAIN;
         }
@@ -470,8 +470,8 @@ function buildBashRule(binary: string, subcommandPath: string[], entry: IYamlEnt
 }
 
 // Runs each sub-rule in order, aggregating outcomes strictest-wins; stops early on deny
-function runSubRules(subRules: Rule[], node: AstNode, env: Environment, call: ToolCall): RuleOutcome {
-    let result: RuleOutcome = ABSTAIN;
+function runSubRules(subRules: IRule[], node: AstNode, env: IEnvironment, call: IToolCall): IRuleOutcome {
+    let result: IRuleOutcome = ABSTAIN;
     for (const subRule of subRules) {
         const outcome = subRule(node, env, call);
         result = aggregateOutcomes(result, outcome);
@@ -483,13 +483,13 @@ function runSubRules(subRules: Rule[], node: AstNode, env: Environment, call: To
 }
 
 // Builds a scoped bash rule: checks parent conditions, then aggregates sub-rules without consuming positionals
-export function buildBashScopedRule(binary: string, subcommandPath: string[], entry: IYamlEntry): Rule {
+export function buildBashScopedRule(binary: string, subcommandPath: string[], entry: IYamlEntry): IRule {
     const subRules = compileBashBinary(binary, entry.rules!, subcommandPath);
     const pathLabel = subcommandPath.length > 0 ? `:${subcommandPath.join(":")}` : "";
     const ruleName = `yaml:${binary}${pathLabel}:scoped`;
     const cmdOffset = subcommandPath.length;
 
-    const rule: Rule = function(node: AstNode, env: Environment, call: ToolCall): RuleOutcome {
+    const rule: IRule = function(node: AstNode, env: IEnvironment, call: IToolCall): IRuleOutcome {
         if (node.type !== "command") {
             return ABSTAIN;
         }
@@ -534,8 +534,8 @@ export function buildBashScopedRule(binary: string, subcommandPath: string[], en
 }
 
 // Recursively compiles all rules for a binary and its subcommand hierarchy
-export function compileBashBinary(binary: string, entries: IYamlEntry[], subcommandPath: string[]): Rule[] {
-    const compiledRules: Rule[] = [];
+export function compileBashBinary(binary: string, entries: IYamlEntry[], subcommandPath: string[]): IRule[] {
+    const compiledRules: IRule[] = [];
 
     for (const entry of entries) {
         if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
@@ -561,8 +561,8 @@ export function compileBashBinary(binary: string, entries: IYamlEntry[], subcomm
 }
 
 // Compiles rules for the bash section of the YAML config
-function compileBashSection(bashSection: Record<string, IYamlEntry | IYamlEntry[]>): Rule[] {
-    const compiledRules: Rule[] = [];
+function compileBashSection(bashSection: Record<string, IYamlEntry | IYamlEntry[]>): IRule[] {
+    const compiledRules: IRule[] = [];
     for (const [binary, value] of Object.entries(bashSection)) {
         const entries = normalizeToList(value);
         compiledRules.push(...compileBashBinary(binary, entries, []));
@@ -585,7 +585,7 @@ function matchesPath(entry: IYamlEntry, filePath: string): boolean {
 // Used to invert rule matches: if this returns true, the rule is suppressed (returns ABSTAIN / false).
 // cmd/options are only evaluated for Command nodes; path/path-in only for nodes with file_path.
 // Special case: if not.file is set and the file is absent, returns true (neither rule fires).
-export function notFieldsAllMatch(not: INotFields, node: AstNode, env: Environment, cmdOffset: number): boolean {
+export function notFieldsAllMatch(not: INotFields, node: AstNode, env: IEnvironment, cmdOffset: number): boolean {
     if (not.file !== undefined) {
         const fileResult = evaluateFileField(not.file);
         if (fileResult === "file-absent") {
@@ -596,10 +596,10 @@ export function notFieldsAllMatch(not: INotFields, node: AstNode, env: Environme
         }
     }
     if (node.type === "command") {
-        if (!matchesCmd(not as IYamlEntry, node as Command, cmdOffset, env)) {
+        if (!matchesCmd(not as IYamlEntry, node as ICommand, cmdOffset, env)) {
             return false;
         }
-        if (!matchesOptions(not as IYamlEntry, node as Command)) {
+        if (!matchesOptions(not as IYamlEntry, node as ICommand)) {
             return false;
         }
     }
@@ -619,7 +619,7 @@ export function notFieldsAllMatch(not: INotFields, node: AstNode, env: Environme
 }
 
 // Returns true when the node and entry conditions all match for a file-based tool rule
-function matchesFileEntry(nodeType: string, entry: IYamlEntry, node: AstNode, env: Environment): boolean {
+function matchesFileEntry(nodeType: string, entry: IYamlEntry, node: AstNode, env: IEnvironment): boolean {
     if (node.type !== nodeType) {
         return false;
     }
@@ -649,11 +649,11 @@ function matchesFileEntry(nodeType: string, entry: IYamlEntry, node: AstNode, en
 }
 
 // Compiles one rule for a file-path-based tool (read/write/edit/multiedit)
-function buildFileRule(nodeType: string, entry: IYamlEntry): Rule {
+function buildFileRule(nodeType: string, entry: IYamlEntry): IRule {
     const decision = mapDecision(entry.decide as DecideValue, entry.reason);
     const ruleName = `yaml:${nodeType}:${entry.decide}`;
 
-    const rule: Rule = function(node: AstNode, env: Environment, _call: ToolCall): RuleOutcome {
+    const rule: IRule = function(node: AstNode, env: IEnvironment, _call: IToolCall): IRuleOutcome {
         if (!matchesFileEntry(nodeType, entry, node, env)) {
             return ABSTAIN;
         }
@@ -676,7 +676,7 @@ function extractHost(url: string): string {
 }
 
 // Returns true when the node and entry conditions all match for a webfetch rule
-function matchesWebFetchEntry(entry: IYamlEntry, node: AstNode, env: Environment): boolean {
+function matchesWebFetchEntry(entry: IYamlEntry, node: AstNode, env: IEnvironment): boolean {
     if (node.type !== "other" || node.tool_name !== "WebFetch") {
         return false;
     }
@@ -710,11 +710,11 @@ function matchesWebFetchEntry(entry: IYamlEntry, node: AstNode, env: Environment
 }
 
 // Compiles one rule for a webfetch entry
-function buildWebFetchRule(entry: IYamlEntry): Rule {
+function buildWebFetchRule(entry: IYamlEntry): IRule {
     const decision = mapDecision(entry.decide as DecideValue, entry.reason);
     const ruleName = `yaml:webfetch:${entry.decide}`;
 
-    const rule: Rule = function(node: AstNode, env: Environment, _call: ToolCall): RuleOutcome {
+    const rule: IRule = function(node: AstNode, env: IEnvironment, _call: IToolCall): IRuleOutcome {
         if (!matchesWebFetchEntry(entry, node, env)) {
             return ABSTAIN;
         }
@@ -728,7 +728,7 @@ function buildWebFetchRule(entry: IYamlEntry): Rule {
 }
 
 // Returns true when the node and entry conditions all match for a tool-name rule
-function matchesMcpEntry(entry: IYamlEntry, node: AstNode, env: Environment): boolean {
+function matchesMcpEntry(entry: IYamlEntry, node: AstNode, env: IEnvironment): boolean {
     if (node.type !== "other") {
         return false;
     }
@@ -759,12 +759,12 @@ function matchesMcpEntry(entry: IYamlEntry, node: AstNode, env: Environment): bo
     return true;
 }
 
-// Compiles one rule for a tool-name entry (matches against ToolCall.tool_name)
-function buildMcpRule(entry: IYamlEntry): Rule {
+// Compiles one rule for a tool-name entry (matches against IToolCall.tool_name)
+function buildMcpRule(entry: IYamlEntry): IRule {
     const decision = mapDecision(entry.decide as DecideValue, entry.reason);
     const ruleName = `yaml:tool:${entry.decide}`;
 
-    const rule: Rule = function(node: AstNode, env: Environment, _call: ToolCall): RuleOutcome {
+    const rule: IRule = function(node: AstNode, env: IEnvironment, _call: IToolCall): IRuleOutcome {
         if (!matchesMcpEntry(entry, node, env)) {
             return ABSTAIN;
         }
@@ -778,8 +778,8 @@ function buildMcpRule(entry: IYamlEntry): Rule {
 }
 
 // Compiles a list of entries into rules, dispatching each to the leaf or scoped builder
-function compileEntries(entries: IYamlEntry[], buildLeaf: (entry: IYamlEntry) => Rule, buildScoped: (entry: IYamlEntry) => Rule): Rule[] {
-    const compiledRules: Rule[] = [];
+function compileEntries(entries: IYamlEntry[], buildLeaf: (entry: IYamlEntry) => IRule, buildScoped: (entry: IYamlEntry) => IRule): IRule[] {
+    const compiledRules: IRule[] = [];
     for (const entry of entries) {
         if (entry.rules !== undefined) {
             compiledRules.push(buildScoped(entry));
@@ -792,16 +792,16 @@ function compileEntries(entries: IYamlEntry[], buildLeaf: (entry: IYamlEntry) =>
 }
 
 // Compiles sub-entries for a file scoped rule, dispatching to scoped or plain builder
-export function compileFileEntries(nodeType: string, entries: IYamlEntry[]): Rule[] {
+export function compileFileEntries(nodeType: string, entries: IYamlEntry[]): IRule[] {
     return compileEntries(entries, (entry) => buildFileRule(nodeType, entry), (entry) => buildFileScopedRule(nodeType, entry));
 }
 
 // Builds a scoped file rule: checks parent conditions, then aggregates sub-rules
-export function buildFileScopedRule(nodeType: string, entry: IYamlEntry): Rule {
+export function buildFileScopedRule(nodeType: string, entry: IYamlEntry): IRule {
     const subRules = compileFileEntries(nodeType, entry.rules!);
     const ruleName = `yaml:${nodeType}:scoped`;
 
-    const rule: Rule = function(node: AstNode, env: Environment, call: ToolCall): RuleOutcome {
+    const rule: IRule = function(node: AstNode, env: IEnvironment, call: IToolCall): IRuleOutcome {
         if (!matchesFileEntry(nodeType, entry, node, env)) {
             return ABSTAIN;
         }
@@ -815,16 +815,16 @@ export function buildFileScopedRule(nodeType: string, entry: IYamlEntry): Rule {
 }
 
 // Compiles sub-entries for a webfetch scoped rule
-export function compileWebFetchEntries(entries: IYamlEntry[]): Rule[] {
+export function compileWebFetchEntries(entries: IYamlEntry[]): IRule[] {
     return compileEntries(entries, buildWebFetchRule, buildWebFetchScopedRule);
 }
 
 // Builds a scoped webfetch rule: checks parent conditions, then aggregates sub-rules
-export function buildWebFetchScopedRule(entry: IYamlEntry): Rule {
+export function buildWebFetchScopedRule(entry: IYamlEntry): IRule {
     const subRules = compileWebFetchEntries(entry.rules!);
     const ruleName = `yaml:webfetch:scoped`;
 
-    const rule: Rule = function(node: AstNode, env: Environment, call: ToolCall): RuleOutcome {
+    const rule: IRule = function(node: AstNode, env: IEnvironment, call: IToolCall): IRuleOutcome {
         if (!matchesWebFetchEntry(entry, node, env)) {
             return ABSTAIN;
         }
@@ -838,16 +838,16 @@ export function buildWebFetchScopedRule(entry: IYamlEntry): Rule {
 }
 
 // Compiles a list of tool-name entries (used by both top-level keys and scoped sub-rules)
-export function compileMcpEntries(entries: IYamlEntry[]): Rule[] {
+export function compileMcpEntries(entries: IYamlEntry[]): IRule[] {
     return compileEntries(entries, buildMcpRule, buildMcpScopedRule);
 }
 
 // Builds a scoped tool-name rule: checks parent conditions, then aggregates sub-rules
-export function buildMcpScopedRule(entry: IYamlEntry): Rule {
+export function buildMcpScopedRule(entry: IYamlEntry): IRule {
     const subRules = compileMcpEntries(entry.rules!);
     const ruleName = `yaml:tool:scoped`;
 
-    const rule: Rule = function(node: AstNode, env: Environment, call: ToolCall): RuleOutcome {
+    const rule: IRule = function(node: AstNode, env: IEnvironment, call: IToolCall): IRuleOutcome {
         if (!matchesMcpEntry(entry, node, env)) {
             return ABSTAIN;
         }
@@ -866,8 +866,8 @@ export function buildMcpScopedRule(entry: IYamlEntry): Rule {
 // is present, the key becomes a human-readable label only and the explicit field drives matching.
 // Sub-rules under a scoped entry inherit the parent key when they omit `tool`/`tool-in`,
 // mirroring the bash-section convention where sub-rules inherit their parent binary.
-export function compileTopLevelToolRules(config: IYamlConfig): Rule[] {
-    const compiledRules: Rule[] = [];
+export function compileTopLevelToolRules(config: IYamlConfig): IRule[] {
+    const compiledRules: IRule[] = [];
     for (const key of Object.keys(config)) {
         if (KNOWN_SECTIONS.has(key)) {
             continue;
@@ -904,8 +904,8 @@ export function compileTopLevelToolRules(config: IYamlConfig): Rule[] {
 }
 
 // Compiles all rules from the non-bash sections (read, write, edit, multi_edit, webfetch)
-function compileNonBashSections(config: IYamlConfig): Rule[] {
-    const compiledRules: Rule[] = [];
+function compileNonBashSections(config: IYamlConfig): IRule[] {
+    const compiledRules: IRule[] = [];
 
     const fileSections: Array<[string, string]> = [
         ["read", "read"],
@@ -1497,8 +1497,8 @@ export function validateConfig(config: IYamlConfig): IConfigError[] {
 }
 
 // Compiles all rules from a merged config object
-function compileConfig(config: IYamlConfig): Rule[] {
-    const compiledRules: Rule[] = [];
+function compileConfig(config: IYamlConfig): IRule[] {
+    const compiledRules: IRule[] = [];
 
     if (config.bash !== undefined) {
         compiledRules.push(...compileBashSection(config.bash));
@@ -1513,7 +1513,7 @@ function compileConfig(config: IYamlConfig): Rule[] {
 // loadConfigRulesFromFile reads and compiles a single YAML permissions file.
 // displayFile is the path shown in log output. baseDir is used to resolve relative cwd patterns.
 // Returns [] if the file does not exist.
-export function loadConfigRulesFromFile(filePath: string, displayFile: string, baseDir: string): Rule[] {
+export function loadConfigRulesFromFile(filePath: string, displayFile: string, baseDir: string): IRule[] {
     const config = readYamlFile(filePath, displayFile);
     if (config === null) {
         return [];
@@ -1533,7 +1533,7 @@ export function loadConfigRulesFromFile(filePath: string, displayFile: string, b
 
 // loadHomeConfigRules loads rules from $HOME/.claude/permissions.yaml.
 // Returns [] if HOME is unset or the file does not exist.
-export function loadHomeConfigRules(): Rule[] {
+export function loadHomeConfigRules(): IRule[] {
     const homeDir = process.env["HOME"];
     if (homeDir === undefined) {
         return [];
@@ -1547,7 +1547,7 @@ export function loadHomeConfigRules(): Rule[] {
 
 // loadProjectConfigRules loads rules from $CLAUDE_PROJECT_DIR/.claude/permissions.yaml.
 // Returns [] if CLAUDE_PROJECT_DIR is unset or the file does not exist.
-export function loadProjectConfigRules(): Rule[] {
+export function loadProjectConfigRules(): IRule[] {
     const projectDir = process.env["CLAUDE_PROJECT_DIR"];
     if (projectDir === undefined) {
         return [];
@@ -1645,8 +1645,8 @@ export function discoverProjectConfigDirFiles(): IConfigFileSource[] {
 
 // makeConfigFileLoader returns a no-arg loader closure suitable for FileLayer, using the
 // fields of the given source to call loadConfigRulesFromFile.
-export function makeConfigFileLoader(source: IConfigFileSource): () => Rule[] {
-    return function configFileLoader(): Rule[] {
+export function makeConfigFileLoader(source: IConfigFileSource): () => IRule[] {
+    return function configFileLoader(): IRule[] {
         return loadConfigRulesFromFile(source.filePath, source.displayPath, source.baseDir);
     };
 }
@@ -1656,7 +1656,7 @@ export function makeConfigFileLoader(source: IConfigFileSource): () => Rule[] {
 // Returns [] when env vars are absent or files are missing.
 // Validation is performed per-file before merging so that errors in one file are detected
 // even when the other file's keys would shallow-merge over them.
-export function loadConfigRules(): Rule[] {
+export function loadConfigRules(): IRule[] {
     let homeConfig: IYamlConfig = {};
     let projectConfig: IYamlConfig = {};
 

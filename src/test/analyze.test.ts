@@ -3,7 +3,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { parseToolCallInput, analyzePermission } from "../analyze";
 import { RuleLayer, RuleRegistry } from "../rule-registry";
-import { Rule, ABSTAIN, RuleOutcome, AstNode, Environment, ToolCall } from "../types";
+import { IRule, ABSTAIN, IRuleOutcome, AstNode, IEnvironment, IToolCall } from "../types";
 import { NullAuditLogger } from "../audit-log";
 
 // makeTmpProjectDir creates a temp directory with a .claude/ subdirectory and optional

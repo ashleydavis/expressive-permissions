@@ -1,4 +1,4 @@
-import { BashAstNode, Command, ForLoop, IRedirect } from "./types";
+import { BashAstNode, ICommand, IForLoop, IRedirect } from "./types";
 
 // A single token produced by the lexer
 interface IToken {
@@ -241,7 +241,7 @@ function consume(state: IParserState): IToken {
 
 // Parses a single Command leaf, collecting the env-var prefix, binary, options, and redirects.
 // Stops when a non-redirect operator is seen (caller handles that operator).
-function parseCommand(state: IParserState): Command {
+function parseCommand(state: IParserState): ICommand {
     const envPrefix: Record<string, string> = {};
     const redirects: IRedirect[] = [];
     const argTokens: string[] = [];
@@ -376,7 +376,7 @@ function parseForLoop(state: IParserState): BashAstNode {
     }
     const doneToken = consume(state);
 
-    const forLoop: ForLoop = {
+    const forLoop: IForLoop = {
         type: "for_loop",
         variable,
         items,

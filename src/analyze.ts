@@ -3,7 +3,7 @@ import { loadHomeConfigRules, loadProjectConfigRules, discoverHomeConfigDirFiles
 import { RuleLayer, FileLayer, IRuleLayer, RuleRegistry } from "./rule-registry";
 import { builtinRules } from "./rules";
 import { decide } from "./interpret";
-import { ToolCall } from "./types";
+import { IToolCall } from "./types";
 
 // IAnalysisResult holds the outcome of a single permission analysis pass.
 export interface IAnalysisResult {
@@ -23,7 +23,7 @@ export interface IAnalysisResult {
 //   "webfetch <url>"  -> WebFetch tool
 //   "tool <name>"     -> generic other-tool call
 //   anything else     -> Bash tool with command = full input
-export function parseToolCallInput(input: string, cwd: string): ToolCall {
+export function parseToolCallInput(input: string, cwd: string): IToolCall {
     const lower = input.toLowerCase();
 
     if (lower.startsWith("read ")) {

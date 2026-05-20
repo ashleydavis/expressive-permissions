@@ -3,7 +3,7 @@
 export type ToolInputValue = string | boolean | number | IEditEntry[];
 
 // The raw stdin JSON payload sent by Claude Code's PreToolUse hook
-export interface ToolCall {
+export interface IToolCall {
     // The tool name as reported by Claude Code (e.g. "Bash", "Read", "Write")
     tool_name: string;
     // The input arguments supplied to the tool
@@ -57,7 +57,7 @@ export interface IRedirect {
 }
 
 // A leaf node representing a single Bash command in the sub-AST
-export interface Command {
+export interface ICommand {
     // Discriminator for the command node type
     type: "command";
     // The command binary (e.g. "ls", "rm", "cd")
@@ -75,7 +75,7 @@ export interface Command {
 }
 
 // A binary operator node connecting two Bash sub-expressions
-export interface BinOp {
+export interface IBinOp {
     // Discriminator for the binop node type
     type: "binop";
     // The operator token (e.g. "&&", "||", ";", "|")
@@ -88,7 +88,7 @@ export interface BinOp {
 
 // A loop node representing a Bash for-in loop. The interpreter walks the body once per
 // item in items, with env[variable] set to that item for the duration of that iteration.
-export interface ForLoop {
+export interface IForLoop {
     // Discriminator for the for-loop node type
     type: "for_loop";
     // The loop variable name (e.g. "region" in `for region in ...`)
@@ -102,7 +102,7 @@ export interface ForLoop {
 }
 
 // Union of all Bash sub-AST node types
-export type BashAstNode = Command | BinOp | ForLoop;
+export type BashAstNode = ICommand | IBinOp | IForLoop;
 
 // A single edit operation within a MultiEdit tool call
 export interface IEditEntry {
@@ -117,7 +117,7 @@ export interface IEditEntry {
 }
 
 // Tool-root node for a Bash tool call
-export interface Bash {
+export interface IBash {
     // Discriminator for the bash tool root
     type: "bash";
     // The parsed Bash sub-AST
@@ -127,7 +127,7 @@ export interface Bash {
 }
 
 // Tool-root node for a Read tool call
-export interface Read {
+export interface IRead {
     // Discriminator for the read tool root
     type: "read";
     // The path of the file being read
@@ -139,7 +139,7 @@ export interface Read {
 }
 
 // Tool-root node for a Write tool call
-export interface Write {
+export interface IWrite {
     // Discriminator for the write tool root
     type: "write";
     // The path of the file being written
@@ -149,7 +149,7 @@ export interface Write {
 }
 
 // Tool-root node for an Edit tool call
-export interface Edit {
+export interface IEdit {
     // Discriminator for the edit tool root
     type: "edit";
     // The path of the file being edited
@@ -163,7 +163,7 @@ export interface Edit {
 }
 
 // Tool-root node for a MultiEdit tool call
-export interface MultiEdit {
+export interface IMultiEdit {
     // Discriminator for the multiedit tool root
     type: "multiedit";
     // The path of the file being edited
@@ -173,7 +173,7 @@ export interface MultiEdit {
 }
 
 // Tool-root node for any tool not explicitly modelled above
-export interface OtherTool {
+export interface IOtherTool {
     // Discriminator for the other-tool fallback root
     type: "other";
     // The name of the tool as reported by Claude Code
@@ -183,13 +183,13 @@ export interface OtherTool {
 }
 
 // Union of all tool-root node types (one per supported Claude Code tool)
-export type ToolRoot = Bash | Read | Write | Edit | MultiEdit | OtherTool;
+export type ToolRoot = IBash | IRead | IWrite | IEdit | IMultiEdit | IOtherTool;
 
 // Union of every AST node type that can appear anywhere in the tree
 export type AstNode = ToolRoot | BashAstNode;
 
 // Immutable snapshot of the execution environment at a given tree node
-export interface Environment {
+export interface IEnvironment {
     // The logical current working directory (may contain unresolved symlinks)
     cwd: string;
     // True when cwd is known to be accurate; false when a cd to an unresolvable target occurred
@@ -199,7 +199,7 @@ export interface Environment {
 }
 
 // Metadata attached to a tree node after rule evaluation is complete
-export interface Annotation {
+export interface IAnnotation {
     // The aggregated decision for this node
     decision: Decision;
     // The source file of the rule responsible for the decision, if applicable
@@ -211,23 +211,23 @@ export interface Annotation {
 }
 
 // The value a rule returns after evaluating a single AST node
-export interface RuleOutcome {
+export interface IRuleOutcome {
     // The rule's decision for this node
     decision: Decision;
     // Optional replacement for the global environment propagated after this node
-    env?: Environment;
+    env?: IEnvironment;
     // Optional scoped environment update visible only to descendant nodes
-    scopedEnv?: Environment;
+    scopedEnv?: IEnvironment;
 }
 
-// Sentinel RuleOutcome returned by a rule that has no opinion on the current node
-export const ABSTAIN: RuleOutcome = { decision: { action: "abstain" } };
+// Sentinel IRuleOutcome returned by a rule that has no opinion on the current node
+export const ABSTAIN: IRuleOutcome = { decision: { action: "abstain" } };
 
 // A rule function: inspects one AST node and returns a decision with optional env updates.
 // ruleFile and ruleLine optionally identify the source location this rule was compiled from.
-export interface Rule {
+export interface IRule {
     // The rule evaluation function.
-    (node: AstNode, env: Environment, call: ToolCall): RuleOutcome;
+    (node: AstNode, env: IEnvironment, call: IToolCall): IRuleOutcome;
     // The source file this rule was compiled from, if known.
     ruleFile?: string;
     // The 1-based line number in ruleFile where this rule's entry begins, if known.
@@ -251,13 +251,13 @@ export function rank(decision: Decision): number {
 // Result returned by runRules for a single node after iterating the full rule list.
 export interface IRunRulesResult {
     // The strictest-wins annotation produced by all rules at this node.
-    annotation: Annotation;
+    annotation: IAnnotation;
     // Applies all persistent env updates from this node's rules to a base environment.
     // Returns the base unchanged when no rule produced a persistent env update.
-    envUpdate: (environment: Environment) => Environment;
+    envUpdate: (environment: IEnvironment) => IEnvironment;
     // The env after all rules ran at this node, including both persistent and scoped updates.
     // Used by RuleRegistry to thread env between layers for the same node evaluation.
-    nodeRunningEnv: Environment;
+    nodeRunningEnv: IEnvironment;
 }
 
 // The raw stdin JSON payload sent by Claude Code's PostToolUse hook

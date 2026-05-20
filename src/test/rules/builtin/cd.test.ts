@@ -1,13 +1,13 @@
 import { cdRule } from "../../../rules/builtin/cd";
-import { AstNode, Command, Environment, ABSTAIN } from "../../../types";
+import { AstNode, ICommand, IEnvironment, ABSTAIN } from "../../../types";
 
 // makeEnv builds a minimal Environment for cd rule tests.
-function makeEnv(cwd: string, cwdResolved: boolean = true): Environment {
+function makeEnv(cwd: string, cwdResolved: boolean = true): IEnvironment {
     return { cwd, cwdResolved, env: {} };
 }
 
 // makeCommand builds a minimal Command node.
-function makeCommand(binary: string, cmd: string | string[]): Command {
+function makeCommand(binary: string, cmd: string | string[]): ICommand {
     return { type: "command", binary, options: {}, cmd, envPrefix: {}, redirects: [], raw: binary };
 }
 

@@ -3,27 +3,27 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { loadConfigRules, loadConfigRulesFromFile, loadHomeConfigRules, loadProjectConfigRules, validateConfig, resolveCwdPattern, resolveEntryCwdPatterns, resolveRelativeCwdPatterns, isCmdPathPattern, resolveCmdPathPattern, resolveEntryCmdPatterns, resolveRelativeCmdPatterns, expandEntryEnvTokens, expandConfigEnvTokens, aggregateOutcomes, buildBashScopedRule, buildFileScopedRule, notFieldsAllMatch, evaluateFileField, matchesFileField, lineOfOffset, annotateLines, compileTopLevelToolRules, discoverConfigDirFiles, discoverHomeConfigDirFiles, discoverProjectConfigDirFiles, makeConfigFileLoader, IYamlEntry, IYamlConfig, INotFields, IFileMatch, IConfigError, IConfigFileSource } from "../load-config";
 import { parseDocument } from "yaml";
-import { Rule, RuleOutcome, AstNode, Environment, ToolCall, Command } from "../types";
+import { IRule, IRuleOutcome, AstNode, IEnvironment, IToolCall, ICommand } from "../types";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 // Builds a minimal Environment for tests
-function makeEnv(cwd: string = "/project", cwdResolved: boolean = true, envVars: Record<string, string> = {}): Environment {
+function makeEnv(cwd: string = "/project", cwdResolved: boolean = true, envVars: Record<string, string> = {}): IEnvironment {
     return { cwd, cwdResolved, env: envVars };
 }
 
 // Stub ToolCall for tests
-const dummyCall: ToolCall = { tool_name: "Bash", tool_input: { command: "" }, cwd: "/project" };
+const dummyCall: IToolCall = { tool_name: "Bash", tool_input: { command: "" }, cwd: "/project" };
 
 // Builds a Command node
-function makeCommand(binary: string, cmd: string | string[], namedOptions: Record<string, string | boolean> = {}): Command {
+function makeCommand(binary: string, cmd: string | string[], namedOptions: Record<string, string | boolean> = {}): ICommand {
     return { type: "command", binary, options: namedOptions, cmd, envPrefix: {}, redirects: [], raw: binary };
 }
 
 // Runs the first rule and returns its decision action
-function decide(rule: Rule, node: AstNode, env: Environment = makeEnv()): string {
+function decide(rule: IRule, node: AstNode, env: IEnvironment = makeEnv()): string {
     return rule(node, env, dummyCall).decision.action;
 }
 
@@ -41,7 +41,7 @@ interface IYamlFixtureExtras {
 function withYamlFixtures(
     homeYaml: string | null,
     projectYaml: string | null,
-    callback: (rules: Rule[]) => void,
+    callback: (rules: IRule[]) => void,
     extras?: IYamlFixtureExtras
 ): void {
     const tmpDir = join("/tmp", `claude-perm-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -79,7 +79,7 @@ function withYamlFixtures(
         }
     }
 
-    let rules: Rule[] = [];
+    let rules: IRule[] = [];
     try {
         rules = loadConfigRules();
         callback(rules);
@@ -925,7 +925,7 @@ webfetch:
         const etcEnv = makeEnv("/etc/nginx", true, {});
 
         // Helper: find the strictest decision across all rules for a given node
-        function strictest(node: AstNode, testEnv: Environment = env): string {
+        function strictest(node: AstNode, testEnv: IEnvironment = env): string {
             const rank: Record<string, number> = { abstain: 0, allow: 1, ask: 2, deny: 3 };
             let best = "abstain";
             for (const rule of rules) {
@@ -1069,7 +1069,7 @@ webfetch:
 `;
 
     withYamlFixtures(null, yaml, (rules) => {
-        function strictest(node: AstNode, testEnv: Environment = makeEnv()): string {
+        function strictest(node: AstNode, testEnv: IEnvironment = makeEnv()): string {
             const rank: Record<string, number> = { abstain: 0, allow: 1, ask: 2, deny: 3 };
             let best = "abstain";
             for (const rule of rules) {
@@ -1152,7 +1152,7 @@ bash:
 `;
 
     withYamlFixtures(homeYaml, projectYaml, (rules) => {
-        function strictest(node: AstNode, testEnv: Environment = makeEnv()): string {
+        function strictest(node: AstNode, testEnv: IEnvironment = makeEnv()): string {
             const rank: Record<string, number> = { abstain: 0, allow: 1, ask: 2, deny: 3 };
             let best = "abstain";
             for (const rule of rules) {
@@ -2378,7 +2378,7 @@ bash:
       reason: Confirm push from project directory
 `;
     withYamlFixtures(null, yaml, (rules) => {
-        function strictest(node: AstNode, testEnv: Environment): string {
+        function strictest(node: AstNode, testEnv: IEnvironment): string {
             const rank: Record<string, number> = { abstain: 0, allow: 1, ask: 2, deny: 3 };
             let best = "abstain";
             for (const rule of rules) {
@@ -2946,49 +2946,49 @@ bash:
 // ---------------------------------------------------------------------------
 
 test("aggregateOutcomes: deny beats ask", () => {
-    const deny: RuleOutcome = { decision: { action: "deny" } };
-    const ask: RuleOutcome = { decision: { action: "ask" } };
+    const deny: IRuleOutcome = { decision: { action: "deny" } };
+    const ask: IRuleOutcome = { decision: { action: "ask" } };
     expect(aggregateOutcomes(deny, ask).decision.action).toBe("deny");
     expect(aggregateOutcomes(ask, deny).decision.action).toBe("deny");
 });
 
 test("aggregateOutcomes: deny beats allow", () => {
-    const deny: RuleOutcome = { decision: { action: "deny" } };
-    const allow: RuleOutcome = { decision: { action: "allow" } };
+    const deny: IRuleOutcome = { decision: { action: "deny" } };
+    const allow: IRuleOutcome = { decision: { action: "allow" } };
     expect(aggregateOutcomes(deny, allow).decision.action).toBe("deny");
     expect(aggregateOutcomes(allow, deny).decision.action).toBe("deny");
 });
 
 test("aggregateOutcomes: deny beats abstain", () => {
-    const deny: RuleOutcome = { decision: { action: "deny" } };
-    const abstain: RuleOutcome = { decision: { action: "abstain" } };
+    const deny: IRuleOutcome = { decision: { action: "deny" } };
+    const abstain: IRuleOutcome = { decision: { action: "abstain" } };
     expect(aggregateOutcomes(deny, abstain).decision.action).toBe("deny");
     expect(aggregateOutcomes(abstain, deny).decision.action).toBe("deny");
 });
 
 test("aggregateOutcomes: ask beats allow", () => {
-    const ask: RuleOutcome = { decision: { action: "ask" } };
-    const allow: RuleOutcome = { decision: { action: "allow" } };
+    const ask: IRuleOutcome = { decision: { action: "ask" } };
+    const allow: IRuleOutcome = { decision: { action: "allow" } };
     expect(aggregateOutcomes(ask, allow).decision.action).toBe("ask");
     expect(aggregateOutcomes(allow, ask).decision.action).toBe("ask");
 });
 
 test("aggregateOutcomes: ask beats abstain", () => {
-    const ask: RuleOutcome = { decision: { action: "ask" } };
-    const abstain: RuleOutcome = { decision: { action: "abstain" } };
+    const ask: IRuleOutcome = { decision: { action: "ask" } };
+    const abstain: IRuleOutcome = { decision: { action: "abstain" } };
     expect(aggregateOutcomes(ask, abstain).decision.action).toBe("ask");
     expect(aggregateOutcomes(abstain, ask).decision.action).toBe("ask");
 });
 
 test("aggregateOutcomes: allow beats abstain", () => {
-    const allow: RuleOutcome = { decision: { action: "allow" } };
-    const abstain: RuleOutcome = { decision: { action: "abstain" } };
+    const allow: IRuleOutcome = { decision: { action: "allow" } };
+    const abstain: IRuleOutcome = { decision: { action: "abstain" } };
     expect(aggregateOutcomes(allow, abstain).decision.action).toBe("allow");
     expect(aggregateOutcomes(abstain, allow).decision.action).toBe("allow");
 });
 
 test("aggregateOutcomes: abstain + abstain → abstain", () => {
-    const abstain: RuleOutcome = { decision: { action: "abstain" } };
+    const abstain: IRuleOutcome = { decision: { action: "abstain" } };
     expect(aggregateOutcomes(abstain, abstain).decision.action).toBe("abstain");
 });
 
@@ -3891,7 +3891,7 @@ test("loadConfigRulesFromFile: compiles rules from an existing file", () => {
     expect(rules.length).toBeGreaterThan(0);
     const node = { type: "command" as const, binary: "ls", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "ls" };
     const env = { cwd: tmpDir, cwdResolved: true, env: {} };
-    const call: ToolCall = { tool_name: "Bash", tool_input: { command: "ls" }, cwd: tmpDir };
+    const call: IToolCall = { tool_name: "Bash", tool_input: { command: "ls" }, cwd: tmpDir };
     const result = rules[0](node, env, call);
     expect(result.decision.action).toBe("allow");
     rmSync(tmpDir, { recursive: true, force: true });
@@ -3908,7 +3908,7 @@ test("loadConfigRulesFromFile: ${{PROJECT_DIR}} token in cmd is expanded and mat
     const rules = loadConfigRulesFromFile(filePath, "test.yaml", tmpDir);
     const node = { type: "command" as const, binary: "find", options: {}, cmd: [join(tmpDir, "src")], envPrefix: {}, redirects: [], raw: "find" };
     const env = { cwd: tmpDir, cwdResolved: true, env: {} };
-    const call: ToolCall = { tool_name: "Bash", tool_input: { command: "find" }, cwd: tmpDir };
+    const call: IToolCall = { tool_name: "Bash", tool_input: { command: "find" }, cwd: tmpDir };
     const result = rules[0](node, env, call);
     expect(result.decision.action).toBe("allow");
     rmSync(tmpDir, { recursive: true, force: true });

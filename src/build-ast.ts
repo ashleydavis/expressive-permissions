@@ -1,4 +1,4 @@
-import { ToolCall, ToolRoot, IEditEntry, Read, Edit, AstNode, BinOp, Command } from "./types";
+import { IToolCall, ToolRoot, IEditEntry, IRead, IEdit, AstNode, IBinOp, ICommand } from "./types";
 import { parseBash } from "./parse-bash";
 
 // expandToken substitutes $VAR and ${VAR} references in a single string using the
@@ -15,7 +15,7 @@ export function expandToken(token: string, vars: Record<string, string>): string
 
 // expandCommandOptions clones a Command node with binary, flag values, and positionals expanded
 // against the provided vars dict. The raw field is preserved unchanged.
-export function expandCommandOptions(node: Command, vars: Record<string, string>): Command {
+export function expandCommandOptions(node: ICommand, vars: Record<string, string>): ICommand {
     const expandedOptions: Record<string, string | boolean> = {};
     for (const [key, value] of Object.entries(node.options)) {
         expandedOptions[key] = typeof value === "string" ? expandToken(value, vars) : value;
@@ -46,7 +46,7 @@ export function describeNode(node: AstNode): string {
         case "command":
             return node.raw;
         case "binop":
-            return `${describeNode((node as BinOp).left)} ${(node as BinOp).op} ${describeNode((node as BinOp).right)}`;
+            return `${describeNode((node as IBinOp).left)} ${(node as IBinOp).op} ${describeNode((node as IBinOp).right)}`;
         case "for_loop":
             return node.raw;
         case "bash":
@@ -64,10 +64,10 @@ export function describeNode(node: AstNode): string {
     }
 }
 
-// buildAst converts a raw ToolCall into the typed ToolRoot that the interpreter and rules see.
+// buildAst converts a raw IToolCall into the typed ToolRoot that the interpreter and rules see.
 // Switches on tool_name and maps the tool_input fields to a strongly-typed node.
 // Unknown tools fall through to an OtherTool node that preserves the raw input.
-export function buildAst(call: ToolCall): ToolRoot {
+export function buildAst(call: IToolCall): ToolRoot {
     switch (call.tool_name) {
         case "Bash": {
             const command = call.tool_input.command as string;
@@ -78,7 +78,7 @@ export function buildAst(call: ToolCall): ToolRoot {
             };
         }
         case "Read": {
-            const node: Read = {
+            const node: IRead = {
                 type: "read",
                 file_path: call.tool_input.file_path as string,
             };
@@ -98,7 +98,7 @@ export function buildAst(call: ToolCall): ToolRoot {
             };
         }
         case "Edit": {
-            const node: Edit = {
+            const node: IEdit = {
                 type: "edit",
                 file_path: call.tool_input.file_path as string,
                 old_string: call.tool_input.old_string as string,

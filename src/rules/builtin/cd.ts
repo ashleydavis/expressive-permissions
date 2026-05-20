@@ -1,5 +1,5 @@
 import { resolve } from "path";
-import { AstNode, Environment, Rule, RuleOutcome, ToolCall, ABSTAIN } from "../../types";
+import { AstNode, IEnvironment, IRule, IRuleOutcome, IToolCall, ABSTAIN } from "../../types";
 
 // Extracts the cd target string from a Command node's cmd field.
 // Returns empty string when no positional was supplied.
@@ -30,7 +30,7 @@ function isUnresolvable(target: string): boolean {
 // Matches any Command leaf with binary "cd". Returns a persistent env update with the
 // new cwd resolved from the target. Decision is always abstain — this rule only updates env.
 // When the target is unresolvable (no arg, "-", unexpanded var), sets cwdResolved: false.
-export const cdRule: Rule = function cdRule(node: AstNode, env: Environment, _call: ToolCall): RuleOutcome {
+export const cdRule: IRule = function cdRule(node: AstNode, env: IEnvironment, _call: IToolCall): IRuleOutcome {
     if (node.type !== "command" || node.binary !== "cd") {
         return ABSTAIN;
     }

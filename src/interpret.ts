@@ -3,28 +3,28 @@ import { IRuleRegistry } from "./rule-registry";
 import { IAuditLogger, toLocalISOString } from "./audit-log";
 import {
     AstNode,
-    Annotation,
-    BinOp,
+    IAnnotation,
+    IBinOp,
     Decision,
-    Environment,
+    IEnvironment,
     IAskDecision,
-    ToolCall,
+    IToolCall,
 } from "./types";
 
 // The default ask decision returned when no rule produces a concrete outcome at a leaf.
 const ASK: IAskDecision = { action: "ask" };
 
 // Result returned by the internal interpret walker for a single node.
-export interface InterpretResult {
+export interface IInterpretResult {
     // The aggregated annotation (decision + attribution) for this node.
-    annotation: Annotation;
+    annotation: IAnnotation;
     // The environment state after evaluating this node and all its descendants.
-    envOut: Environment;
+    envOut: IEnvironment;
 }
 
 
 // isLeaf returns true for AST nodes that have no child nodes to walk.
-// Intermediate nodes carry child references in well-known fields: BinOp uses "left"/"right",
+// Intermediate nodes carry child references in well-known fields: IBinOp uses "left"/"right",
 // Bash uses "ast", ForLoop uses "body". Any node without those fields is a leaf.
 export function isLeaf(node: AstNode): boolean {
     return node.type !== "binop" && node.type !== "bash" && node.type !== "for_loop";
@@ -34,20 +34,20 @@ export function isLeaf(node: AstNode): boolean {
 // aggregateChildren combines the annotations from child nodes into a single annotation.
 // Any deny → deny; all allow → allow; otherwise → ask, preserving the reason from the
 // strictest ask child so callers can surface a meaningful message.
-export function aggregateChildren(childAnnotations: Annotation[]): Annotation {
-    for (const annotation of childAnnotations) {
+export function aggregateChildren(childIAnnotations: IAnnotation[]): IAnnotation {
+    for (const annotation of childIAnnotations) {
         if (annotation.decision.action === "deny") {
             return annotation;
         }
     }
-    if (childAnnotations.every((annotation: Annotation) => annotation.decision.action === "allow")) {
-        return childAnnotations[childAnnotations.length - 1];
+    if (childIAnnotations.every((annotation: IAnnotation) => annotation.decision.action === "allow")) {
+        return childIAnnotations[childIAnnotations.length - 1];
     }
-    const askAnnotations = childAnnotations.filter(
-        (annotation: Annotation) => annotation.decision.action === "ask"
+    const askIAnnotations = childIAnnotations.filter(
+        (annotation: IAnnotation) => annotation.decision.action === "ask"
     );
-    if (askAnnotations.length > 0) {
-        return askAnnotations[askAnnotations.length - 1];
+    if (askIAnnotations.length > 0) {
+        return askIAnnotations[askIAnnotations.length - 1];
     }
     return { decision: ASK };
 }
@@ -55,11 +55,11 @@ export function aggregateChildren(childAnnotations: Annotation[]): Annotation {
 // combine layers an intermediate node's own rule result on top of the children's aggregated
 // annotation. deny/ask/allow from own rules override or reinforce the children status;
 // abstain preserves the children status.
-export function combine(childrenAnnotation: Annotation, ownRuleAnnotation: Annotation): Annotation {
-    if (ownRuleAnnotation.decision.action === "abstain") {
-        return childrenAnnotation;
+export function combine(childrenIAnnotation: IAnnotation, ownRuleIAnnotation: IAnnotation): IAnnotation {
+    if (ownRuleIAnnotation.decision.action === "abstain") {
+        return childrenIAnnotation;
     }
-    return ownRuleAnnotation;
+    return ownRuleIAnnotation;
 }
 
 // walkChildren walks the direct children of an intermediate node with operator-specific env
@@ -68,55 +68,55 @@ export function combine(childrenAnnotation: Annotation, ownRuleAnnotation: Annot
 // IWalkChildrenResult is the return type of walkChildren.
 interface IWalkChildrenResult {
     // The annotation produced by each direct child node.
-    childAnnotations: Annotation[];
+    childIAnnotations: IAnnotation[];
     // The environment to propagate upward after walking all children.
-    envOut: Environment;
+    envOut: IEnvironment;
 }
 
 function walkChildren(
     node: AstNode,
-    env: Environment,
-    call: ToolCall,
+    env: IEnvironment,
+    call: IToolCall,
     logger: IAuditLogger,
     registry: IRuleRegistry
 ): IWalkChildrenResult {
     if (node.type === "bash") {
         const childResult = interpret(node.ast, env, call, logger, registry);
         return {
-            childAnnotations: [childResult.annotation],
+            childIAnnotations: [childResult.annotation],
             envOut: childResult.envOut,
         };
     }
 
     if (node.type === "for_loop") {
-        const childAnnotations: Annotation[] = [];
+        const childIAnnotations: IAnnotation[] = [];
         for (const item of node.items) {
-            const iterEnv: Environment = {
+            const iterEnv: IEnvironment = {
                 ...env,
                 env: { ...env.env, [node.variable]: item },
             };
             const bodyResult = interpret(node.body, iterEnv, call, logger, registry);
-            childAnnotations.push(bodyResult.annotation);
+            childIAnnotations.push(bodyResult.annotation);
         }
 
         // An empty items list means zero iterations; aggregateChildren cannot handle an
         // empty array, so seed an abstain so the for-loop falls through to the default ask.
-        if (childAnnotations.length === 0) {
-            childAnnotations.push({ decision: { action: "abstain" } });
+        if (childIAnnotations.length === 0) {
+            childIAnnotations.push({ decision: { action: "abstain" } });
         }
         return {
-            childAnnotations,
+            childIAnnotations,
             envOut: env,
         };
     }
 
-    const binop = node as BinOp;
+    const binop = node as IBinOp;
 
     if (binop.op === ";" || binop.op === "&&") {
         const leftResult = interpret(binop.left, env, call, logger, registry);
         const rightResult = interpret(binop.right, leftResult.envOut, call, logger, registry);
         return {
-            childAnnotations: [leftResult.annotation, rightResult.annotation],
+            childIAnnotations: [leftResult.annotation, rightResult.annotation],
             envOut: rightResult.envOut,
         };
     }
@@ -125,15 +125,15 @@ function walkChildren(
     const leftResult = interpret(binop.left, env, call, logger, registry);
     const rightResult = interpret(binop.right, env, call, logger, registry);
     return {
-        childAnnotations: [leftResult.annotation, rightResult.annotation],
+        childIAnnotations: [leftResult.annotation, rightResult.annotation],
         envOut: env,
     };
 }
 
-// interpret recursively walks an AST node, runs rules, and returns an InterpretResult.
+// interpret recursively walks an AST node, runs rules, and returns an IInterpretResult.
 // Leaf nodes default to ask when all rules abstain. Intermediate nodes aggregate child
 // results first (deny short-circuits) then layer their own rule result on top.
-function interpret(node: AstNode, env: Environment, call: ToolCall, logger: IAuditLogger, registry: IRuleRegistry): InterpretResult {
+function interpret(node: AstNode, env: IEnvironment, call: IToolCall, logger: IAuditLogger, registry: IRuleRegistry): IInterpretResult {
     if (isLeaf(node)) {
         const rulesResult = registry.runRules(node, env, call, logger);
         const envOut = rulesResult.envUpdate(env);
@@ -152,10 +152,10 @@ function interpret(node: AstNode, env: Environment, call: ToolCall, logger: IAud
     }
 
     const childrenResult = walkChildren(node, env, call, logger, registry);
-    const childrenAnnotation = aggregateChildren(childrenResult.childAnnotations);
+    const childrenIAnnotation = aggregateChildren(childrenResult.childIAnnotations);
 
-    if (childrenAnnotation.decision.action === "deny") {
-        const denyReason = childrenAnnotation.decision.reason;
+    if (childrenIAnnotation.decision.action === "deny") {
+        const denyReason = childrenIAnnotation.decision.reason;
         logger.log({
             type: "aggregation",
             timestamp: toLocalISOString(new Date()),
@@ -163,12 +163,12 @@ function interpret(node: AstNode, env: Environment, call: ToolCall, logger: IAud
             decision: "deny",
             reason: denyReason,
         });
-        return { annotation: childrenAnnotation, envOut: childrenResult.envOut };
+        return { annotation: childrenIAnnotation, envOut: childrenResult.envOut };
     }
 
     const rulesResult = registry.runRules(node, env, call, logger);
     const envOut = rulesResult.envUpdate(childrenResult.envOut);
-    const annotation = combine(childrenAnnotation, rulesResult.annotation);
+    const annotation = combine(childrenIAnnotation, rulesResult.annotation);
     const combinedReason = annotation.decision.reason;
 
     logger.log({
@@ -183,10 +183,10 @@ function interpret(node: AstNode, env: Environment, call: ToolCall, logger: IAud
 }
 
 // decide is the public entry point called by pre-hook.ts. It builds the root AST from the
-// ToolCall, initialises env0 from the call's cwd, runs the full interpreter pass, and
+// IToolCall, initialises env0 from the call's cwd, runs the full interpreter pass, and
 // returns the root decision. A root abstain (which should not occur in practice) is
 // promoted to ask as a safe default.
-export function decide(call: ToolCall, logger: IAuditLogger, registry: IRuleRegistry): Decision {
+export function decide(call: IToolCall, logger: IAuditLogger, registry: IRuleRegistry): Decision {
     const timestamp = toLocalISOString(new Date());
 
     logger.log({
@@ -198,7 +198,7 @@ export function decide(call: ToolCall, logger: IAuditLogger, registry: IRuleRegi
     });
 
     const root = buildAst(call);
-    const env0: Environment = {
+    const env0: IEnvironment = {
         cwd: call.cwd,
         cwdResolved: true,
         env: {},

@@ -1,13 +1,13 @@
 import { envPrefixRule } from "../../../rules/builtin/env-prefix";
-import { AstNode, Command, Environment } from "../../../types";
+import { AstNode, ICommand, IEnvironment } from "../../../types";
 
-// makeEnv builds a minimal Environment.
-function makeEnv(envVars: Record<string, string> = {}): Environment {
+// makeEnv builds a minimal IEnvironment.
+function makeEnv(envVars: Record<string, string> = {}): IEnvironment {
     return { cwd: "/start", cwdResolved: true, env: envVars };
 }
 
-// makeCommand builds a Command node with the given binary and envPrefix.
-function makeCommand(binary: string, envPrefix: Record<string, string>): Command {
+// makeCommand builds a ICommand node with the given binary and envPrefix.
+function makeCommand(binary: string, envPrefix: Record<string, string>): ICommand {
     return { type: "command", binary, options: {}, cmd: [], envPrefix, redirects: [], raw: binary };
 }
 

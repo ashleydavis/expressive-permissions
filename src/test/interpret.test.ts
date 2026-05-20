@@ -5,28 +5,28 @@ import { RuleLayer, RuleRegistry } from "../rule-registry";
 import { cdRule } from "../rules/builtin/cd";
 import { envPrefixRule } from "../rules/builtin/env-prefix";
 import { envSetRule } from "../rules/builtin/env-set";
-import { AstNode, Decision, Environment, Rule, RuleOutcome, ToolCall, ABSTAIN, rank } from "../types";
+import { AstNode, Decision, IEnvironment, IRule, IRuleOutcome, IToolCall, ABSTAIN, rank } from "../types";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-// makeBashCall builds a minimal ToolCall for a Bash command string.
-function makeBashCall(command: string, cwd: string = "/start"): ToolCall {
+// makeBashCall builds a minimal IToolCall for a Bash command string.
+function makeBashCall(command: string, cwd: string = "/start"): IToolCall {
     return { tool_name: "Bash", tool_input: { command }, cwd };
 }
 
-// makeToolCall builds a minimal ToolCall for a non-Bash tool.
-function makeToolCall(toolName: string, input: Record<string, string>, cwd: string = "/start"): ToolCall {
+// makeToolCall builds a minimal IToolCall for a non-Bash tool.
+function makeToolCall(toolName: string, input: Record<string, string>, cwd: string = "/start"): IToolCall {
     return { tool_name: toolName, tool_input: input, cwd };
 }
 
-// spyRule returns a Rule that always returns the given outcome and captures each env it sees.
+// spyRule returns a IRule that always returns the given outcome and captures each env it sees.
 function spyRule(
-    outcome: RuleOutcome,
-    capturedEnvs?: Environment[]
-): Rule {
-    return function spy(node: AstNode, env: Environment): RuleOutcome {
+    outcome: IRuleOutcome,
+    capturedEnvs?: IEnvironment[]
+): IRule {
+    return function spy(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (capturedEnvs) {
             capturedEnvs.push(env);
         }
@@ -34,13 +34,13 @@ function spyRule(
     };
 }
 
-// nodeMatchRule returns a Rule that returns matchOutcome for nodes matching the predicate
+// nodeMatchRule returns a IRule that returns matchOutcome for nodes matching the predicate
 // and abstains otherwise.
 function nodeMatchRule(
     predicate: (node: AstNode) => boolean,
-    matchOutcome: RuleOutcome
-): Rule {
-    return function matchRule(node: AstNode, env: Environment): RuleOutcome {
+    matchOutcome: IRuleOutcome
+): IRule {
+    return function matchRule(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (predicate(node)) {
             return matchOutcome;
         }
@@ -48,7 +48,7 @@ function nodeMatchRule(
     };
 }
 
-const testRules: Rule[] = [];
+const testRules: IRule[] = [];
 
 beforeEach(() => {
     testRules.length = 0;
@@ -56,7 +56,7 @@ beforeEach(() => {
 
 // decide wraps the production decide() entry point and injects a fresh RuleRegistry built
 // from the current testRules. Tests mutate testRules then call decide(...) like before.
-function decide(call: ToolCall, logger: IAuditLogger): Decision {
+function decide(call: IToolCall, logger: IAuditLogger): Decision {
     const testRegistry = new RuleRegistry([new RuleLayer(testRules)]);
     return decideWithRegistry(call, logger, testRegistry);
 }
@@ -199,7 +199,7 @@ test("rule iteration: ask then allow → ask (ask not downgraded)", () => {
 test("rule iteration: deny short-circuits remaining rules", () => {
     let secondRuleCalled = false;
     testRules.push(spyRule({ decision: { action: "deny", reason: "first" } }));
-    testRules.push(function laterRule(_node: AstNode, _env: Environment): RuleOutcome {
+    testRules.push(function laterRule(_node: AstNode, _env: IEnvironment): IRuleOutcome {
         secondRuleCalled = true;
         return { decision: { action: "allow" } };
     });
@@ -221,8 +221,8 @@ test("rule iteration: same-rank ties go to latest rule", () => {
 // ---------------------------------------------------------------------------
 
 test("persistent env composition: env update applied even if later rule denies", () => {
-    const capturedEnvs: Environment[] = [];
-    testRules.push(function envInstaller(_node: AstNode, env: Environment): RuleOutcome {
+    const capturedEnvs: IEnvironment[] = [];
+    testRules.push(function envInstaller(_node: AstNode, env: IEnvironment): IRuleOutcome {
         return {
             decision: { action: "abstain" },
             env: { ...env, env: { ...env.env, INSTALLED: "yes" } },
@@ -240,10 +240,10 @@ test("persistent env composition: env update applied even if later rule denies",
 // ---------------------------------------------------------------------------
 
 test("scoped env: visible to subsequent rules at same node but not siblings", () => {
-    const capturedAtSameNode: Environment[] = [];
-    const capturedAtSibling: Environment[] = [];
+    const capturedAtSameNode: IEnvironment[] = [];
+    const capturedAtSibling: IEnvironment[] = [];
 
-    testRules.push(function scopeInstaller(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function scopeInstaller(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "ls") {
             return {
                 decision: { action: "abstain" },
@@ -254,7 +254,7 @@ test("scoped env: visible to subsequent rules at same node but not siblings", ()
     });
 
     // Second rule at same node (ls) should see SCOPED
-    testRules.push(function checkSameNode(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function checkSameNode(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "ls") {
             capturedAtSameNode.push(env);
         }
@@ -262,7 +262,7 @@ test("scoped env: visible to subsequent rules at same node but not siblings", ()
     });
 
     // Rule at sibling node (pwd) should NOT see SCOPED
-    testRules.push(function checkSibling(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function checkSibling(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "pwd") {
             capturedAtSibling.push(env);
         }
@@ -278,10 +278,10 @@ test("scoped env: visible to subsequent rules at same node but not siblings", ()
 });
 
 test("scoped env with persistent env: scopedEnv visible at same node, persistent env propagates to siblings", () => {
-    const capturedAtSameNode: Environment[] = [];
-    const capturedAtSibling: Environment[] = [];
+    const capturedAtSameNode: IEnvironment[] = [];
+    const capturedAtSibling: IEnvironment[] = [];
 
-    testRules.push(function dualEnvInstaller(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function dualEnvInstaller(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "ls") {
             return {
                 decision: { action: "abstain" },
@@ -292,14 +292,14 @@ test("scoped env with persistent env: scopedEnv visible at same node, persistent
         return ABSTAIN;
     });
 
-    testRules.push(function checkAtSameNode(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function checkAtSameNode(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "ls") {
             capturedAtSameNode.push(env);
         }
         return ABSTAIN;
     });
 
-    testRules.push(function checkAtSibling(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function checkAtSibling(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "pwd") {
             capturedAtSibling.push(env);
         }
@@ -321,7 +321,7 @@ test("scoped env with persistent env: scopedEnv visible at same node, persistent
 test("$VAR expansion: FOO=bar; git add $FOO — rules at git add see cmd === 'bar'", () => {
     const capturedNodes: AstNode[] = [];
     testRules.push(envSetRule);
-    testRules.push(function captureGitAdd(node: AstNode, _env: Environment): RuleOutcome {
+    testRules.push(function captureGitAdd(node: AstNode, _env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "git") {
             capturedNodes.push(node);
         }
@@ -341,7 +341,7 @@ test("$VAR expansion: FOO=bar; git add $FOO — rules at git add see cmd === 'ba
 test("$VAR reversed: git add $FOO; FOO=bar — $FOO stays literal at git add time", () => {
     const capturedNodes: AstNode[] = [];
     testRules.push(envSetRule);
-    testRules.push(function captureGitAdd(node: AstNode, _env: Environment): RuleOutcome {
+    testRules.push(function captureGitAdd(node: AstNode, _env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "git") {
             capturedNodes.push(node);
         }
@@ -360,7 +360,7 @@ test("$VAR reversed: git add $FOO; FOO=bar — $FOO stays literal at git add tim
 test("${VAR} brace syntax expanded: BAR=main; git checkout ${BAR}", () => {
     const capturedNodes: AstNode[] = [];
     testRules.push(envSetRule);
-    testRules.push(function captureGit(node: AstNode, _env: Environment): RuleOutcome {
+    testRules.push(function captureGit(node: AstNode, _env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "git") {
             capturedNodes.push(node);
         }
@@ -378,7 +378,7 @@ test("${VAR} brace syntax expanded: BAR=main; git checkout ${BAR}", () => {
 
 test("OS-level vars not expanded: git add $HOME — rules see cmd '$HOME'", () => {
     const capturedNodes: AstNode[] = [];
-    testRules.push(function captureGit(node: AstNode, _env: Environment): RuleOutcome {
+    testRules.push(function captureGit(node: AstNode, _env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "git") {
             capturedNodes.push(node);
         }
@@ -399,9 +399,9 @@ test("OS-level vars not expanded: git add $HOME — rules see cmd '$HOME'", () =
 // ---------------------------------------------------------------------------
 
 test("env threading seq: left env propagates to right", () => {
-    const capturedEnvs: Environment[] = [];
+    const capturedEnvs: IEnvironment[] = [];
     testRules.push(cdRule);
-    testRules.push(function captureRm(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function captureRm(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "rm") {
             capturedEnvs.push(env);
         }
@@ -415,9 +415,9 @@ test("env threading seq: left env propagates to right", () => {
 });
 
 test("env threading and: left env propagates to right", () => {
-    const capturedEnvs: Environment[] = [];
+    const capturedEnvs: IEnvironment[] = [];
     testRules.push(cdRule);
-    testRules.push(function captureRm(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function captureRm(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "rm") {
             capturedEnvs.push(env);
         }
@@ -431,9 +431,9 @@ test("env threading and: left env propagates to right", () => {
 });
 
 test("env threading pipe: right side does NOT see cd from left side", () => {
-    const capturedEnvs: Environment[] = [];
+    const capturedEnvs: IEnvironment[] = [];
     testRules.push(cdRule);
-    testRules.push(function captureEcho(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function captureEcho(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "echo") {
             capturedEnvs.push(env);
         }
@@ -447,9 +447,9 @@ test("env threading pipe: right side does NOT see cd from left side", () => {
 });
 
 test("env threading or: right side does NOT see cd from left side", () => {
-    const capturedEnvs: Environment[] = [];
+    const capturedEnvs: IEnvironment[] = [];
     testRules.push(cdRule);
-    testRules.push(function captureEcho(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function captureEcho(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "echo") {
             capturedEnvs.push(env);
         }
@@ -467,9 +467,9 @@ test("env threading or: right side does NOT see cd from left side", () => {
 // ---------------------------------------------------------------------------
 
 test("cwd propagation: absolute cd through &&", () => {
-    const capturedEnvs: Environment[] = [];
+    const capturedEnvs: IEnvironment[] = [];
     testRules.push(cdRule);
-    testRules.push(function captureRm(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function captureRm(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "rm") {
             capturedEnvs.push(env);
         }
@@ -483,9 +483,9 @@ test("cwd propagation: absolute cd through &&", () => {
 });
 
 test("cwd propagation: relative cd from /home/u", () => {
-    const capturedEnvs: Environment[] = [];
+    const capturedEnvs: IEnvironment[] = [];
     testRules.push(cdRule);
-    testRules.push(function captureRm(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function captureRm(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "ls") {
             capturedEnvs.push(env);
         }
@@ -498,9 +498,9 @@ test("cwd propagation: relative cd from /home/u", () => {
 });
 
 test("cwd propagation: parent cd from /home/u", () => {
-    const capturedEnvs: Environment[] = [];
+    const capturedEnvs: IEnvironment[] = [];
     testRules.push(cdRule);
-    testRules.push(function captureLs(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function captureLs(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "ls") {
             capturedEnvs.push(env);
         }
@@ -513,9 +513,9 @@ test("cwd propagation: parent cd from /home/u", () => {
 });
 
 test("cwd propagation: cd reset at pipe — echo sees original cwd", () => {
-    const capturedEnvs: Environment[] = [];
+    const capturedEnvs: IEnvironment[] = [];
     testRules.push(cdRule);
-    testRules.push(function captureEcho(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function captureEcho(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "echo") {
             capturedEnvs.push(env);
         }
@@ -528,9 +528,9 @@ test("cwd propagation: cd reset at pipe — echo sees original cwd", () => {
 });
 
 test("cwd propagation: cd conservative across || — ls sees original cwd", () => {
-    const capturedEnvs: Environment[] = [];
+    const capturedEnvs: IEnvironment[] = [];
     testRules.push(cdRule);
-    testRules.push(function captureLs(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function captureLs(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "ls") {
             capturedEnvs.push(env);
         }
@@ -544,9 +544,9 @@ test("cwd propagation: cd conservative across || — ls sees original cwd", () =
 });
 
 test("cwd propagation: unresolvable cd — ls sees cwdResolved false", () => {
-    const capturedEnvs: Environment[] = [];
+    const capturedEnvs: IEnvironment[] = [];
     testRules.push(cdRule);
-    testRules.push(function captureLs(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function captureLs(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "ls") {
             capturedEnvs.push(env);
         }
@@ -560,9 +560,9 @@ test("cwd propagation: unresolvable cd — ls sees cwdResolved false", () => {
 });
 
 test("cwd propagation: cd no-arg → unresolved", () => {
-    const capturedEnvs: Environment[] = [];
+    const capturedEnvs: IEnvironment[] = [];
     testRules.push(cdRule);
-    testRules.push(function captureLs(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function captureLs(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "ls") {
             capturedEnvs.push(env);
         }
@@ -575,9 +575,9 @@ test("cwd propagation: cd no-arg → unresolved", () => {
 });
 
 test("cwd propagation: chained cds resolve correctly", () => {
-    const capturedEnvs: Environment[] = [];
+    const capturedEnvs: IEnvironment[] = [];
     testRules.push(cdRule);
-    testRules.push(function captureLs(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function captureLs(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "ls") {
             capturedEnvs.push(env);
         }
@@ -594,9 +594,9 @@ test("cwd propagation: chained cds resolve correctly", () => {
 // ---------------------------------------------------------------------------
 
 test("envPrefix: FOO=bar npm test — subsequent rules at same leaf see FOO", () => {
-    const capturedEnvs: Environment[] = [];
+    const capturedEnvs: IEnvironment[] = [];
     testRules.push(envPrefixRule);
-    testRules.push(function captureNpm(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function captureNpm(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "npm") {
             capturedEnvs.push(env);
         }
@@ -609,9 +609,9 @@ test("envPrefix: FOO=bar npm test — subsequent rules at same leaf see FOO", ()
 });
 
 test("envPrefix: FOO=bar npm test && echo $FOO — echo does NOT see FOO", () => {
-    const capturedEnvs: Environment[] = [];
+    const capturedEnvs: IEnvironment[] = [];
     testRules.push(envPrefixRule);
-    testRules.push(function captureEcho(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function captureEcho(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "echo") {
             capturedEnvs.push(env);
         }
@@ -739,18 +739,18 @@ test("non-bash leaf: Read of normal file falls through to ask", () => {
 // ---------------------------------------------------------------------------
 
 test("combined: cd blah && env_var=X cmd-1 | cmd-2 — cmd-1 sees cwd and env_var", () => {
-    const capturedCmd1Envs: Environment[] = [];
-    const capturedCmd2Envs: Environment[] = [];
+    const capturedCmd1Envs: IEnvironment[] = [];
+    const capturedCmd2Envs: IEnvironment[] = [];
 
     testRules.push(cdRule);
     testRules.push(envPrefixRule);
-    testRules.push(function captureCmd1(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function captureCmd1(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "cmd-1") {
             capturedCmd1Envs.push(env);
         }
         return ABSTAIN;
     });
-    testRules.push(function captureCmd2(node: AstNode, env: Environment): RuleOutcome {
+    testRules.push(function captureCmd2(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && (node as { binary?: string }).binary === "cmd-2") {
             capturedCmd2Envs.push(env);
         }
@@ -812,7 +812,7 @@ function makeCommand(
     binary: string,
     options: Record<string, string | boolean>,
     cmd: string | string[]
-): import("../types").Command {
+): import("../types").ICommand {
     return { type: "command", binary, options, cmd, envPrefix: {}, redirects: [], raw: binary };
 }
 
@@ -997,7 +997,7 @@ test("combine: own deny → returns own annotation", () => {
 // ---------------------------------------------------------------------------
 
 test("describeNode: command node returns raw string", () => {
-    const node: import("../types").Command = {
+    const node: import("../types").ICommand = {
         type: "command", binary: "wc", options: { l: true },
         cmd: [], envPrefix: {}, redirects: [], raw: "wc -l foo.txt",
     };
@@ -1005,63 +1005,63 @@ test("describeNode: command node returns raw string", () => {
 });
 
 test("describeNode: bash node returns raw string", () => {
-    const inner: import("../types").Command = {
+    const inner: import("../types").ICommand = {
         type: "command", binary: "ls", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "ls",
     };
-    const node: import("../types").Bash = { type: "bash", ast: inner, raw: "ls" };
+    const node: import("../types").IBash ={ type: "bash", ast: inner, raw: "ls" };
     expect(describeNode(node)).toBe("ls");
 });
 
 test("describeNode: binop node rebuilds left op right recursively", () => {
-    const left: import("../types").Command = {
+    const left: import("../types").ICommand = {
         type: "command", binary: "wc", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "wc -l foo.csv",
     };
-    const right: import("../types").Command = {
+    const right: import("../types").ICommand = {
         type: "command", binary: "head", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "head -5 foo.csv",
     };
-    const node: import("../types").BinOp = { type: "binop", op: "&&", left, right };
+    const node: import("../types").IBinOp ={ type: "binop", op: "&&", left, right };
     expect(describeNode(node)).toBe("wc -l foo.csv && head -5 foo.csv");
 });
 
 test("describeNode: nested binop rebuilds recursively", () => {
-    const cmd1: import("../types").Command = {
+    const cmd1: import("../types").ICommand = {
         type: "command", binary: "a", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "a",
     };
-    const cmd2: import("../types").Command = {
+    const cmd2: import("../types").ICommand = {
         type: "command", binary: "b", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "b",
     };
-    const cmd3: import("../types").Command = {
+    const cmd3: import("../types").ICommand = {
         type: "command", binary: "c", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "c",
     };
-    const inner: import("../types").BinOp = { type: "binop", op: ";", left: cmd1, right: cmd2 };
-    const outer: import("../types").BinOp = { type: "binop", op: "&&", left: inner, right: cmd3 };
+    const inner: import("../types").IBinOp ={ type: "binop", op: ";", left: cmd1, right: cmd2 };
+    const outer: import("../types").IBinOp ={ type: "binop", op: "&&", left: inner, right: cmd3 };
     expect(describeNode(outer)).toBe("a ; b && c");
 });
 
 test("describeNode: read node returns file_path", () => {
-    const node: import("../types").Read = { type: "read", file_path: "/etc/hosts" };
+    const node: import("../types").IRead ={ type: "read", file_path: "/etc/hosts" };
     expect(describeNode(node)).toBe("/etc/hosts");
 });
 
 test("describeNode: write node returns file_path", () => {
-    const node: import("../types").Write = { type: "write", file_path: "/tmp/out.txt", content: "" };
+    const node: import("../types").IWrite ={ type: "write", file_path: "/tmp/out.txt", content: "" };
     expect(describeNode(node)).toBe("/tmp/out.txt");
 });
 
 test("describeNode: edit node returns file_path", () => {
-    const node: import("../types").Edit = {
+    const node: import("../types").IEdit = {
         type: "edit", file_path: "/src/main.ts", old_string: "a", new_string: "b",
     };
     expect(describeNode(node)).toBe("/src/main.ts");
 });
 
 test("describeNode: multiedit node returns file_path", () => {
-    const node: import("../types").MultiEdit = { type: "multiedit", file_path: "/src/lib.ts", edits: [] };
+    const node: import("../types").IMultiEdit ={ type: "multiedit", file_path: "/src/lib.ts", edits: [] };
     expect(describeNode(node)).toBe("/src/lib.ts");
 });
 
 test("describeNode: other node returns tool_name", () => {
-    const node: import("../types").OtherTool = { type: "other", tool_name: "Grep", tool_input: {} };
+    const node: import("../types").IOtherTool ={ type: "other", tool_name: "Grep", tool_input: {} };
     expect(describeNode(node)).toBe("Grep");
 });
 
@@ -1108,7 +1108,7 @@ test("rule_match log entries for compound command include per-subcommand raw str
 
 test("for-loop: body rule sees env[variable] set to each item per iteration", () => {
     const seenRegions: string[] = [];
-    const captureRule: Rule = function captureRule(node: AstNode, env: Environment): RuleOutcome {
+    const captureRule: IRule = function captureRule(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && node.binary === "echo") {
             seenRegions.push(env.env.region);
             return { decision: { action: "allow" } };
@@ -1121,7 +1121,7 @@ test("for-loop: body rule sees env[variable] set to each item per iteration", ()
 });
 
 test("for-loop: rule that allows only matching env values returns allow when every iteration matches", () => {
-    const allowOnlyMatching: Rule = function allowOnlyMatching(node: AstNode, env: Environment): RuleOutcome {
+    const allowOnlyMatching: IRule = function allowOnlyMatching(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && node.binary === "echo" && env.env.region !== undefined) {
             return { decision: { action: "allow" } };
         }
@@ -1136,7 +1136,7 @@ test("for-loop: rule that allows only matching env values returns allow when eve
 });
 
 test("for-loop: deny on a single iteration's env value pulls the whole loop to deny", () => {
-    const denyOnProd: Rule = function denyOnProd(node: AstNode, env: Environment): RuleOutcome {
+    const denyOnProd: IRule = function denyOnProd(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && node.binary === "echo") {
             if (env.env.region === "prod") {
                 return { decision: { action: "deny", reason: "no prod" } };
@@ -1156,7 +1156,7 @@ test("for-loop: deny on a single iteration's env value pulls the whole loop to d
 
 test("for-loop: env var set inside the loop does not leak to siblings after the loop", () => {
     const seenRegions: (string | undefined)[] = [];
-    const captureRule: Rule = function captureRule(node: AstNode, env: Environment): RuleOutcome {
+    const captureRule: IRule = function captureRule(node: AstNode, env: IEnvironment): IRuleOutcome {
         if (node.type === "command" && node.binary === "echo") {
             seenRegions.push(env.env.region);
             return { decision: { action: "allow" } };
@@ -1173,7 +1173,7 @@ test("for-loop: env var set inside the loop does not leak to siblings after the 
 
 test("for-loop: $variable inside command options is expanded from the iteration env", () => {
     const seenContexts: string[] = [];
-    const captureRule: Rule = function captureRule(node: AstNode): RuleOutcome {
+    const captureRule: IRule = function captureRule(node: AstNode): IRuleOutcome {
         if (node.type === "command" && node.binary === "kubectl") {
             const contextValue = node.options.context;
             if (typeof contextValue === "string") {

@@ -1,63 +1,63 @@
 import { buildAst, expandToken, expandCommandOptions, describeNode } from "../build-ast";
-import { ToolCall, Bash, Read, Write, Edit, MultiEdit, OtherTool } from "../types";
+import { IToolCall, IBash, IRead, IWrite, IEdit, IMultiEdit, IOtherTool } from "../types";
 
 describe("buildAst", () => {
     test("Bash call produces bash root with raw and child sub-AST", () => {
-        const call: ToolCall = {
+        const call: IToolCall = {
             tool_name: "Bash",
             tool_input: { command: "ls -la /tmp" },
             cwd: "/tmp",
         };
         const result = buildAst(call);
         expect(result.type).toBe("bash");
-        const node = result as Bash;
+        const node = result as IBash;
         expect(node.raw).toBe("ls -la /tmp");
         expect(node.ast.type).toBe("command");
     });
 
     test("Read call produces read node with file_path", () => {
-        const call: ToolCall = {
+        const call: IToolCall = {
             tool_name: "Read",
             tool_input: { file_path: "/etc/hosts" },
             cwd: "/tmp",
         };
         const result = buildAst(call);
         expect(result.type).toBe("read");
-        const node = result as Read;
+        const node = result as IRead;
         expect(node.file_path).toBe("/etc/hosts");
         expect(node.offset).toBeUndefined();
         expect(node.limit).toBeUndefined();
     });
 
     test("Read call with offset and limit includes both optional fields", () => {
-        const call: ToolCall = {
+        const call: IToolCall = {
             tool_name: "Read",
             tool_input: { file_path: "/etc/hosts", offset: 10, limit: 50 },
             cwd: "/tmp",
         };
         const result = buildAst(call);
         expect(result.type).toBe("read");
-        const node = result as Read;
+        const node = result as IRead;
         expect(node.file_path).toBe("/etc/hosts");
         expect(node.offset).toBe(10);
         expect(node.limit).toBe(50);
     });
 
     test("Write call produces write node with file_path and content", () => {
-        const call: ToolCall = {
+        const call: IToolCall = {
             tool_name: "Write",
             tool_input: { file_path: "/tmp/out.txt", content: "hello world" },
             cwd: "/tmp",
         };
         const result = buildAst(call);
         expect(result.type).toBe("write");
-        const node = result as Write;
+        const node = result as IWrite;
         expect(node.file_path).toBe("/tmp/out.txt");
         expect(node.content).toBe("hello world");
     });
 
     test("Edit call produces edit node with all four fields", () => {
-        const call: ToolCall = {
+        const call: IToolCall = {
             tool_name: "Edit",
             tool_input: {
                 file_path: "/tmp/foo.ts",
@@ -69,7 +69,7 @@ describe("buildAst", () => {
         };
         const result = buildAst(call);
         expect(result.type).toBe("edit");
-        const node = result as Edit;
+        const node = result as IEdit;
         expect(node.file_path).toBe("/tmp/foo.ts");
         expect(node.old_string).toBe("foo");
         expect(node.new_string).toBe("bar");
@@ -77,7 +77,7 @@ describe("buildAst", () => {
     });
 
     test("Edit call without replace_all omits the field", () => {
-        const call: ToolCall = {
+        const call: IToolCall = {
             tool_name: "Edit",
             tool_input: {
                 file_path: "/tmp/foo.ts",
@@ -88,12 +88,12 @@ describe("buildAst", () => {
         };
         const result = buildAst(call);
         expect(result.type).toBe("edit");
-        const node = result as Edit;
+        const node = result as IEdit;
         expect(node.replace_all).toBeUndefined();
     });
 
     test("MultiEdit call produces multiedit node with file_path and edits array", () => {
-        const call: ToolCall = {
+        const call: IToolCall = {
             tool_name: "MultiEdit",
             tool_input: {
                 file_path: "/tmp/foo.ts",
@@ -106,7 +106,7 @@ describe("buildAst", () => {
         };
         const result = buildAst(call);
         expect(result.type).toBe("multiedit");
-        const node = result as MultiEdit;
+        const node = result as IMultiEdit;
         expect(node.file_path).toBe("/tmp/foo.ts");
         expect(node.edits).toHaveLength(2);
         expect(node.edits[0].old_string).toBe("foo");
@@ -114,27 +114,27 @@ describe("buildAst", () => {
     });
 
     test("Grep call produces other node with tool_name and tool_input", () => {
-        const call: ToolCall = {
+        const call: IToolCall = {
             tool_name: "Grep",
             tool_input: { pattern: "TODO", path: "/tmp" },
             cwd: "/tmp",
         };
         const result = buildAst(call);
         expect(result.type).toBe("other");
-        const node = result as OtherTool;
+        const node = result as IOtherTool;
         expect(node.tool_name).toBe("Grep");
         expect(node.tool_input).toEqual({ pattern: "TODO", path: "/tmp" });
     });
 
     test("mcp__github__list_repos call produces other node with tool_name and tool_input", () => {
-        const call: ToolCall = {
+        const call: IToolCall = {
             tool_name: "mcp__github__list_repos",
             tool_input: { owner: "octocat" },
             cwd: "/tmp",
         };
         const result = buildAst(call);
         expect(result.type).toBe("other");
-        const node = result as OtherTool;
+        const node = result as IOtherTool;
         expect(node.tool_name).toBe("mcp__github__list_repos");
         expect(node.tool_input).toEqual({ owner: "octocat" });
     });

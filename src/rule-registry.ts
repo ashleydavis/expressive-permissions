@@ -1,4 +1,4 @@
-import { AstNode, Environment, Rule, Annotation, ToolCall, IRunRulesResult, rank } from "./types";
+import { AstNode, IEnvironment, IRule, IAnnotation, IToolCall, IRunRulesResult, rank } from "./types";
 import { IAuditLogger, toLocalISOString, logConfigLoad } from "./audit-log";
 import { expandCommandOptions, describeNode } from "./build-ast";
 
@@ -6,27 +6,27 @@ import { expandCommandOptions, describeNode } from "./build-ast";
 export interface IRuleLayer {
     // Runs all rules in this layer for a single AST node, returning the strictest annotation
     // and a persistent env update function.
-    runRules(node: AstNode, env: Environment, call: ToolCall, logger: IAuditLogger): IRunRulesResult;
+    runRules(node: AstNode, env: IEnvironment, call: IToolCall, logger: IAuditLogger): IRunRulesResult;
 }
 
 // IRuleRegistry is the public interface for the multi-layer rule engine.
 export interface IRuleRegistry {
     // Runs all layers in order for a single AST node, threading env and accumulating strictest-wins.
-    runRules(node: AstNode, env: Environment, call: ToolCall, logger: IAuditLogger): IRunRulesResult;
+    runRules(node: AstNode, env: IEnvironment, call: IToolCall, logger: IAuditLogger): IRunRulesResult;
 }
 
 // runRulesOverList iterates a rule list with deny-short-circuit and strictest-wins semantics.
 // Used internally by both RuleLayer and FileLayer.
 function runRulesOverList(
-    ruleList: Rule[],
+    ruleList: IRule[],
     node: AstNode,
-    env: Environment,
-    call: ToolCall,
+    env: IEnvironment,
+    call: IToolCall,
     logger: IAuditLogger
 ): IRunRulesResult {
-    let runningEnv: Environment = env;
-    let lastPersistentEnv: Environment | null = null;
-    let bestAnnotation: Annotation = { decision: { action: "abstain" } };
+    let runningEnv: IEnvironment = env;
+    let lastPersistentEnv: IEnvironment | null = null;
+    let bestAnnotation: IAnnotation = { decision: { action: "abstain" } };
 
     for (const rule of ruleList) {
         const effectiveNode: AstNode =
@@ -84,7 +84,7 @@ function runRulesOverList(
     const capturedRunningEnv = runningEnv;
     return {
         annotation: bestAnnotation,
-        envUpdate: (environment: Environment) =>
+        envUpdate: (environment: IEnvironment) =>
             capturedPersistentEnv !== null ? capturedPersistentEnv : environment,
         nodeRunningEnv: capturedRunningEnv,
     };
@@ -93,13 +93,13 @@ function runRulesOverList(
 // RuleLayer holds a static list of rules and evaluates them in order.
 export class RuleLayer implements IRuleLayer {
     // The ordered list of rules this layer evaluates.
-    private readonly _rules: Rule[];
+    private readonly _rules: IRule[];
 
-    constructor(rules: Rule[]) {
+    constructor(rules: IRule[]) {
         this._rules = rules;
     }
 
-    runRules(node: AstNode, env: Environment, call: ToolCall, logger: IAuditLogger): IRunRulesResult {
+    runRules(node: AstNode, env: IEnvironment, call: IToolCall, logger: IAuditLogger): IRunRulesResult {
         return runRulesOverList(this._rules, node, env, call, logger);
     }
 }
@@ -108,14 +108,14 @@ export class RuleLayer implements IRuleLayer {
 // the load to the supplied audit logger.
 export class FileLayer implements IRuleLayer {
     // The compiled rule list, populated once at construction time.
-    private readonly _rules: Rule[];
+    private readonly _rules: IRule[];
 
-    constructor(loadFn: () => Rule[], displayPath: string, logger: IAuditLogger) {
+    constructor(loadFn: () => IRule[], displayPath: string, logger: IAuditLogger) {
         this._rules = loadFn();
         logConfigLoad(logger, displayPath, this._rules.length);
     }
 
-    runRules(node: AstNode, env: Environment, call: ToolCall, logger: IAuditLogger): IRunRulesResult {
+    runRules(node: AstNode, env: IEnvironment, call: IToolCall, logger: IAuditLogger): IRunRulesResult {
         return runRulesOverList(this._rules, node, env, call, logger);
     }
 }
@@ -130,12 +130,12 @@ export class RuleRegistry implements IRuleRegistry {
         this._layers = layers;
     }
 
-    runRules(node: AstNode, env: Environment, call: ToolCall, logger: IAuditLogger): IRunRulesResult {
+    runRules(node: AstNode, env: IEnvironment, call: IToolCall, logger: IAuditLogger): IRunRulesResult {
         // currentEnv threads the full running env (persistent + scoped) between layers so that
         // scoped updates from earlier layers (e.g. envPrefixRule) are visible to later YAML rules.
-        let currentEnv: Environment = env;
-        let lastPersistentEnv: Environment | null = null;
-        let bestAnnotation: Annotation = { decision: { action: "abstain" } };
+        let currentEnv: IEnvironment = env;
+        let lastPersistentEnv: IEnvironment | null = null;
+        let bestAnnotation: IAnnotation = { decision: { action: "abstain" } };
 
         for (const layer of this._layers) {
             const envBeforeLayer = currentEnv;
@@ -156,7 +156,7 @@ export class RuleRegistry implements IRuleRegistry {
                 return {
                     annotation: layerResult.annotation,
                     nodeRunningEnv: capturedDenyRunningEnv,
-                    envUpdate: (environment: Environment) =>
+                    envUpdate: (environment: IEnvironment) =>
                         capturedDenyPersistentEnv !== null ? capturedDenyPersistentEnv : environment,
                 };
             }
@@ -174,7 +174,7 @@ export class RuleRegistry implements IRuleRegistry {
         return {
             annotation: bestAnnotation,
             nodeRunningEnv: capturedRunningEnv,
-            envUpdate: (environment: Environment) =>
+            envUpdate: (environment: IEnvironment) =>
                 capturedPersistentEnv !== null ? capturedPersistentEnv : environment,
         };
     }

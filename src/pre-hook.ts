@@ -1,6 +1,6 @@
 import { decide } from "./interpret";
 import { createLogger } from "./audit-log";
-import { ToolCall } from "./types";
+import { IToolCall } from "./types";
 import { resolveDebugLogPath, appendDebugBlock, logDebugError, IDebugField } from "./debug-log";
 import { RuleLayer, FileLayer, IRuleLayer, RuleRegistry } from "./rule-registry";
 import { builtinRules } from "./rules";
@@ -24,7 +24,7 @@ export async function runHook(): Promise<void> {
     let logPath: string | undefined;
     try {
         const rawStdin = await readStdin();
-        const call = JSON.parse(rawStdin) as ToolCall;
+        const call = JSON.parse(rawStdin) as IToolCall;
         const projectDir = process.env["CLAUDE_PROJECT_DIR"];
         if (!projectDir) {
             throw new Error("CLAUDE_PROJECT_DIR is not set");
