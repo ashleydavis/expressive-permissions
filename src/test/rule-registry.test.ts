@@ -1,6 +1,6 @@
 import { RuleLayer, FileLayer, RuleRegistry, IRuleLayer } from "../rule-registry";
 import { NullAuditLogger, IAuditLogger, IAuditLogEntry, IConfigLoadEntry } from "../audit-log";
-import { AstNode, IEnvironment, IRule, IRuleOutcome, IToolCall, ABSTAIN } from "../types";
+import { AstNode, IEnvironment, IRule, IRuleOutcome, IRunRulesResult, IToolCall, ABSTAIN } from "../types";
 
 // CapturingLogger records every audit entry so tests can assert on what FileLayer logs.
 class CapturingLogger implements IAuditLogger {
@@ -145,7 +145,7 @@ test("RuleRegistry: single layer with allow → allow", () => {
 test("RuleRegistry: deny in first layer short-circuits second layer", () => {
     let secondLayerCalled = false;
     const spyLayer: IRuleLayer = {
-        runRules(_node: AstNode, _env: IEnvironment, _call: IToolCall): import("../types").IRunRulesResult {
+        runRules(_node: AstNode, _env: IEnvironment, _call: IToolCall): IRunRulesResult {
             secondLayerCalled = true;
             return {
                 annotation: { decision: { action: "allow" } },

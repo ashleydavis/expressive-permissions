@@ -5,7 +5,7 @@ import { RuleLayer, RuleRegistry } from "../rule-registry";
 import { cdRule } from "../rules/builtin/cd";
 import { envPrefixRule } from "../rules/builtin/env-prefix";
 import { envSetRule } from "../rules/builtin/env-set";
-import { AstNode, Decision, IEnvironment, IRule, IRuleOutcome, IToolCall, ABSTAIN, rank } from "../types";
+import { AstNode, Decision, IEnvironment, IRule, IRuleOutcome, IToolCall, ABSTAIN, rank, IBash, IBinOp, ICommand, IEdit, IMultiEdit, IOtherTool, IRead, IWrite } from "../types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -812,7 +812,7 @@ function makeCommand(
     binary: string,
     options: Record<string, string | boolean>,
     cmd: string | string[]
-): import("../types").ICommand {
+): ICommand {
     return { type: "command", binary, options, cmd, envPrefix: {}, redirects: [], raw: binary };
 }
 
@@ -997,7 +997,7 @@ test("combine: own deny → returns own annotation", () => {
 // ---------------------------------------------------------------------------
 
 test("describeNode: command node returns raw string", () => {
-    const node: import("../types").ICommand = {
+    const node: ICommand = {
         type: "command", binary: "wc", options: { l: true },
         cmd: [], envPrefix: {}, redirects: [], raw: "wc -l foo.txt",
     };
@@ -1005,63 +1005,63 @@ test("describeNode: command node returns raw string", () => {
 });
 
 test("describeNode: bash node returns raw string", () => {
-    const inner: import("../types").ICommand = {
+    const inner: ICommand = {
         type: "command", binary: "ls", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "ls",
     };
-    const node: import("../types").IBash ={ type: "bash", ast: inner, raw: "ls" };
+    const node: IBash ={ type: "bash", ast: inner, raw: "ls" };
     expect(describeNode(node)).toBe("ls");
 });
 
 test("describeNode: binop node rebuilds left op right recursively", () => {
-    const left: import("../types").ICommand = {
+    const left: ICommand = {
         type: "command", binary: "wc", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "wc -l foo.csv",
     };
-    const right: import("../types").ICommand = {
+    const right: ICommand = {
         type: "command", binary: "head", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "head -5 foo.csv",
     };
-    const node: import("../types").IBinOp ={ type: "binop", op: "&&", left, right };
+    const node: IBinOp ={ type: "binop", op: "&&", left, right };
     expect(describeNode(node)).toBe("wc -l foo.csv && head -5 foo.csv");
 });
 
 test("describeNode: nested binop rebuilds recursively", () => {
-    const cmd1: import("../types").ICommand = {
+    const cmd1: ICommand = {
         type: "command", binary: "a", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "a",
     };
-    const cmd2: import("../types").ICommand = {
+    const cmd2: ICommand = {
         type: "command", binary: "b", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "b",
     };
-    const cmd3: import("../types").ICommand = {
+    const cmd3: ICommand = {
         type: "command", binary: "c", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "c",
     };
-    const inner: import("../types").IBinOp ={ type: "binop", op: ";", left: cmd1, right: cmd2 };
-    const outer: import("../types").IBinOp ={ type: "binop", op: "&&", left: inner, right: cmd3 };
+    const inner: IBinOp ={ type: "binop", op: ";", left: cmd1, right: cmd2 };
+    const outer: IBinOp ={ type: "binop", op: "&&", left: inner, right: cmd3 };
     expect(describeNode(outer)).toBe("a ; b && c");
 });
 
 test("describeNode: read node returns file_path", () => {
-    const node: import("../types").IRead ={ type: "read", file_path: "/etc/hosts" };
+    const node: IRead ={ type: "read", file_path: "/etc/hosts" };
     expect(describeNode(node)).toBe("/etc/hosts");
 });
 
 test("describeNode: write node returns file_path", () => {
-    const node: import("../types").IWrite ={ type: "write", file_path: "/tmp/out.txt", content: "" };
+    const node: IWrite ={ type: "write", file_path: "/tmp/out.txt", content: "" };
     expect(describeNode(node)).toBe("/tmp/out.txt");
 });
 
 test("describeNode: edit node returns file_path", () => {
-    const node: import("../types").IEdit = {
+    const node: IEdit = {
         type: "edit", file_path: "/src/main.ts", old_string: "a", new_string: "b",
     };
     expect(describeNode(node)).toBe("/src/main.ts");
 });
 
 test("describeNode: multiedit node returns file_path", () => {
-    const node: import("../types").IMultiEdit ={ type: "multiedit", file_path: "/src/lib.ts", edits: [] };
+    const node: IMultiEdit ={ type: "multiedit", file_path: "/src/lib.ts", edits: [] };
     expect(describeNode(node)).toBe("/src/lib.ts");
 });
 
 test("describeNode: other node returns tool_name", () => {
-    const node: import("../types").IOtherTool ={ type: "other", tool_name: "Grep", tool_input: {} };
+    const node: IOtherTool ={ type: "other", tool_name: "Grep", tool_input: {} };
     expect(describeNode(node)).toBe("Grep");
 });
 

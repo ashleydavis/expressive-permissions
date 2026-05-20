@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync, readFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import { spawnSync, SpawnSyncReturns } from "child_process";
 import { resolveJsonLogPath, resolveLogBaseDir } from "../audit-log";
 import { IToolExecutionEntry } from "../audit-log";
 
@@ -21,8 +22,7 @@ function makePostStdin(overrides: Record<string, unknown>): string {
 }
 
 // spawnPostHook spawns post-hook.ts via bun with the given stdin and env, returning the result.
-function spawnPostHook(stdinData: string, env: Record<string, string>): import("child_process").SpawnSyncReturns<string> {
-    const { spawnSync } = require("child_process") as typeof import("child_process");
+function spawnPostHook(stdinData: string, env: Record<string, string>): SpawnSyncReturns<string> {
     const postHookPath = join(__dirname, "..", "post-hook.ts");
     return spawnSync("bun", [postHookPath], {
         input: stdinData,
