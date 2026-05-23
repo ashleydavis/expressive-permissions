@@ -6,6 +6,16 @@ input:
     command: 'git -C /home/ash/tickets/arcktl-versions-6690/arkctl status -sb && echo "---" && git -C /home/ash/tickets/arcktl-versions-6690/arkctl log --oneline origin/main..HEAD 2>/dev/null || git -C /home/ash/tickets/arcktl-versions-6690/arkctl log --oneline -10'
   cwd: /home/ash/tickets/arcktl-versions-6690/arkctl
 
+project_dir_files:
+  commands/git.yaml:
+    git:
+      description: Git version control
+      flags:
+        C:
+          arity: 1
+          kind: path
+          description: Run as if git was started in this directory
+
 rules:
   bash:
     git:

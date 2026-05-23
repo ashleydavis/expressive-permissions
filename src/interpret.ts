@@ -6,6 +6,7 @@ import {
     IAnnotation,
     IBinOp,
     Decision,
+    ICommandDescriptor,
     IEnvironment,
     IAskDecision,
     IToolCall,
@@ -194,7 +195,7 @@ function interpret(node: AstNode, env: IEnvironment, call: IToolCall, logger: IA
 // IToolCall, initialises env0 from the call's cwd, runs the full interpreter pass, and
 // returns the root decision. A root abstain (which should not occur in practice) is
 // promoted to ask as a safe default.
-export function decide(call: IToolCall, logger: IAuditLogger, registry: IRuleRegistry): Decision {
+export function decide(call: IToolCall, logger: IAuditLogger, registry: IRuleRegistry, descriptors: Map<string, ICommandDescriptor>): Decision {
     const timestamp = toLocalISOString(new Date());
 
     logger.log({
@@ -205,7 +206,7 @@ export function decide(call: IToolCall, logger: IAuditLogger, registry: IRuleReg
         cwd: call.cwd,
     });
 
-    const root = buildAst(call);
+    const root = buildAst(call, descriptors);
     const env0: IEnvironment = {
         cwd: call.cwd,
         cwdResolved: true,

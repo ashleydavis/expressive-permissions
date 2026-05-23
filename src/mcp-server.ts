@@ -3,6 +3,10 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { analyzePermission } from "./analyze";
 import { IAuditLogEntry, formatTextEntry } from "./audit-log";
+import { homedir } from "os";
+
+// homeDir is resolved once at module load time.
+const homeDir = homedir();
 
 // IAnalyzePermissionArgs describes the arguments accepted by the analyze_permission MCP tool.
 export interface IAnalyzePermissionArgs {
@@ -80,7 +84,7 @@ export async function runMcpServer(): Promise<void> {
         const projectDir = args.project_dir ?? defaultDir;
 
         try {
-            const result = analyzePermission(args.command, cwd, projectDir);
+            const result = await analyzePermission(args.command, cwd, projectDir, homeDir);
             const reasonLine = result.reason !== undefined ? result.reason : "none";
             const traceText = formatTraceForClaude(result.trace);
             const responseText = `Decision: ${result.decision}\nReason: ${reasonLine}\n\nTrace:\n${traceText}`;

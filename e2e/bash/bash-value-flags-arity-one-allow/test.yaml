@@ -1,0 +1,26 @@
+description: "bash: grep -f with arity-1 flag descriptor; path argument matches cmd rule"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "grep -f fixtures/patterns.txt fixtures/data.txt"
+  cwd: "${PROJECT_DIR}"
+
+rules:
+  bash:
+    grep:
+      cmd: "fixtures/data.txt"
+      decide: allow
+
+project_dir_files:
+  commands/grep.yaml:
+    grep:
+      description: Search file contents for patterns
+      flags:
+        f|file:
+          arity: 1
+          kind: path
+          description: Read patterns from file
+
+expected:
+  decision: allow

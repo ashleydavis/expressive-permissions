@@ -26,7 +26,7 @@ function decide(call: IToolCall, extraRules: IRule[]): Decision {
         new RuleLayer(builtinRules),
         new RuleLayer(extraRules),
     ]);
-    return decideWithRegistry(call, new NullAuditLogger(), registry);
+    return decideWithRegistry(call, new NullAuditLogger(), registry, new Map());
 }
 
 // ---------------------------------------------------------------------------

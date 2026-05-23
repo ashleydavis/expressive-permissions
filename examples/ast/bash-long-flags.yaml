@@ -10,8 +10,8 @@ ast:
     binary: rm
     options:
       recursive: true
-      force: /tmp
-    cmd: []
+      force: true
+    cmd: /tmp
     envPrefix: {}
     redirects: []
     raw: "rm --recursive --force /tmp"

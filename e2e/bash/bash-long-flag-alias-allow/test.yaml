@@ -1,0 +1,30 @@
+description: "bash: rm --recursive <path>; long-form alias resolves via descriptor, path matches cmd rule"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "rm --recursive fixtures/data.txt"
+  cwd: "${PROJECT_DIR}"
+
+rules:
+  bash:
+    rm:
+      cmd: "fixtures/data.txt"
+      decide: allow
+
+project_dir_files:
+  commands/rm.yaml:
+    rm:
+      description: Remove files or directories
+      positionals:
+        - kind: path
+          description: Files to remove
+          variadic: true
+      flags:
+        r|recursive:
+          arity: 0
+          kind: string
+          description: Remove directories recursively
+
+expected:
+  decision: allow

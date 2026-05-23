@@ -42,7 +42,9 @@ flowchart LR
 
 ## 2. Tool call → AST
 
-`buildAst` switches on `tool_name` and lifts the relevant fields into a typed node. For Bash, `parseBash` runs a hand-written recursive descent parser: a flat lexer produces a token stream, then grammar functions (`parseSequence` / `parseAnd` / `parseOr` / `parsePipe` / `parseCommand`) call each other recursively to build a left-associative sub-AST of `Command` leaves connected by `BinOp` nodes (`pipe`, `and`, `or`, `seq`). After parsing, `buildAst` applies `transformXargsNodes` to the sub-tree: every `Command` leaf with `binary: "xargs"` is replaced by an `IXargsNode` intermediate node whose `child` is the parsed subcommand.
+`buildAst` switches on `tool_name` and lifts the relevant fields into a typed node. For Bash, it first loads **command descriptor files** via `loadCommandDescriptors(projectDir)` from `~/.claude/permissions.d/commands/` (home) and `.claude/permissions.d/commands/` (project, wins on conflict). The resulting `Map<string, ICommandDescriptor>` is threaded into `parseBash`, which uses it to determine flag arity (whether a flag consumes the next token as its value) and positional kinds (path vs. string). Without a descriptor for a command, all flags default to arity 0.
+
+`parseBash` runs a hand-written recursive descent parser: a flat lexer produces a token stream, then grammar functions (`parseSequence` / `parseAnd` / `parseOr` / `parsePipe` / `parseCommand`) call each other recursively to build a left-associative sub-AST of `Command` leaves connected by `BinOp` nodes (`pipe`, `and`, `or`, `seq`). After parsing, `buildAst` applies `transformXargsNodes` to the sub-tree: every `Command` leaf with `binary: "xargs"` is replaced by an `IXargsNode` intermediate node whose `child` is the parsed subcommand.
 
 For `find . | xargs grep -l "pattern"`:
 

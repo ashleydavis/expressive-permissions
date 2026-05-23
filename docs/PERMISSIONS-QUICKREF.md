@@ -49,9 +49,34 @@ bash:
 
 ---
 
+## Command descriptors
+
+Place YAML files in `~/.claude/permissions.d/commands/<command>.yaml` (global) or `.claude/permissions.d/commands/<command>.yaml` (project). The project layer wins on conflict. Without a descriptor, all flags default to arity 0 (boolean) and no positionals are typed as paths.
+
+```yaml
+# .claude/permissions.d/commands/kubectl.yaml
+kubectl:
+  description: Kubernetes CLI
+  flags:
+    context:
+      arity: 1      # consumes next token as value
+      kind: string
+    n|namespace:
+      arity: 1
+      kind: string
+  positionals:
+    - kind: string   # first positional (subcommand)
+    - kind: path
+      variadic: true # remaining positionals are paths
+```
+
+Flag `arity: 1` means the flag takes a value; `arity: 0` means it is boolean. Use `short|long` to declare both forms together.
+
+---
+
 ## Bash
 
-Keys nest: `bash` > binary > subcommand. Each rule level consumes one positional word from the command line. `cmd` inside a nested rule addresses args **after** the subcommand word.
+Keys nest: `bash` > command > subcommand. Each rule level consumes one positional word from the command line. `cmd` inside a nested rule addresses args **after** the subcommand word.
 
 ```yaml
 bash:

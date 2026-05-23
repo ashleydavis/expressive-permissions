@@ -12,8 +12,8 @@ ast:
       type: command
       binary: test
       options:
-        f: foo.txt
-      cmd: []
+        f: true
+      cmd: foo.txt
       envPrefix: {}
       redirects: []
       raw: "test -f foo.txt"

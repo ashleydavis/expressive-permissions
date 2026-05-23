@@ -10,8 +10,8 @@ ast:
     binary: rm
     options:
       r: true
-      f: /tmp
-    cmd: []
+      f: true
+    cmd: /tmp
     envPrefix: {}
     redirects: []
     raw: "rm -r -f /tmp"

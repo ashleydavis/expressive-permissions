@@ -1,4 +1,4 @@
-import { IToolCall, ToolRoot, IEditEntry, IRead, IEdit, AstNode, IBinOp, ICommand, BashAstNode, IXargsNode } from "./types";
+import { IToolCall, ToolRoot, IEditEntry, IRead, IEdit, AstNode, IBinOp, ICommand, ICommandDescriptor, BashAstNode, IXargsNode } from "./types";
 import { parseBash, lex, IToken } from "./parse-bash";
 
 // Single-character xargs flags that consume the next token as their value.
@@ -18,8 +18,9 @@ interface IXargsParseResult {
 }
 
 // Parses the raw xargs command string, splitting xargs-own options from the subcommand.
+// descriptors is passed through to parseBash for the subcommand.
 // Returns the xargs options map and the parsed child ICommand.
-export function parseXargsCommand(raw: string): IXargsParseResult {
+export function parseXargsCommand(raw: string, descriptors: Map<string, ICommandDescriptor>): IXargsParseResult {
     const tokens: IToken[] = lex(raw);
     const options: Record<string, string | boolean> = {};
     const emptyCommand: ICommand = {
@@ -101,7 +102,7 @@ export function parseXargsCommand(raw: string): IXargsParseResult {
 
     const subcmdStart = tokens[index].start;
     const subcmdRaw = raw.substring(subcmdStart);
-    const result = parseBash(subcmdRaw);
+    const result = parseBash(subcmdRaw, descriptors);
 
     if (result.type === "command") {
         return { options, child: result };
@@ -112,12 +113,12 @@ export function parseXargsCommand(raw: string): IXargsParseResult {
 
 // Recursively transforms Command nodes with binary "xargs" into IXargsNode intermediate nodes.
 // BinOp and ForLoop nodes are walked to transform their children; other nodes are returned unchanged.
-export function transformXargsNodes(node: BashAstNode): BashAstNode {
+export function transformXargsNodes(node: BashAstNode, descriptors: Map<string, ICommandDescriptor>): BashAstNode {
     if (node.type === "command") {
         if (node.binary !== "xargs") {
             return node;
         }
-        const { options, child } = parseXargsCommand(node.raw);
+        const { options, child } = parseXargsCommand(node.raw, descriptors);
         const xargsNode: IXargsNode = {
             type: "xargs",
             options,
@@ -130,15 +131,15 @@ export function transformXargsNodes(node: BashAstNode): BashAstNode {
     if (node.type === "binop") {
         return {
             ...node,
-            left: transformXargsNodes(node.left),
-            right: transformXargsNodes(node.right),
+            left: transformXargsNodes(node.left, descriptors),
+            right: transformXargsNodes(node.right, descriptors),
         };
     }
 
     if (node.type === "for_loop") {
         return {
             ...node,
-            body: transformXargsNodes(node.body),
+            body: transformXargsNodes(node.body, descriptors),
         };
     }
 
@@ -211,16 +212,17 @@ export function describeNode(node: AstNode): string {
 }
 
 // buildAst converts a raw IToolCall into the typed ToolRoot that the interpreter and rules see.
+// descriptors is used to resolve flag arity and positional kinds for Bash command parsing.
 // Switches on tool_name and maps the tool_input fields to a strongly-typed node.
 // Unknown tools fall through to an OtherTool node that preserves the raw input.
-export function buildAst(call: IToolCall): ToolRoot {
+export function buildAst(call: IToolCall, descriptors: Map<string, ICommandDescriptor>): ToolRoot {
     switch (call.tool_name) {
         case "Bash": {
             const command = call.tool_input.command as string;
             return {
                 type: "bash",
                 raw: command,
-                ast: transformXargsNodes(parseBash(command)),
+                ast: transformXargsNodes(parseBash(command, descriptors), descriptors),
             };
         }
         case "Read": {

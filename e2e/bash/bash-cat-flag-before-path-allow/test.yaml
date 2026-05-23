@@ -1,0 +1,16 @@
+description: "bash: cat -n <path>; -n is arity-0 so path is the first positional and cmd rule allows"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "cat -n fixtures/data.txt"
+  cwd: "${PROJECT_DIR}"
+
+rules:
+  bash:
+    cat:
+      cmd: "fixtures/data.txt"
+      decide: allow
+
+expected:
+  decision: allow

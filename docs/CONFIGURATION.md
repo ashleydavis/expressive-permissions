@@ -6,6 +6,7 @@ Rules are declared in `.claude/permissions.yaml` in your project root, or `~/.cl
 
 - [Structure overview](#structure-overview)
 - [Layered files (`permissions.d/`)](#layered-files-permissionsd)
+- [Command descriptor files (`commands/`)](#command-descriptor-files-commands)
 - [Single rule vs list](#single-rule-vs-list)
 - [Pattern matching](#pattern-matching)
 - [Matching field values](#matching-field-values)
@@ -34,9 +35,9 @@ Rules are declared in `.claude/permissions.yaml` in your project root, or `~/.cl
 
 ## Structure overview
 
-The top-level keys are either **section names** (`bash`, `read`, `write`, `edit`, `multi_edit`, `webfetch`) or **tool name patterns** for everything else (`Grep`, `ToolSearch`, `"mcp__*__delete_*"`, ...). Bash rules nest under the `bash:` section keyed by binary name.
+The top-level keys are either **section names** (`bash`, `read`, `write`, `edit`, `multi_edit`, `webfetch`) or **tool name patterns** for everything else (`Grep`, `ToolSearch`, `"mcp__*__delete_*"`, ...). Bash rules nest under the `bash:` section keyed by command name.
 
-For binaries that take subcommands (e.g. `git`, `npm`), nest rules under the subcommand name. For binaries without subcommands (e.g. `rm`, `sudo`), put rules directly under the binary name.
+For commands that take subcommands (e.g. `git`, `npm`), nest rules under the subcommand name. For commands without subcommands (e.g. `rm`, `sudo`), put rules directly under the command name.
 
 A **rule** is an object with zero or more fields plus a `decide` field (`allow`, `deny`, or `ask`) and an optional `reason` string.
 
@@ -54,6 +55,95 @@ Each drop-in file is loaded as its own isolated layer:
 - **Layer order**: within each location, drop-ins run **after** the corresponding main `permissions.yaml`. The full order is: home main → home drop-ins (alphabetical) → project main → project drop-ins (alphabetical). Deny anywhere in the chain short-circuits the rest.
 
 This lets you copy a single curated file (e.g. `aws.yaml`, `git.yaml`) into the directory rather than hand-merging a monolithic config.
+
+## Command descriptor files (`commands/`)
+
+The Bash parser needs to know which flags consume a value (arity 1) versus which are boolean (arity 0, this is the default). It also needs to know which positional arguments are file paths (subject to `${{PROJECT_DIR}}` expansion and `cmd` glob matching) versus plain strings. This information comes from **command descriptor YAML files**.
+
+Descriptor files live in the `commands/` subdirectory under the standard drop-in directories:
+
+- `~/.claude/permissions.d/commands/<command>.yaml` -- home-level (global)
+- `$PROJECT_DIR/.claude/permissions.d/commands/<command>.yaml` -- project-level
+
+The project layer wins: if both define a flag, the project descriptor takes precedence.
+
+### Descriptor format
+
+The top-level key is the command name. The `source` field is a URL to the official documentation for the command -- it is not used by the engine but serves as a reference when reviewing or auditing descriptor files. Under it:
+
+```yaml
+grep:
+  description: Search file contents with patterns
+  source: https://www.gnu.org/software/grep/manual/grep.html
+  flags:
+    e|expression:
+      arity: 1
+      kind: string
+      description: Pattern to search for
+    f|file:
+      arity: 1
+      kind: path
+      description: File containing patterns
+    r|recursive:
+      arity: 0
+      kind: string
+      description: Recurse into directories
+  positionals:
+    - kind: string
+      description: Pattern
+    - kind: path
+      description: File or directory to search
+      variadic: true
+```
+
+**Flags:**
+
+| Field | Values | Meaning |
+|---|---|---|
+| `arity` | `0` (default) | Boolean flag -- does not consume the next token |
+| `arity` | `1` | Value flag -- consumes the next token as its value |
+| `kind` | `path` | Value is a file path (expanded with `${{PROJECT_DIR}}`) |
+| `kind` | `string` | Value is a plain string |
+
+Flags not listed in the descriptor default to arity 0. You only need to list value-taking flags (arity 1); boolean flags can be omitted.
+
+Use `|` to declare short and long forms together: `r|recursive` means both `-r` and `--recursive` resolve to this entry. The alias group is expanded at load time, so rules that match `options: [r|recursive]` work regardless of which form the user typed.
+
+**Positionals:**
+
+| Field | Values | Meaning |
+|---|---|---|
+| `kind` | `path` | Positional is a file path; matched by `cmd` glob rules and expanded with `${{PROJECT_DIR}}` |
+| `kind` | `string` | Positional is a plain string; matched by `cmd` as a literal |
+| `variadic` | `true` | All remaining positionals from this index onward share this descriptor |
+
+### Without a descriptor
+
+If no descriptor exists for a command, every flag defaults to arity 0 (boolean). This means `--context prod-cluster` is parsed as the flag `--context` with no value, and `prod-cluster` becomes a positional argument. Rules that match on `options: {context: prod-cluster}` will not fire; rules that match on `cmd: prod-cluster` will. Add a descriptor to get correct parsing for flags that take values.
+
+### Example: kubectl descriptor
+
+```yaml
+# .claude/permissions.d/commands/kubectl.yaml
+kubectl:
+  description: Kubernetes CLI
+  source: https://kubernetes.io/docs/reference/kubectl/
+  flags:
+    context:
+      arity: 1
+      kind: string
+      description: Kubeconfig context name
+    n|namespace:
+      arity: 1
+      kind: string
+      description: Kubernetes namespace
+    replicas:
+      arity: 1
+      kind: string
+      description: Number of replicas
+```
+
+With this file in place, `kubectl delete pod mypod --context prod-cluster` correctly sets `options.context = "prod-cluster"` and `cmd = ["delete", "pod", "mypod"]`.
 
 ## Single rule vs list
 
@@ -491,7 +581,7 @@ bash:
           reason: Confirm AWS operation on non-sandbox profile
 ```
 
-Nested `rules:` blocks also work on non-binary tools. For example, to gate file-tool rules on a working directory:
+Nested `rules:` blocks also work on non-Bash tools. For example, to gate file-tool rules on a working directory:
 
 ```yaml
 write:
@@ -506,9 +596,9 @@ write:
 
 ## Subcommand matching
 
-### Top-level binary (no subcommand)
+### Top-level command (no subcommand)
 
-Rules sit directly under the binary name, nested inside `bash:`:
+Rules sit directly under the command name, nested inside `bash:`:
 
 ```yaml
 bash:
@@ -558,7 +648,7 @@ bash:
 
 When a `cmd` matcher appears inside a deeply-nested rule, it addresses the positional arguments that come after the subcommand path words. For example, in the rule above, `cmd: "0"` would match the first argument after `docker compose build`, not `compose` or `build` themselves.
 
-### Mixing subcommand rules and a flat rule for the same binary
+### Mixing subcommand rules and a flat rule for the same command
 
 Use a list when you need both subcommand-specific rules and a flat rule that applies at the same level. Each list item is discriminated independently: an item without a `decide` key is a subcommand entry; an item with a `decide` key is a flat rule for the current level.
 
@@ -882,7 +972,7 @@ To list every unmatched leaf across recent logs:
 grep NOMATCH .claude/permissions-log/**/*.log
 ```
 
-Each `NOMATCH` line is a candidate for a new rule. For Bash compounds like `cmd1 && cmd2`, only the unmatched sub-command is logged, so you can target the specific binary or subcommand that needs a rule.
+Each `NOMATCH` line is a candidate for a new rule. For Bash compounds like `cmd1 && cmd2`, only the unmatched sub-command is logged, so you can target the specific command or subcommand that needs a rule.
 
 ### My rule isn't matching — what should I check?
 

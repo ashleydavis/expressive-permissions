@@ -4,6 +4,7 @@ import { RuleLayer, FileLayer, IRuleLayer, RuleRegistry } from "./rule-registry"
 import { builtinRules } from "./rules";
 import { decide } from "./interpret";
 import { IToolCall } from "./types";
+import { loadCommandDescriptors } from "./load-commands";
 
 // IAnalysisResult holds the outcome of a single permission analysis pass.
 export interface IAnalysisResult {
@@ -85,12 +86,14 @@ export function buildAnalysisRegistry(projectDir: string, logger: IAuditLogger):
 }
 
 // analyzePermission parses the input string into a ToolCall, builds a fresh registry
-// for projectDir, runs decide(), and returns the decision, reason, and full trace.
-export function analyzePermission(input: string, cwd: string, projectDir: string): IAnalysisResult {
+// for projectDir, loads command descriptors, runs decide(), and returns the decision,
+// reason, and full trace.
+export async function analyzePermission(input: string, cwd: string, projectDir: string, homeDir: string): Promise<IAnalysisResult> {
     const logger = new CapturingAuditLogger();
     const registry = buildAnalysisRegistry(projectDir, logger);
     const toolCall = parseToolCallInput(input, cwd);
-    const decision = decide(toolCall, logger, registry);
+    const descriptors = await loadCommandDescriptors(homeDir, projectDir);
+    const decision = decide(toolCall, logger, registry, descriptors);
 
     return {
         decision: decision.action,

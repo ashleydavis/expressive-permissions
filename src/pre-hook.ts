@@ -5,9 +5,14 @@ import { resolveDebugLogPath, appendDebugBlock, logDebugError, IDebugField } fro
 import { RuleLayer, FileLayer, IRuleLayer, RuleRegistry } from "./rule-registry";
 import { builtinRules } from "./rules";
 import { loadHomeConfigRules, loadProjectConfigRules, discoverHomeConfigDirFiles, discoverProjectConfigDirFiles, makeConfigFileLoader } from "./load-config";
+import { loadCommandDescriptors } from "./load-commands";
+import { homedir } from "os";
 
 // hookEventName identifies the Claude Code hook event this runner handles.
 const hookEventName = "PreToolUse";
+
+// homeDir is resolved once at module load time so all invocations within this process share it.
+const homeDir = homedir();
 
 // readStdin reads all of stdin and returns it as a UTF-8 string.
 export async function readStdin(): Promise<string> {
@@ -48,7 +53,8 @@ export async function runHook(): Promise<void> {
             layers.push(new FileLayer(makeConfigFileLoader(projectDropInSource), projectDropInSource.displayPath, logger));
         }
         const registry = new RuleRegistry(layers);
-        const decision = decide(call, logger, registry);
+        const descriptors = await loadCommandDescriptors(homeDir, projectDir);
+        const decision = decide(call, logger, registry, descriptors);
         const permissionDecision = decision.action;
         const permissionDecisionReason = "reason" in decision ? decision.reason : undefined;
         const exitFields: IDebugField[] = [{ key: "decision", value: permissionDecision }];

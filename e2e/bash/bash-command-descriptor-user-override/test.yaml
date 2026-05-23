@@ -1,0 +1,36 @@
+description: "bash: project descriptor overrides home descriptor arity for the same flag; correct arity applied"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "grep -m fixtures/data.txt"
+  cwd: "${PROJECT_DIR}"
+
+rules:
+  bash:
+    grep:
+      cmd: "fixtures/data.txt"
+      decide: allow
+
+home_dir_files:
+  commands/grep.yaml:
+    grep:
+      description: Search files (home version)
+      flags:
+        m|max-count:
+          arity: 1
+          kind: string
+          description: Home arity-1 would consume the path as the flag value, leaving no positional
+
+project_dir_files:
+  commands/grep.yaml:
+    grep:
+      description: Search files (project override)
+      flags:
+        m|max-count:
+          arity: 0
+          kind: string
+          description: Project arity-0 leaves the path as a positional so the cmd rule matches
+
+expected:
+  decision: allow

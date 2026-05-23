@@ -1,5 +1,23 @@
 import { buildAst, expandToken, expandCommandOptions, describeNode } from "../build-ast";
-import { IToolCall, IBash, IRead, IWrite, IEdit, IMultiEdit, IOtherTool, IXargsNode, ICommand } from "../types";
+import { IToolCall, IBash, IRead, IWrite, IEdit, IMultiEdit, IOtherTool, IXargsNode, ICommand, ICommandDescriptor } from "../types";
+
+// makeDescriptors builds a one-command descriptor map with arity-1 flags for the given names.
+function makeDescriptors(cmd: string, arity1Flags: string[]): Map<string, ICommandDescriptor> {
+    const flags: Record<string, { arity: 0 | 1; kind: "string"; description: string }> = {};
+    for (const flagName of arity1Flags) {
+        flags[flagName] = { arity: 1, kind: "string", description: "" };
+    }
+    return new Map([[cmd, { description: cmd, positionals: [], flags }]]);
+}
+
+// makePathDescriptor builds a descriptor with a variadic path positional for the given command.
+function makePathDescriptor(cmd: string): Map<string, ICommandDescriptor> {
+    return new Map([[cmd, {
+        description: cmd,
+        positionals: [{ kind: "path", description: "files", variadic: true }],
+        flags: {},
+    }]]);
+}
 
 describe("buildAst", () => {
     test("Bash call produces bash root with raw and child sub-AST", () => {
@@ -8,7 +26,7 @@ describe("buildAst", () => {
             tool_input: { command: "ls -la /tmp" },
             cwd: "/tmp",
         };
-        const result = buildAst(call);
+        const result = buildAst(call, new Map());
         expect(result.type).toBe("bash");
         const node = result as IBash;
         expect(node.raw).toBe("ls -la /tmp");
@@ -21,7 +39,7 @@ describe("buildAst", () => {
             tool_input: { file_path: "/etc/hosts" },
             cwd: "/tmp",
         };
-        const result = buildAst(call);
+        const result = buildAst(call, new Map());
         expect(result.type).toBe("read");
         const node = result as IRead;
         expect(node.file_path).toBe("/etc/hosts");
@@ -35,7 +53,7 @@ describe("buildAst", () => {
             tool_input: { file_path: "/etc/hosts", offset: 10, limit: 50 },
             cwd: "/tmp",
         };
-        const result = buildAst(call);
+        const result = buildAst(call, new Map());
         expect(result.type).toBe("read");
         const node = result as IRead;
         expect(node.file_path).toBe("/etc/hosts");
@@ -49,7 +67,7 @@ describe("buildAst", () => {
             tool_input: { file_path: "/tmp/out.txt", content: "hello world" },
             cwd: "/tmp",
         };
-        const result = buildAst(call);
+        const result = buildAst(call, new Map());
         expect(result.type).toBe("write");
         const node = result as IWrite;
         expect(node.file_path).toBe("/tmp/out.txt");
@@ -67,7 +85,7 @@ describe("buildAst", () => {
             },
             cwd: "/tmp",
         };
-        const result = buildAst(call);
+        const result = buildAst(call, new Map());
         expect(result.type).toBe("edit");
         const node = result as IEdit;
         expect(node.file_path).toBe("/tmp/foo.ts");
@@ -86,7 +104,7 @@ describe("buildAst", () => {
             },
             cwd: "/tmp",
         };
-        const result = buildAst(call);
+        const result = buildAst(call, new Map());
         expect(result.type).toBe("edit");
         const node = result as IEdit;
         expect(node.replace_all).toBeUndefined();
@@ -104,7 +122,7 @@ describe("buildAst", () => {
             },
             cwd: "/tmp",
         };
-        const result = buildAst(call);
+        const result = buildAst(call, new Map());
         expect(result.type).toBe("multiedit");
         const node = result as IMultiEdit;
         expect(node.file_path).toBe("/tmp/foo.ts");
@@ -119,7 +137,7 @@ describe("buildAst", () => {
             tool_input: { pattern: "TODO", path: "/tmp" },
             cwd: "/tmp",
         };
-        const result = buildAst(call);
+        const result = buildAst(call, new Map());
         expect(result.type).toBe("other");
         const node = result as IOtherTool;
         expect(node.tool_name).toBe("Grep");
@@ -132,11 +150,76 @@ describe("buildAst", () => {
             tool_input: { owner: "octocat" },
             cwd: "/tmp",
         };
-        const result = buildAst(call);
+        const result = buildAst(call, new Map());
         expect(result.type).toBe("other");
         const node = result as IOtherTool;
         expect(node.tool_name).toBe("mcp__github__list_repos");
         expect(node.tool_input).toEqual({ owner: "octocat" });
+    });
+});
+
+describe("buildAst with descriptors", () => {
+    test("grep pattern path: positional 0 is string (pattern), positional 1 is path via descriptor", () => {
+        const descriptor = new Map([["grep", {
+            description: "grep",
+            positionals: [
+                { kind: "string" as const, description: "pattern", variadic: false },
+                { kind: "path" as const, description: "files", variadic: true },
+            ],
+            flags: {},
+        }]]);
+        const call: IToolCall = { tool_name: "Bash", tool_input: { command: "grep pattern /etc/hosts" }, cwd: "/tmp" };
+        const result = buildAst(call, descriptor) as IBash;
+        const cmd = result.ast as ICommand;
+        expect(cmd.type).toBe("command");
+        expect(cmd.cmd).toEqual(["pattern", "/etc/hosts"]);
+    });
+
+    test("grep -f config.txt path: -f consumed as arity-1 value flag, path lands as second positional", () => {
+        const descriptor = new Map([["grep", {
+            description: "grep",
+            positionals: [
+                { kind: "path" as const, description: "files", variadic: true },
+            ],
+            flags: { "f|file": { arity: 1 as const, kind: "path" as const, description: "" } },
+        }]]);
+        const call: IToolCall = { tool_name: "Bash", tool_input: { command: "grep -f config.txt /etc/hosts" }, cwd: "/tmp" };
+        const result = buildAst(call, descriptor) as IBash;
+        const cmd = result.ast as ICommand;
+        expect(cmd.type).toBe("command");
+        expect(cmd.options["f"]).toBe("config.txt");
+        expect(cmd.cmd).toBe("/etc/hosts");
+    });
+
+    test("cat path1 path2: all positionals classified as paths via variadic descriptor entry", () => {
+        const call: IToolCall = { tool_name: "Bash", tool_input: { command: "cat /etc/hosts /etc/passwd" }, cwd: "/tmp" };
+        const result = buildAst(call, makePathDescriptor("cat")) as IBash;
+        const cmd = result.ast as ICommand;
+        expect(cmd.type).toBe("command");
+        expect(cmd.cmd).toEqual(["/etc/hosts", "/etc/passwd"]);
+    });
+
+    test("rm -r and rm --recursive both resolve identically when aliases declared", () => {
+        const descriptor = new Map([["rm", {
+            description: "rm",
+            positionals: [{ kind: "path" as const, description: "files", variadic: true }],
+            flags: { "r|recursive": { arity: 0 as const, kind: "string" as const, description: "" } },
+        }]]);
+        const callShort: IToolCall = { tool_name: "Bash", tool_input: { command: "rm -r /tmp/foo" }, cwd: "/tmp" };
+        const callLong: IToolCall = { tool_name: "Bash", tool_input: { command: "rm --recursive /tmp/foo" }, cwd: "/tmp" };
+        const shortCmd = (buildAst(callShort, descriptor) as IBash).ast as ICommand;
+        const longCmd = (buildAst(callLong, descriptor) as IBash).ast as ICommand;
+        expect(shortCmd.cmd).toBe("/tmp/foo");
+        expect(longCmd.cmd).toBe("/tmp/foo");
+    });
+
+    test("unknown command with unrecognised flag: flag is arity 0, next token is a separate string positional", () => {
+        const call: IToolCall = { tool_name: "Bash", tool_input: { command: "mytool --output result.txt" }, cwd: "/tmp" };
+        const result = buildAst(call, new Map()) as IBash;
+        const cmd = result.ast as ICommand;
+        expect(cmd.type).toBe("command");
+        expect(cmd.options["output"]).toBe(true);
+        expect(cmd.cmd).toBe("result.txt");
     });
 });
 

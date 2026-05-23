@@ -6,6 +6,20 @@ input:
     command: "kubectl scale deployment my-app --replicas 3 --context staging-cluster"
   cwd: /home/user/project
 
+project_dir_files:
+  commands/kubectl.yaml:
+    kubectl:
+      description: Kubernetes CLI
+      flags:
+        context:
+          arity: 1
+          kind: string
+          description: Kubeconfig context name
+        replicas:
+          arity: 1
+          kind: string
+          description: Number of replicas
+
 rules:
   bash:
     kubectl:

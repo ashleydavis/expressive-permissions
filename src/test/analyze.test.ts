@@ -81,14 +81,14 @@ test("parseToolCallInput prefixes are case-insensitive", () => {
 // analyzePermission
 // ---------------------------------------------------------------------------
 
-test("analyzePermission with allow rule for git returns decision=allow with rule_match trace", () => {
+test("analyzePermission with allow rule for git returns decision=allow with rule_match trace", async () => {
     const projectDir = makeTmpProjectDir(`
 bash:
   git:
     - decide: allow
 `);
     try {
-        const result = analyzePermission("git status", "/project", projectDir);
+        const result = await analyzePermission("git status", "/project", projectDir, tmpdir());
         expect(result.decision).toBe("allow");
         const ruleMatchEntries = result.trace.filter(
             (entry) => entry.type === "rule_match"
@@ -100,13 +100,13 @@ bash:
     }
 });
 
-test("analyzePermission with no matching rules returns decision=ask with no_rule_match trace", () => {
+test("analyzePermission with no matching rules returns decision=ask with no_rule_match trace", async () => {
     const projectDir = makeTmpProjectDir();
     const emptyHomeDir = mkdtempSync(join(tmpdir(), "analyze-test-home-"));
     const savedHome = process.env["HOME"];
     process.env["HOME"] = emptyHomeDir;
     try {
-        const result = analyzePermission("ls /tmp", "/project", projectDir);
+        const result = await analyzePermission("ls /tmp", "/project", projectDir, tmpdir());
         expect(result.decision).toBe("ask");
         const noMatchEntries = result.trace.filter(
             (entry) => entry.type === "no_rule_match"
@@ -125,7 +125,7 @@ test("analyzePermission with no matching rules returns decision=ask with no_rule
     }
 });
 
-test("analyzePermission with deny rule returns decision=deny and forwards reason", () => {
+test("analyzePermission with deny rule returns decision=deny and forwards reason", async () => {
     const projectDir = makeTmpProjectDir(`
 bash:
   rm:
@@ -133,7 +133,7 @@ bash:
       reason: rm is dangerous
 `);
     try {
-        const result = analyzePermission("rm -rf /", "/project", projectDir);
+        const result = await analyzePermission("rm -rf /", "/project", projectDir, tmpdir());
         expect(result.decision).toBe("deny");
         expect(result.reason).toBe("rm is dangerous");
     }
@@ -142,7 +142,7 @@ bash:
     }
 });
 
-test("analyzePermission honours a project permissions.d/aws.yaml drop-in deny rule and logs config_load for it", () => {
+test("analyzePermission honours a project permissions.d/aws.yaml drop-in deny rule and logs config_load for it", async () => {
     const projectDir = makeTmpProjectDir(`
 bash:
   ls:
@@ -159,7 +159,7 @@ bash:
     const savedHome = process.env["HOME"];
     process.env["HOME"] = emptyHomeDir;
     try {
-        const result = analyzePermission("aws s3 ls", "/project", projectDir);
+        const result = await analyzePermission("aws s3 ls", "/project", projectDir, tmpdir());
         expect(result.decision).toBe("deny");
         expect(result.reason).toBe("aws blocked by drop-in");
         const configLoads = result.trace.filter((entry) => entry.type === "config_load");

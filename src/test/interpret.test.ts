@@ -5,7 +5,7 @@ import { RuleLayer, RuleRegistry } from "../rule-registry";
 import { cdRule } from "../rules/builtin/cd";
 import { envPrefixRule } from "../rules/builtin/env-prefix";
 import { envSetRule } from "../rules/builtin/env-set";
-import { AstNode, Decision, IEnvironment, IRule, IRuleOutcome, IToolCall, ABSTAIN, rank, IBash, IBinOp, ICommand, IEdit, IMultiEdit, IOtherTool, IRead, IWrite, IXargsNode } from "../types";
+import { AstNode, Decision, IEnvironment, IRule, IRuleOutcome, IToolCall, ABSTAIN, rank, IBash, IBinOp, ICommand, ICommandDescriptor, IEdit, IMultiEdit, IOtherTool, IRead, IWrite, IXargsNode } from "../types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -58,7 +58,13 @@ beforeEach(() => {
 // from the current testRules. Tests mutate testRules then call decide(...) like before.
 function decide(call: IToolCall, logger: IAuditLogger): Decision {
     const testRegistry = new RuleRegistry([new RuleLayer(testRules)]);
-    return decideWithRegistry(call, logger, testRegistry);
+    return decideWithRegistry(call, logger, testRegistry, new Map());
+}
+
+// decideWith is like decide but accepts a descriptor map for tests that need arity-1 flags.
+function decideWith(call: IToolCall, logger: IAuditLogger, descriptors: Map<string, ICommandDescriptor>): Decision {
+    const testRegistry = new RuleRegistry([new RuleLayer(testRules)]);
+    return decideWithRegistry(call, logger, testRegistry, descriptors);
 }
 
 // ---------------------------------------------------------------------------
@@ -1190,9 +1196,15 @@ test("for-loop: $variable inside command options is expanded from the iteration 
         return ABSTAIN;
     };
     testRules.push(captureRule);
-    decide(
+    const kubectlDescriptor: ICommandDescriptor = {
+        description: "kubectl",
+        positionals: [],
+        flags: { context: { arity: 1, kind: "string", description: "" } },
+    };
+    decideWith(
         makeBashCall("for region in ap-northwest-1 na-central-1; do kubectl --context arn:aws:eks:$region:1234:cluster/c -n ns get pods; done"),
-        new NullAuditLogger()
+        new NullAuditLogger(),
+        new Map([["kubectl", kubectlDescriptor]])
     );
     expect(seenContexts).toEqual([
         "arn:aws:eks:ap-northwest-1:1234:cluster/c",

@@ -3,8 +3,34 @@ description: "bash: gh run view ... 2>&1 | sed -n '...' pipeline allow with gh +
 input:
   tool_name: Bash
   tool_input:
-    command: "gh run view --job 12345678901 --repo codecapers/example-repo --log 2>&1 | sed -n '750,800p'"
+    command: "gh run view --job 12345678901 --repo codecapers/example-repo --log 2>&1 | sed -e '750,800p'"
   cwd: /home/user/project
+
+project_dir_files:
+  commands/gh.yaml:
+    gh:
+      description: GitHub CLI
+      flags:
+        job:
+          arity: 1
+          kind: string
+          description: Job ID
+        repo:
+          arity: 1
+          kind: string
+          description: Repository name
+        log:
+          arity: 0
+          kind: string
+          description: Show log output
+  commands/sed.yaml:
+    sed:
+      description: Stream editor
+      flags:
+        e|expression:
+          arity: 1
+          kind: string
+          description: Script expression
 
 rules:
   bash:

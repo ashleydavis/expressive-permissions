@@ -153,7 +153,9 @@ function runTest(testFilePath: string): boolean {
         const homeDropInDir = join(homeDir, ".claude", "permissions.d");
         mkdirSync(homeDropInDir, { recursive: true });
         for (const [dropInName, dropInBody] of Object.entries(testCase.home_dir_files)) {
-            writeFileSync(join(homeDropInDir, dropInName), stringify(dropInBody));
+            const destPath = join(homeDropInDir, dropInName);
+            mkdirSync(dirname(destPath), { recursive: true });
+            writeFileSync(destPath, stringify(dropInBody));
         }
     }
 
@@ -161,7 +163,9 @@ function runTest(testFilePath: string): boolean {
         const projectDropInDir = join(claudeDir, "permissions.d");
         mkdirSync(projectDropInDir, { recursive: true });
         for (const [dropInName, dropInBody] of Object.entries(testCase.project_dir_files)) {
-            writeFileSync(join(projectDropInDir, dropInName), stringify(dropInBody));
+            const destPath = join(projectDropInDir, dropInName);
+            mkdirSync(dirname(destPath), { recursive: true });
+            writeFileSync(destPath, stringify(dropInBody));
         }
     }
 

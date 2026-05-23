@@ -6,6 +6,16 @@ input:
     command: "kubectl delete pod my-pod --context prod-cluster"
   cwd: /home/user/project
 
+project_dir_files:
+  commands/kubectl.yaml:
+    kubectl:
+      description: Kubernetes CLI
+      flags:
+        context:
+          arity: 1
+          kind: string
+          description: Kubeconfig context name
+
 rules:
   bash:
     kubectl:

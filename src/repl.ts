@@ -1,6 +1,10 @@
 import * as readline from "readline";
 import { analyzePermission, IAnalysisResult } from "./analyze";
 import { IAuditLogEntry, formatTextEntry } from "./audit-log";
+import { homedir } from "os";
+
+// homeDir is resolved once at module load time.
+const homeDir = homedir();
 
 // ANSI holds terminal escape codes used for colorised output.
 const ANSI = {
@@ -51,8 +55,8 @@ export function formatVerdict(result: IAnalysisResult): string {
 }
 
 // runOnce analyzes the input and prints the trace followed by the verdict.
-export function runOnce(input: string, cwd: string, projectDir: string): void {
-    const result = analyzePermission(input, cwd, projectDir);
+export async function runOnce(input: string, cwd: string, projectDir: string, replHomeDir: string): Promise<void> {
+    const result = await analyzePermission(input, cwd, projectDir, replHomeDir);
     const traceOutput = formatTrace(result.trace);
     if (traceOutput !== "") {
         process.stdout.write(traceOutput + "\n");
@@ -134,7 +138,7 @@ export function parseReplCommand(line: string): ReplCommand {
 // runRepl starts an interactive REPL session. On each line it analyzes the input and
 // prints the trace and verdict. :quit/:q exits, :cwd <path> changes the runtime cwd,
 // and :project <path> (alias :proj) changes both the project dir and the cwd together.
-export async function runRepl(initialProjectDir: string, initialCwd: string): Promise<void> {
+export async function runRepl(initialProjectDir: string, initialCwd: string, replHomeDir: string): Promise<void> {
     let currentProjectDir = initialProjectDir;
     let currentCwd = initialCwd;
 
@@ -183,9 +187,10 @@ export async function runRepl(initialProjectDir: string, initialCwd: string): Pr
             return;
         }
 
-        runOnce(command.input, currentCwd, currentProjectDir);
-        process.stdout.write("\n");
-        prompt();
+        runOnce(command.input, currentCwd, currentProjectDir, replHomeDir).then(() => {
+            process.stdout.write("\n");
+            prompt();
+        });
     };
 
     await new Promise<void>((resolve) => {
@@ -202,10 +207,11 @@ if (process.env["NODE_ENV"] !== "test") {
     const projectDir = process.env["CLAUDE_PROJECT_DIR"] ?? process.cwd();
 
     if (process.argv[2] !== undefined) {
-        runOnce(process.argv[2], process.cwd(), projectDir);
-        process.exit(0);
+        runOnce(process.argv[2], process.cwd(), projectDir, homeDir).then(() => {
+            process.exit(0);
+        });
     }
     else {
-        runRepl(projectDir, process.cwd());
+        runRepl(projectDir, process.cwd(), homeDir);
     }
 }

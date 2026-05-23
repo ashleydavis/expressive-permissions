@@ -1,4 +1,5 @@
-import { BashAstNode, ICommand, IForLoop, IRedirect } from "./types";
+import { BashAstNode, ICommand, ICommandDescriptor, IForLoop, IRedirect } from "./types";
+import { resolveFlagArity } from "./load-commands";
 
 // A single token produced by the lexer
 export interface IToken {
@@ -170,11 +171,19 @@ interface IArgvResult {
     cmd: string | string[];
 }
 
-// Converts a flat array of argument token strings into an IArgvResult.
-// Rules: --flag → boolean, --flag=val → string, --flag val → string (next non-flag token),
-// -abc → three booleans, -f=val → string, anything else → positional.
-// One positional → string; otherwise → string[].
-function parseArgv(argTokens: string[]): IArgvResult {
+// An empty command descriptor used as the default when no descriptor is available.
+// All flags default to arity 0 (boolean) and no positionals are declared.
+const EMPTY_DESCRIPTOR: ICommandDescriptor = {
+    description: "",
+    positionals: [],
+    flags: {},
+};
+
+// Converts a flat array of argument token strings into an IArgvResult using the supplied
+// command descriptor to resolve flag arity.
+// Flags absent from the descriptor default to arity 0 (boolean).
+// One positional → cmd is a string; otherwise cmd is a string[].
+function parseArgv(argTokens: string[], descriptor: ICommandDescriptor): IArgvResult {
     const options: Record<string, string | boolean> = {};
     const positionals: string[] = [];
     let index = 0;
@@ -186,26 +195,41 @@ function parseArgv(argTokens: string[]): IArgvResult {
             const eqIdx = rest.indexOf("=");
             if (eqIdx !== -1) {
                 options[rest.substring(0, eqIdx)] = rest.substring(eqIdx + 1);
-            } else {
-                const next = argTokens[index + 1];
-                if (next !== undefined && !next.startsWith("-")) {
-                    options[rest] = next;
-                    index++;
-                } else {
+            }
+            else {
+                const flagArity = resolveFlagArity(descriptor, rest);
+                if (flagArity === 1) {
+                    const next = argTokens[index + 1];
+                    if (next !== undefined) {
+                        options[rest] = next;
+                        index++;
+                    }
+                    else {
+                        options[rest] = true;
+                    }
+                }
+                else {
                     options[rest] = true;
                 }
             }
-        } else if (token.startsWith("-") && token.length > 1) {
+        }
+        else if (token.startsWith("-") && token.length > 1) {
             const rest = token.substring(1);
             const eqIdx = rest.indexOf("=");
             if (eqIdx !== -1) {
                 options[rest.substring(0, eqIdx)] = rest.substring(eqIdx + 1);
             }
             else if (rest.length === 1) {
-                const next = argTokens[index + 1];
-                if (next !== undefined && !next.startsWith("-")) {
-                    options[rest] = next;
-                    index++;
+                const flagArity = resolveFlagArity(descriptor, rest);
+                if (flagArity === 1) {
+                    const next = argTokens[index + 1];
+                    if (next !== undefined) {
+                        options[rest] = next;
+                        index++;
+                    }
+                    else {
+                        options[rest] = true;
+                    }
                 }
                 else {
                     options[rest] = true;
@@ -216,7 +240,8 @@ function parseArgv(argTokens: string[]): IArgvResult {
                     options[ch] = true;
                 }
             }
-        } else {
+        }
+        else {
             positionals.push(token);
         }
         index++;
@@ -241,7 +266,8 @@ function consume(state: IParserState): IToken {
 
 // Parses a single Command leaf, collecting the env-var prefix, binary, options, and redirects.
 // Stops when a non-redirect operator is seen (caller handles that operator).
-function parseCommand(state: IParserState): ICommand {
+// descriptors is used to look up flag arity and positional kinds for the parsed binary.
+function parseCommand(state: IParserState, descriptors: Map<string, ICommandDescriptor>): ICommand {
     const envPrefix: Record<string, string> = {};
     const redirects: IRedirect[] = [];
     const argTokens: string[] = [];
@@ -298,12 +324,12 @@ function parseCommand(state: IParserState): ICommand {
         ? state.raw.substring(firstTokenStart, lastTokenEnd)
         : "";
 
-    const argv = parseArgv(argTokens);
+    const descriptor = descriptors.get(binary) ?? EMPTY_DESCRIPTOR;
+    const argv = parseArgv(argTokens, descriptor);
     return {
         type: "command",
         binary,
         options: argv.options,
-
         cmd: argv.cmd,
         envPrefix,
         redirects,
@@ -313,18 +339,18 @@ function parseCommand(state: IParserState): ICommand {
 
 // parseStatement: dispatches between parseForLoop and parseCommand based on the leading word.
 // A leading word "for" introduces a for-loop; anything else is a single command leaf.
-function parseStatement(state: IParserState): BashAstNode {
+function parseStatement(state: IParserState, descriptors: Map<string, ICommandDescriptor>): BashAstNode {
     const next = peek(state);
     if (next !== null && next.kind === "word" && next.value === "for") {
-        return parseForLoop(state);
+        return parseForLoop(state, descriptors);
     }
-    return parseCommand(state);
+    return parseCommand(state, descriptors);
 }
 
 // parseForLoop: parses `for VAR [in ITEMS] ; do BODY ; done` into a ForLoop node.
 // The body is parsed via parseSequenceUntilDone so that nested operators (|, &&, ||, ;)
 // inside the body still build a normal sub-tree.
-function parseForLoop(state: IParserState): BashAstNode {
+function parseForLoop(state: IParserState, descriptors: Map<string, ICommandDescriptor>): BashAstNode {
     const forToken = consume(state);
     const startPos = forToken.start;
 
@@ -363,7 +389,7 @@ function parseForLoop(state: IParserState): BashAstNode {
     }
     consume(state);
 
-    const body = parseSequenceUntilDone(state);
+    const body = parseSequenceUntilDone(state, descriptors);
 
     if (peek(state)?.value !== "done") {
         return {
@@ -388,70 +414,71 @@ function parseForLoop(state: IParserState): BashAstNode {
 
 // parseSequenceUntilDone: parses a `;`-separated sequence of statements until the next
 // non-`;` token is the literal word "done", which the caller (parseForLoop) consumes.
-function parseSequenceUntilDone(state: IParserState): BashAstNode {
-    let left: BashAstNode = parseAnd(state);
+function parseSequenceUntilDone(state: IParserState, descriptors: Map<string, ICommandDescriptor>): BashAstNode {
+    let left: BashAstNode = parseAnd(state, descriptors);
     while (peek(state)?.value === ";") {
         consume(state);
         if (peek(state) === null || peek(state)!.value === "done") {
             break;
         }
-        const right = parseAnd(state);
+        const right = parseAnd(state, descriptors);
         left = { type: "binop", op: ";", left, right };
     }
     return left;
 }
 
 // parsePipe: parseStatement ('|' parseStatement)*  — highest operator precedence
-function parsePipe(state: IParserState): BashAstNode {
-    let left: BashAstNode = parseStatement(state);
+function parsePipe(state: IParserState, descriptors: Map<string, ICommandDescriptor>): BashAstNode {
+    let left: BashAstNode = parseStatement(state, descriptors);
     while (peek(state)?.value === "|") {
         consume(state);
-        const right = parseStatement(state);
+        const right = parseStatement(state, descriptors);
         left = { type: "binop", op: "|", left, right };
     }
     return left;
 }
 
 // parseOr: parsePipe ('||' parsePipe)*
-function parseOr(state: IParserState): BashAstNode {
-    let left: BashAstNode = parsePipe(state);
+function parseOr(state: IParserState, descriptors: Map<string, ICommandDescriptor>): BashAstNode {
+    let left: BashAstNode = parsePipe(state, descriptors);
     while (peek(state)?.value === "||") {
         consume(state);
-        const right = parsePipe(state);
+        const right = parsePipe(state, descriptors);
         left = { type: "binop", op: "||", left, right };
     }
     return left;
 }
 
 // parseAnd: parseOr ('&&' parseOr)*
-function parseAnd(state: IParserState): BashAstNode {
-    let left: BashAstNode = parseOr(state);
+function parseAnd(state: IParserState, descriptors: Map<string, ICommandDescriptor>): BashAstNode {
+    let left: BashAstNode = parseOr(state, descriptors);
     while (peek(state)?.value === "&&") {
         consume(state);
-        const right = parseOr(state);
+        const right = parseOr(state, descriptors);
         left = { type: "binop", op: "&&", left, right };
     }
     return left;
 }
 
 // parseSequence: parseAnd (';' parseAnd)*  — lowest operator precedence
-function parseSequence(state: IParserState): BashAstNode {
-    let left: BashAstNode = parseAnd(state);
+function parseSequence(state: IParserState, descriptors: Map<string, ICommandDescriptor>): BashAstNode {
+    let left: BashAstNode = parseAnd(state, descriptors);
     while (peek(state)?.value === ";") {
         consume(state);
         // Trailing semicolons produce no extra leaf
         if (state.pos >= state.tokens.length) {
             break;
         }
-        const right = parseAnd(state);
+        const right = parseAnd(state, descriptors);
         left = { type: "binop", op: ";", left, right };
     }
     return left;
 }
 
 // parseBash: entry point that converts a raw Bash command string into a BashAstNode.
+// descriptors is used to resolve flag arity and positional kinds for each command.
 // Empty or whitespace-only input returns a Command with binary: "" and all collections empty.
-export function parseBash(raw: string): BashAstNode {
+export function parseBash(raw: string, descriptors: Map<string, ICommandDescriptor>): BashAstNode {
     const trimmed = raw.trim();
     if (trimmed.length === 0) {
         return { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "" };
@@ -459,5 +486,5 @@ export function parseBash(raw: string): BashAstNode {
 
     const tokens = lex(raw);
     const state: IParserState = { tokens, pos: 0, raw };
-    return parseSequence(state);
+    return parseSequence(state, descriptors);
 }

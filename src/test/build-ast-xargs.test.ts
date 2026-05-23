@@ -8,7 +8,7 @@ function makeBashCall(command: string): IToolCall {
 
 // getAst is a helper that builds the AST for a Bash tool call and returns the IBash node's ast.
 function getAst(command: string): IBash["ast"] {
-    const root = buildAst(makeBashCall(command)) as IBash;
+    const root = buildAst(makeBashCall(command), new Map()) as IBash;
     return root.ast;
 }
 
