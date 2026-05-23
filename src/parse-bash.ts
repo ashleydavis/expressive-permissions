@@ -179,11 +179,83 @@ const EMPTY_DESCRIPTOR: ICommandDescriptor = {
     flags: {},
 };
 
+// Scans argTokens to find the first positional argument (the sub-command candidate).
+// Uses descriptor to correctly skip over value-consuming flags so they are not mistaken
+// for positionals. Returns null if no positional token is found.
+function findSubCommandName(argTokens: string[], descriptor: ICommandDescriptor): string | null {
+    let index = 0;
+    while (index < argTokens.length) {
+        const token = argTokens[index];
+        if (token.startsWith("--")) {
+            const rest = token.substring(2);
+            const eqIdx = rest.indexOf("=");
+            if (eqIdx !== -1) {
+                index++;
+                continue;
+            }
+            const flagArity = resolveFlagArity(descriptor, rest);
+            if (flagArity === 1) {
+                index += 2;
+            }
+            else {
+                index++;
+            }
+        }
+        else if (token.startsWith("-") && token.length > 1) {
+            const rest = token.substring(1);
+            const eqIdx = rest.indexOf("=");
+            if (eqIdx !== -1) {
+                index++;
+                continue;
+            }
+            if (rest.length === 1) {
+                const flagArity = resolveFlagArity(descriptor, rest);
+                if (flagArity === 1) {
+                    index += 2;
+                }
+                else {
+                    index++;
+                }
+            }
+            else {
+                index++;
+            }
+        }
+        else {
+            return token;
+        }
+    }
+    return null;
+}
+
+// Returns a merged ICommandDescriptor combining top-level flags with the matching sub-command's
+// flags. Sub-command flags take precedence over top-level flags on alias-group conflicts.
+// Returns descriptor unchanged when cmds is absent or subCommandName is not found.
+function mergeSubCommandDescriptor(descriptor: ICommandDescriptor, subCommandName: string): ICommandDescriptor {
+    if (descriptor.cmds === undefined) {
+        return descriptor;
+    }
+    const subDescriptor = descriptor.cmds[subCommandName];
+    if (subDescriptor === undefined) {
+        return descriptor;
+    }
+    return {
+        ...descriptor,
+        flags: { ...descriptor.flags, ...subDescriptor.flags },
+    };
+}
+
 // Converts a flat array of argument token strings into an IArgvResult using the supplied
 // command descriptor to resolve flag arity.
-// Flags absent from the descriptor default to arity 0 (boolean).
+// When the descriptor has sub-commands (cmds), the first positional is used to look up the
+// matching sub-command and its flags are merged with the top-level flags before parsing.
+// Flags absent from the effective descriptor default to arity 0 (boolean).
 // One positional → cmd is a string; otherwise cmd is a string[].
 function parseArgv(argTokens: string[], descriptor: ICommandDescriptor): IArgvResult {
+    const subCommandName = findSubCommandName(argTokens, descriptor);
+    const effectiveDescriptor = subCommandName !== null
+        ? mergeSubCommandDescriptor(descriptor, subCommandName)
+        : descriptor;
     const options: Record<string, string | boolean> = {};
     const positionals: string[] = [];
     let index = 0;
@@ -197,7 +269,7 @@ function parseArgv(argTokens: string[], descriptor: ICommandDescriptor): IArgvRe
                 options[rest.substring(0, eqIdx)] = rest.substring(eqIdx + 1);
             }
             else {
-                const flagArity = resolveFlagArity(descriptor, rest);
+                const flagArity = resolveFlagArity(effectiveDescriptor, rest);
                 if (flagArity === 1) {
                     const next = argTokens[index + 1];
                     if (next !== undefined) {
@@ -220,7 +292,7 @@ function parseArgv(argTokens: string[], descriptor: ICommandDescriptor): IArgvRe
                 options[rest.substring(0, eqIdx)] = rest.substring(eqIdx + 1);
             }
             else if (rest.length === 1) {
-                const flagArity = resolveFlagArity(descriptor, rest);
+                const flagArity = resolveFlagArity(effectiveDescriptor, rest);
                 if (flagArity === 1) {
                     const next = argTokens[index + 1];
                     if (next !== undefined) {

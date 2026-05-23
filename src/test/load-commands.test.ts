@@ -175,6 +175,73 @@ cat:
     }
 });
 
+test("cmds section is loaded and sub-command flags are accessible", async () => {
+    const projectDir = makeTmpDir();
+    const homeDir = makeTmpDir();
+    const commandsDir = makeCommandsDir(projectDir);
+    writeYaml(commandsDir, "git.yaml", `
+git:
+  description: Git version control
+  flags:
+    C:
+      arity: 1
+      kind: path
+      description: Run as if git was started in this directory
+  cmds:
+    commit:
+      flags:
+        m|message:
+          arity: 1
+          kind: string
+          description: Commit message
+    push:
+      flags:
+        f|force:
+          arity: 0
+          description: Force push
+`);
+    try {
+        const result = await loadCommandDescriptors(homeDir, projectDir);
+        const git = result.get("git") as ICommandDescriptor;
+        expect(git).toBeDefined();
+        expect(git.cmds).toBeDefined();
+        expect(git.cmds!["commit"]).toBeDefined();
+        expect(resolveFlagArity(git.cmds!["commit"], "m")).toBe(1);
+        expect(resolveFlagArity(git.cmds!["commit"], "message")).toBe(1);
+        expect(git.cmds!["push"]).toBeDefined();
+        expect(resolveFlagArity(git.cmds!["push"], "f")).toBe(0);
+        expect(resolveFlagArity(git.cmds!["push"], "force")).toBe(0);
+    }
+    finally {
+        rmSync(projectDir, { recursive: true, force: true });
+        rmSync(homeDir, { recursive: true, force: true });
+    }
+});
+
+test("command without cmds section has undefined cmds property", async () => {
+    const projectDir = makeTmpDir();
+    const homeDir = makeTmpDir();
+    const commandsDir = makeCommandsDir(projectDir);
+    writeYaml(commandsDir, "ls.yaml", `
+ls:
+  description: List directory contents
+  flags:
+    l:
+      arity: 0
+      description: Long format
+`);
+    try {
+        const result = await loadCommandDescriptors(homeDir, projectDir);
+        const ls = result.get("ls") as ICommandDescriptor;
+        expect(ls).toBeDefined();
+        expect(ls.cmds).toBeUndefined();
+    }
+    finally {
+        rmSync(projectDir, { recursive: true, force: true });
+        rmSync(homeDir, { recursive: true, force: true });
+    }
+});
+
 // ---------------------------------------------------------------------------
 // resolvePositionalKind
 // ---------------------------------------------------------------------------

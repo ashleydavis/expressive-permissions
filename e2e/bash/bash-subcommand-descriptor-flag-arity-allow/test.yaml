@@ -1,0 +1,31 @@
+description: "bash: sub-command descriptor flag (arity 1) consumes next token; options.m matches rule"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "git commit -m 'my fix'"
+  cwd: "${PROJECT_DIR}"
+
+rules:
+  bash:
+    git:
+      commit:
+        options:
+          m: "my fix"
+        decide: allow
+
+project_dir_files:
+  commands/git.yaml:
+    git:
+      description: Git version control
+      flags: {}
+      cmds:
+        commit:
+          flags:
+            m|message:
+              arity: 1
+              kind: string
+              description: Commit message
+
+expected:
+  decision: allow

@@ -11,6 +11,28 @@ function makeDescriptors(cmd: string, arity1Flags: string[]): Map<string, IComma
     return new Map([[cmd, { description: cmd, positionals: [], flags }]]);
 }
 
+// makeDescriptorsWithCmds returns a descriptor map for a command that has top-level flags and
+// sub-command entries, each with their own flags.
+function makeDescriptorsWithCmds(
+    cmd: string,
+    topLevel1Flags: string[],
+    subCmds: Record<string, string[]>
+): Map<string, ICommandDescriptor> {
+    const topLevelFlags: Record<string, { arity: 0 | 1; kind: "string"; description: string }> = {};
+    for (const flagName of topLevel1Flags) {
+        topLevelFlags[flagName] = { arity: 1, kind: "string", description: "" };
+    }
+    const cmds: { [subCommand: string]: ICommandDescriptor } = {};
+    for (const [subCmdName, arity1Flags] of Object.entries(subCmds)) {
+        const subFlags: Record<string, { arity: 0 | 1; kind: "string"; description: string }> = {};
+        for (const flagName of arity1Flags) {
+            subFlags[flagName] = { arity: 1, kind: "string", description: "" };
+        }
+        cmds[subCmdName] = { description: subCmdName, positionals: [], flags: subFlags };
+    }
+    return new Map([[cmd, { description: cmd, positionals: [], flags: topLevelFlags, cmds }]]);
+}
+
 // Asserts the node is a Command with the given binary and returns it for further inspection.
 function expectCommand(node: BashAstNode, binary: string): ICommand {
     expect(node.type).toBe("command");
@@ -337,6 +359,40 @@ describe("parseBash", () => {
             const cmd = expectCommand(node, "$(echo hello | head -1)");
             expect(cmd.options).toEqual({});
             expect(cmd.cmd).toBe("arg");
+        });
+    });
+
+    describe("sub-command flag resolution", () => {
+        test("sub-command flag with arity 1 consumes next token when cmds is defined", () => {
+            const descriptors = makeDescriptorsWithCmds("git", [], { commit: ["m"] });
+            const node = parseBash("git commit -m 'fix bug'", descriptors);
+            const cmd = expectCommand(node, "git");
+            expect(cmd.options).toEqual({ m: "fix bug" });
+            expect(cmd.cmd).toBe("commit");
+        });
+
+        test("top-level flag still resolved when sub-command is present", () => {
+            const descriptors = makeDescriptorsWithCmds("git", ["C"], { commit: ["m"] });
+            const node = parseBash("git -C /some/path commit -m 'msg'", descriptors);
+            const cmd = expectCommand(node, "git");
+            expect(cmd.options).toEqual({ C: "/some/path", m: "msg" });
+            expect(cmd.cmd).toBe("commit");
+        });
+
+        test("unrecognised sub-command leaves flags defaulting to arity 0", () => {
+            const descriptors = makeDescriptorsWithCmds("git", [], { commit: ["m"] });
+            const node = parseBash("git status -m value", descriptors);
+            const cmd = expectCommand(node, "git");
+            expect(cmd.options).toEqual({ m: true });
+            expect(cmd.cmd).toEqual(["status", "value"]);
+        });
+
+        test("command with no cmds still parses flags from top-level descriptor", () => {
+            const descriptors = makeDescriptors("grep", ["m"]);
+            const node = parseBash("grep -m 5 pattern file.txt", descriptors);
+            const cmd = expectCommand(node, "grep");
+            expect(cmd.options).toEqual({ m: "5" });
+            expect(cmd.cmd).toEqual(["pattern", "file.txt"]);
         });
     });
 

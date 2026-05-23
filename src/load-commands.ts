@@ -32,6 +32,8 @@ interface IRawCommandDescriptor {
     positionals?: IRawPositionalDescriptor[];
     // Flag alias-group → descriptor map
     flags?: Record<string, IRawFlagDescriptor>;
+    // Optional sub-command entries keyed by sub-command name
+    cmds?: Record<string, IRawCommandDescriptor>;
 }
 
 // Raw YAML file: command name → raw descriptor
@@ -64,11 +66,19 @@ function normaliseCommandDescriptor(raw: IRawCommandDescriptor): ICommandDescrip
         }
     }
     const positionals: IPositionalDescriptor[] = (raw.positionals ?? []).map(normalisePositionalDescriptor);
-    return {
+    const result: ICommandDescriptor = {
         description: raw.description ?? "",
         positionals,
         flags,
     };
+    if (raw.cmds !== undefined) {
+        const cmds: { [subCommand: string]: ICommandDescriptor } = {};
+        for (const [subCommandName, rawSubCommand] of Object.entries(raw.cmds)) {
+            cmds[subCommandName] = normaliseCommandDescriptor(rawSubCommand);
+        }
+        result.cmds = cmds;
+    }
+    return result;
 }
 
 // Returns true when entryName is a non-dot YAML file (yml/yaml extension) and is a regular file.

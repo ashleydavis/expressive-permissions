@@ -1,0 +1,35 @@
+description: "bash: top-level arity-1 flag is skipped correctly when finding sub-command; sub-command flag then resolved"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "git -C /tmp/repo commit -m msg"
+  cwd: "${PROJECT_DIR}"
+
+rules:
+  bash:
+    git:
+      commit:
+        options:
+          m: "msg"
+        decide: allow
+
+project_dir_files:
+  commands/git.yaml:
+    git:
+      description: Git version control
+      flags:
+        C:
+          arity: 1
+          kind: path
+          description: Run as if git was started in this directory
+      cmds:
+        commit:
+          flags:
+            m|message:
+              arity: 1
+              kind: string
+              description: Commit message
+
+expected:
+  decision: allow

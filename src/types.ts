@@ -301,6 +301,7 @@ export interface IPositionalDescriptor {
 // source is a URL pointing to the official documentation for the command
 // positionals describes each positional slot in order; the last may be variadic
 // flags keys are pipe-separated alias groups, e.g. "r|recursive"
+// cmds maps sub-command names to their own descriptors (flags are merged with top-level on match)
 export interface ICommandDescriptor {
     // Human-readable summary of the command
     description: string;
@@ -310,6 +311,8 @@ export interface ICommandDescriptor {
     positionals: IPositionalDescriptor[];
     // Flag alias groups mapped to their descriptor; keys are pipe-separated, e.g. "f|file"
     flags: { [aliasGroup: string]: IFlagDescriptor };
+    // Optional sub-command descriptors; when a positional matches a key here, its flags are merged
+    cmds?: { [subCommand: string]: ICommandDescriptor };
 }
 
 // The raw stdin JSON payload sent by Claude Code's PostToolUse hook

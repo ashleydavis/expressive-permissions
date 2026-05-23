@@ -1,0 +1,29 @@
+description: "bash: unrecognised sub-command falls back to top-level descriptor; no rule matches, decision is ask"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "git status -m value"
+  cwd: "${PROJECT_DIR}"
+
+rules:
+  bash:
+    git:
+      commit:
+        decide: allow
+
+project_dir_files:
+  commands/git.yaml:
+    git:
+      description: Git version control
+      flags: {}
+      cmds:
+        commit:
+          flags:
+            m|message:
+              arity: 1
+              kind: string
+              description: Commit message
+
+expected:
+  decision: ask
