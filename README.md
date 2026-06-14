@@ -1,6 +1,6 @@
-# claude-permissions
+# expressive-permissions
 
-An expressive permissions system for Claude that actually works. Easily allow everything that's safe. Easily deny everything that's dangerous. Prompt the user for everything else.
+A robust, configurable, flexible and decidedly not annoying expressive permissions system for Claude. Easily allow everything that's safe. Easily deny everything that's dangerous. Prompt the user for everything else.
 
 This is a plugin for Claude Code to handle permissions. You delegate all of Claude's permission requests to this plugin and then it will decide, through rules you have laid down in yaml configuration files, whether to allow or deny any particular tool use or command invocation.
 
@@ -100,8 +100,8 @@ This plugin runs its hooks and MCP server with [Node.js](https://nodejs.org). No
 ## Installation
 
 ```
-/plugin marketplace add ashleydavis/claude-permissions
-/plugin install claude-permissions@codecapers
+/plugin marketplace add ashleydavis/expressive-permissions
+/plugin install expressive-permissions@codecapers
 /reload-plugins
 ```
 

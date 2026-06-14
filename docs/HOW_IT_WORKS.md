@@ -72,7 +72,7 @@ graph TD
   E["edit<br/>file_path: /home/u/myapp/.env<br/>old_string: KEY=old<br/>new_string: KEY=new"]
 ```
 
-Source files: [`src/parse-bash.ts`](../src/parse-bash.ts), [`src/build-ast.ts`](../src/build-ast.ts).
+Source files: [`src/parse-bash.ts`](https://github.com/ashleydavis/expressive-permissions/blob/main/src/parse-bash.ts), [`src/build-ast.ts`](https://github.com/ashleydavis/expressive-permissions/blob/main/src/build-ast.ts).
 
 ## 3. Walking the AST with an Environment
 

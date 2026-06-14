@@ -1,21 +1,21 @@
 {
     "name": "codecapers",
-    "description": "Marketplace for the claude-permissions plugin",
+    "description": "Marketplace for the expressive-permissions plugin",
     "owner": {
         "name": "Ashley Davis",
         "email": "ashley@codecapers.com.au"
     },
     "plugins": [
         {
-            "name": "claude-permissions",
+            "name": "expressive-permissions",
             "description": "Intercepts every tool call via PreToolUse and decides allow, deny, or ask based on configurable rules.",
             "source": "./plugin",
             "author": {
                 "name": "Ashley Davis",
                 "email": "ashley@codecapers.com.au"
             },
-            "homepage": "https://github.com/ashleydavis/claude-permissions",
-            "repository": "https://github.com/ashleydavis/claude-permissions",
+            "homepage": "https://github.com/ashleydavis/expressive-permissions",
+            "repository": "https://github.com/ashleydavis/expressive-permissions",
             "license": "MIT",
             "tags": ["permissions", "security", "hooks", "pretooluse", "bash"]
         }

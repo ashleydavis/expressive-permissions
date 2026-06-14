@@ -4,7 +4,7 @@ input:
   tool_name: Bash
   tool_input:
     command: "git status --short"
-  cwd: /home/blah/projects/claude-permissions
+  cwd: /home/blah/projects/expressive-permissions
 
 rules:
   bash:

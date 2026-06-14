@@ -1,8 +1,10 @@
-# claude-permissions
+# expressive-permissions
 
-A permissions plugin for Claude Code that intercepts every tool call and decides allow, deny, or ask based on rules you define in a YAML config file. All decisions are fully auditable — see the [audit log documentation](https://github.com/ashleydavis/claude-permissions/blob/main/docs/AUDIT-LOG.md).
+_A robust, configurable, flexible and decidedly not annoying expressive permissions system for Claude._
 
-For the full explanation of why this exists and how it works, see the [project README on GitHub](https://github.com/ashleydavis/claude-permissions).
+A permissions plugin for Claude Code that intercepts every tool call and decides allow, deny, or ask based on rules you define in a YAML config file. All decisions are fully auditable — see the [audit log documentation](https://github.com/ashleydavis/expressive-permissions/blob/main/docs/AUDIT-LOG.md).
+
+For the full explanation of why this exists and how it works, see the [project README on GitHub](https://github.com/ashleydavis/expressive-permissions).
 
 ## Prerequisites
 
@@ -11,8 +13,8 @@ This plugin runs its hooks and MCP server with [Node.js](https://nodejs.org). No
 ## Installation
 
 ```
-/plugin marketplace add ashleydavis/claude-permissions
-/plugin install claude-permissions@codecapers
+/plugin marketplace add ashleydavis/expressive-permissions
+/plugin install expressive-permissions@codecapers
 /reload-plugins
 ```
 
@@ -66,7 +68,7 @@ Then set Claude Code to allow all tools so the plugin is the sole decision-maker
 }
 ```
 
-See the [full configuration guide](https://github.com/ashleydavis/claude-permissions/blob/main/docs/CONFIGURATION.md) for the complete rule syntax.
+See the [full configuration guide](https://github.com/ashleydavis/expressive-permissions/blob/main/docs/CONFIGURATION.md) for the complete rule syntax.
 
 Run `/reload-plugins` after editing rules to pick up changes.
 
@@ -94,18 +96,18 @@ Three tools help when a rule is not behaving as expected:
 - **Permission REPL** -- interactive terminal session for testing commands against your rules (`bun run repl`). Only available if you have cloned the repository.
 - **Permission Analyzer MCP** -- ask Claude to analyze a command: "Use analyze_permission to check why `git push --force` is denied." Claude calls the tool and explains the trace.
 
-See the [full troubleshooting guide](https://github.com/ashleydavis/claude-permissions/blob/main/docs/TROUBLESHOOTING.md) for setup and usage of all three tools.
+See the [full troubleshooting guide](https://github.com/ashleydavis/expressive-permissions/blob/main/docs/TROUBLESHOOTING.md) for setup and usage of all three tools.
 
 ## Full documentation
 
-- [Permissions quick reference](https://github.com/ashleydavis/claude-permissions/blob/main/docs/PERMISSIONS-QUICKREF.md)
-- [Rule syntax reference](https://github.com/ashleydavis/claude-permissions/blob/main/docs/CONFIGURATION.md)
-- [How it works](https://github.com/ashleydavis/claude-permissions/blob/main/docs/HOW_IT_WORKS.md)
-- [Protecting production](https://github.com/ashleydavis/claude-permissions/blob/main/docs/PROTECTING-PRODUCTION.md)
-- [Development guide](https://github.com/ashleydavis/claude-permissions/blob/main/docs/DEVELOPMENT.md)
-- [Permission REPL](https://github.com/ashleydavis/claude-permissions/blob/main/docs/REPL.md)
-- [MCP server](https://github.com/ashleydavis/claude-permissions/blob/main/docs/MCP-SERVER.md)
+- [Permissions quick reference](https://github.com/ashleydavis/expressive-permissions/blob/main/docs/PERMISSIONS-QUICKREF.md)
+- [Rule syntax reference](https://github.com/ashleydavis/expressive-permissions/blob/main/docs/CONFIGURATION.md)
+- [How it works](https://github.com/ashleydavis/expressive-permissions/blob/main/docs/HOW_IT_WORKS.md)
+- [Protecting production](https://github.com/ashleydavis/expressive-permissions/blob/main/docs/PROTECTING-PRODUCTION.md)
+- [Development guide](https://github.com/ashleydavis/expressive-permissions/blob/main/docs/DEVELOPMENT.md)
+- [Permission REPL](https://github.com/ashleydavis/expressive-permissions/blob/main/docs/REPL.md)
+- [MCP server](https://github.com/ashleydavis/expressive-permissions/blob/main/docs/MCP-SERVER.md)
 
 ## License
 
-MIT. See [LICENSE](https://github.com/ashleydavis/claude-permissions/blob/main/LICENSE).
+MIT. See [LICENSE](https://github.com/ashleydavis/expressive-permissions/blob/main/LICENSE).

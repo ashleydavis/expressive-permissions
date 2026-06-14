@@ -25198,7 +25198,7 @@ async function runMcpServer() {
       tools: [
         {
           name: "analyze_permission",
-          description: "Analyze why a bash command, file operation, or tool call would be allowed, denied, or asked by the claude-permissions system. Returns the final decision, optional reason, and a trace of which rules matched. Call this when the user asks why a command is being blocked, approved, or prompted, or wants to understand the permissions behavior for a specific command. Prefix the command with 'Read ', 'Write ', 'Edit ', 'WebFetch ', or 'Tool ' to analyze non-bash tool calls.",
+          description: "Analyze why a bash command, file operation, or tool call would be allowed, denied, or asked by the expressive-permissions system. Returns the final decision, optional reason, and a trace of which rules matched. Call this when the user asks why a command is being blocked, approved, or prompted, or wants to understand the permissions behavior for a specific command. Prefix the command with 'Read ', 'Write ', 'Edit ', 'WebFetch ', or 'Tool ' to analyze non-bash tool calls.",
           inputSchema: {
             type: "object",
             properties: {

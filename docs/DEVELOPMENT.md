@@ -21,8 +21,8 @@ For contributors and anyone who wants to write TypeScript rules, run tests, or p
 
 ```bash
 cd ~
-git clone https://github.com/ashleydavis/claude-permissions
-cd claude-permissions
+git clone https://github.com/ashleydavis/expressive-permissions
+cd expressive-permissions
 bun install
 bun run bundle        # bundle plugin/dist/pre-hook.js and plugin/dist/post-hook.js
 ```
@@ -38,7 +38,7 @@ claude --plugin-dir ./plugin
 Or from any other project directory:
 
 ```bash
-claude --plugin-dir ~/claude-permissions/plugin
+claude --plugin-dir ~/expressive-permissions/plugin
 ```
 
 Note: `--plugin-dir` is a CLI flag and does not apply to Claude Code running inside IDE extensions (VS Code, JetBrains). Use the global hook approach below if you need the plugin active in those environments.
@@ -56,7 +56,7 @@ Add the hook directly to `~/.claude/settings.json`. This is equivalent to what t
         "hooks": [
           {
             "type": "command",
-            "command": "bun ~/claude-permissions/src/pre-hook.ts"
+            "command": "bun ~/expressive-permissions/src/pre-hook.ts"
           }
         ]
       }
@@ -67,7 +67,7 @@ Add the hook directly to `~/.claude/settings.json`. This is equivalent to what t
         "hooks": [
           {
             "type": "command",
-            "command": "bun ~/claude-permissions/src/post-hook.ts"
+            "command": "bun ~/expressive-permissions/src/post-hook.ts"
           }
         ]
       }
@@ -142,7 +142,7 @@ To confirm the plugin itself loaded without errors, check the Claude startup out
 /plugins
 ```
 
-This lists all active plugins. `claude-permissions` should appear in the list.
+This lists all active plugins. `expressive-permissions` should appear in the list.
 
 If the hook is silently not firing, the most common causes are:
 
@@ -311,8 +311,8 @@ Commit all three dist files so users installing from a path or the marketplace d
 The plugin is distributed via the Claude Code marketplace system. The repo root contains `.claude-plugin/marketplace.json` which lists the plugin at `./plugin`. Users install it with:
 
 ```
-/plugin marketplace add ashleydavis/claude-permissions
-/plugin install claude-permissions
+/plugin marketplace add ashleydavis/expressive-permissions
+/plugin install expressive-permissions
 ```
 
 Before tagging a release, bundle all three dist files so the committed files are up to date:
