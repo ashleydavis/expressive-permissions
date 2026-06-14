@@ -18,7 +18,7 @@ run_test() {
     local expected_exit="$3"
 
     printf 'Test: %s ... ' "$description"
-    printf '%s' "$input" | bun "$HOOK_JS" > /tmp/hook-smoke-out.txt 2>/tmp/hook-smoke-err.txt
+    printf '%s' "$input" | node "$HOOK_JS" > /tmp/hook-smoke-out.txt 2>/tmp/hook-smoke-err.txt
     local actual_exit=$?
 
     if [ "$actual_exit" -eq "$expected_exit" ]; then
@@ -39,7 +39,7 @@ run_test_output() {
 
     printf 'Test: %s ... ' "$description"
     local output
-    output=$(printf '%s' "$input" | bun "$HOOK_JS" 2>/tmp/hook-smoke-err.txt)
+    output=$(printf '%s' "$input" | node "$HOOK_JS" 2>/tmp/hook-smoke-err.txt)
     local actual_exit=$?
 
     if [ "$actual_exit" -ne 0 ]; then
@@ -50,7 +50,7 @@ run_test_output() {
     fi
 
     local actual_value
-    actual_value=$(printf '%s' "$output" | bun -e "const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')); process.stdout.write(String(d.$expected_key))" 2>/dev/null)
+    actual_value=$(printf '%s' "$output" | node -e "const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')); process.stdout.write(String(d.$expected_key))" 2>/dev/null)
 
     if [ "$actual_value" = "$expected_value" ]; then
         echo "PASS"

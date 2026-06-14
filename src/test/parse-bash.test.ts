@@ -118,9 +118,9 @@ describe("parseBash", () => {
         });
 
         test("git -C consumes following path as its value, not as positional", () => {
-            const node = parseBash("git -C /home/ash/tickets/arcktl-versions-6690/arkctl status -sb", makeDescriptors("git", ["C"]));
+            const node = parseBash("git -C /home/user/tickets/example-project/myapp status -sb", makeDescriptors("git", ["C"]));
             const cmd = expectCommand(node, "git");
-            expect(cmd.options).toEqual({ C: "/home/ash/tickets/arcktl-versions-6690/arkctl", s: true, b: true });
+            expect(cmd.options).toEqual({ C: "/home/user/tickets/example-project/myapp", s: true, b: true });
             expect(cmd.cmd).toBe("status");
         });
 

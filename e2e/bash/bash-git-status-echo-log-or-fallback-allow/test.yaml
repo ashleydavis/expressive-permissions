@@ -3,8 +3,8 @@ description: "bash: git status && echo && git log with stderr redirect and || fa
 input:
   tool_name: Bash
   tool_input:
-    command: 'git -C /home/ash/tickets/arcktl-versions-6690/arkctl status -sb && echo "---" && git -C /home/ash/tickets/arcktl-versions-6690/arkctl log --oneline origin/main..HEAD 2>/dev/null || git -C /home/ash/tickets/arcktl-versions-6690/arkctl log --oneline -10'
-  cwd: /home/ash/tickets/arcktl-versions-6690/arkctl
+    command: 'git -C /home/user/tickets/example-project/myapp status -sb && echo "---" && git -C /home/user/tickets/example-project/myapp log --oneline origin/main..HEAD 2>/dev/null || git -C /home/user/tickets/example-project/myapp log --oneline -10'
+  cwd: /home/user/tickets/example-project/myapp
 
 project_dir_files:
   commands/git.yaml:

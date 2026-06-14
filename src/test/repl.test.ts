@@ -25,10 +25,10 @@ test("parseReplCommand recognises :q alias for quit", () => {
 });
 
 test("parseReplCommand recognises :cwd with a path", () => {
-    const command = parseReplCommand(":cwd /home/ash/project");
+    const command = parseReplCommand(":cwd /home/user/project");
     expect(command.kind).toBe("set-cwd");
     if (command.kind === "set-cwd") {
-        expect(command.path).toBe("/home/ash/project");
+        expect(command.path).toBe("/home/user/project");
     }
 });
 
@@ -41,18 +41,18 @@ test("parseReplCommand trims surrounding whitespace from :cwd path", () => {
 });
 
 test("parseReplCommand recognises :project with a path", () => {
-    const command = parseReplCommand(":project /home/ash/tickets/prod-cfg-7643");
+    const command = parseReplCommand(":project /home/user/tickets/example-config");
     expect(command.kind).toBe("set-project");
     if (command.kind === "set-project") {
-        expect(command.path).toBe("/home/ash/tickets/prod-cfg-7643");
+        expect(command.path).toBe("/home/user/tickets/example-config");
     }
 });
 
 test("parseReplCommand recognises :proj as alias for :project", () => {
-    const command = parseReplCommand(":proj /home/ash/projects/foo");
+    const command = parseReplCommand(":proj /home/user/projects/foo");
     expect(command.kind).toBe("set-project");
     if (command.kind === "set-project") {
-        expect(command.path).toBe("/home/ash/projects/foo");
+        expect(command.path).toBe("/home/user/projects/foo");
     }
 });
 

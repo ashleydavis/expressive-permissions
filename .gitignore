@@ -1,5 +1,8 @@
 node_modules/
-plugin/dist/
+plugin/dist/*
+!plugin/dist/pre-hook.js
+!plugin/dist/post-hook.js
+!plugin/dist/mcp-server.js
 *.log
 .DS_Store
 .env*

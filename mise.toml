@@ -1,0 +1,5 @@
+[tools]
+# Node.js is the runtime the compiled plugin requires (hooks and MCP server run under node).
+node = "22.21.1"
+# Bun is the build and test tool: it bundles the TypeScript sources and runs the dev tooling.
+bun = "1.3.14"

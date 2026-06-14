@@ -4406,33 +4406,33 @@ test("expandEnvTokens: ${{PROJECT_DIR}}/foo with projectDir /proj → /proj/foo"
     expect(entry.cmd).toBe("/proj/foo");
 });
 
-test("expandEnvTokens: ${{HOME}}/.config with homeDir /home/ash → /home/ash/.config", () => {
+test("expandEnvTokens: ${{HOME}}/.config with homeDir /home/user → /home/user/.config", () => {
     const entry: IYamlEntry = { cwd: "${{HOME}}/.config", decide: "allow" };
-    expandEntry(entry, undefined, "/home/ash");
-    expect(entry.cwd).toBe("/home/ash/.config");
+    expandEntry(entry, undefined, "/home/user");
+    expect(entry.cwd).toBe("/home/user/.config");
 });
 
 test("expandEnvTokens: both tokens in same string expand both", () => {
     const entry: IYamlEntry = { cmd: "${{PROJECT_DIR}}/${{HOME}}", decide: "allow" };
-    expandEntry(entry, "/proj", "/home/ash");
-    expect(entry.cmd).toBe("/proj//home/ash");
+    expandEntry(entry, "/proj", "/home/user");
+    expect(entry.cmd).toBe("/proj//home/user");
 });
 
 test("expandEnvTokens: string with no tokens returned unchanged", () => {
     const entry: IYamlEntry = { cmd: "foo-*", decide: "allow" };
-    expandEntry(entry, "/proj", "/home/ash");
+    expandEntry(entry, "/proj", "/home/user");
     expect(entry.cmd).toBe("foo-*");
 });
 
 test("expandEnvTokens: regex pattern /.../  returned unchanged", () => {
     const entry: IYamlEntry = { cmd: "/^foo.*/", decide: "allow" };
-    expandEntry(entry, "/proj", "/home/ash");
+    expandEntry(entry, "/proj", "/home/user");
     expect(entry.cmd).toBe("/^foo.*/");
 });
 
 test("expandEnvTokens: unresolved ${{PROJECT_DIR}} left in place and warning recorded", () => {
     const entry: IYamlEntry = { cmd: "${{PROJECT_DIR}}/x", decide: "allow" };
-    const warnings = expandEntry(entry, undefined, "/home/ash");
+    const warnings = expandEntry(entry, undefined, "/home/user");
     expect(entry.cmd).toBe("${{PROJECT_DIR}}/x");
     const warningValues = Array.from(warnings);
     expect(warningValues.some((warningValue) => warningValue.includes("PROJECT_DIR"))).toBe(true);
@@ -4448,8 +4448,8 @@ test("expandEntryEnvTokens: cmd (string) rewritten", () => {
 
 test("expandEntryEnvTokens: cmd (array) each element rewritten", () => {
     const entry: IYamlEntry = { cmd: ["${{PROJECT_DIR}}/a", "${{HOME}}/b"], decide: "allow" };
-    expandEntry(entry, "/proj", "/home/ash");
-    expect(entry.cmd).toEqual(["/proj/a", "/home/ash/b"]);
+    expandEntry(entry, "/proj", "/home/user");
+    expect(entry.cmd).toEqual(["/proj/a", "/home/user/b"]);
 });
 
 test("expandEntryEnvTokens: cmd-in elements rewritten", () => {
@@ -4466,8 +4466,8 @@ test("expandEntryEnvTokens: cwd rewritten", () => {
 
 test("expandEntryEnvTokens: cwd-in elements rewritten", () => {
     const entry: IYamlEntry = { "cwd-in": ["${{HOME}}/**"], decide: "allow" };
-    expandEntry(entry, undefined, "/home/ash");
-    expect(entry["cwd-in"]).toEqual(["/home/ash/**"]);
+    expandEntry(entry, undefined, "/home/user");
+    expect(entry["cwd-in"]).toEqual(["/home/user/**"]);
 });
 
 test("expandEntryEnvTokens: path rewritten", () => {
@@ -4478,8 +4478,8 @@ test("expandEntryEnvTokens: path rewritten", () => {
 
 test("expandEntryEnvTokens: path-in elements rewritten", () => {
     const entry: IYamlEntry = { "path-in": ["${{PROJECT_DIR}}/a", "${{HOME}}/b"], decide: "allow" };
-    expandEntry(entry, "/proj", "/home/ash");
-    expect(entry["path-in"]).toEqual(["/proj/a", "/home/ash/b"]);
+    expandEntry(entry, "/proj", "/home/user");
+    expect(entry["path-in"]).toEqual(["/proj/a", "/home/user/b"]);
 });
 
 test("expandEntryEnvTokens: env map values rewritten", () => {
@@ -4503,8 +4503,8 @@ test("expandEntryEnvTokens: not.cmd rewritten", () => {
 
 test("expandEntryEnvTokens: not.cmd-in elements rewritten", () => {
     const entry: IYamlEntry = { not: { "cmd-in": ["${{HOME}}/**"] }, decide: "allow" };
-    expandEntry(entry, undefined, "/home/ash");
-    expect(entry.not!["cmd-in"]).toEqual(["/home/ash/**"]);
+    expandEntry(entry, undefined, "/home/user");
+    expect(entry.not!["cmd-in"]).toEqual(["/home/user/**"]);
 });
 
 test("expandEntryEnvTokens: not.cwd rewritten", () => {
@@ -4515,8 +4515,8 @@ test("expandEntryEnvTokens: not.cwd rewritten", () => {
 
 test("expandEntryEnvTokens: not.cwd-in elements rewritten", () => {
     const entry: IYamlEntry = { not: { "cwd-in": ["${{HOME}}/**"] }, decide: "allow" };
-    expandEntry(entry, undefined, "/home/ash");
-    expect(entry.not!["cwd-in"]).toEqual(["/home/ash/**"]);
+    expandEntry(entry, undefined, "/home/user");
+    expect(entry.not!["cwd-in"]).toEqual(["/home/user/**"]);
 });
 
 test("expandEntryEnvTokens: not.path rewritten", () => {
@@ -4533,8 +4533,8 @@ test("expandEntryEnvTokens: not.env map values rewritten", () => {
 
 test("expandEntryEnvTokens: not.file map keys rewritten", () => {
     const entry: IYamlEntry = { not: { file: { "${{HOME}}/.config": true } }, decide: "allow" };
-    expandEntry(entry, undefined, "/home/ash");
-    expect(Object.keys(entry.not!.file!)).toEqual(["/home/ash/.config"]);
+    expandEntry(entry, undefined, "/home/user");
+    expect(Object.keys(entry.not!.file!)).toEqual(["/home/user/.config"]);
 });
 
 test("expandEntryEnvTokens: env map with non-string values (e.g. sourceLine number) passes through unchanged", () => {
@@ -4578,7 +4578,7 @@ test("expandEntryEnvTokens: reason, decide, host, tool fields are not rewritten"
         host: "${{HOME}}.example.com",
         tool: "${{PROJECT_DIR}}-tool",
     };
-    expandEntry(entry, "/proj", "/home/ash");
+    expandEntry(entry, "/proj", "/home/user");
     expect(entry.reason).toBe("${{PROJECT_DIR}} note");
     expect(entry.decide).toBe("allow");
     expect(entry.host).toBe("${{HOME}}.example.com");
@@ -4589,7 +4589,7 @@ test("expandEntryEnvTokens: reason, decide, host, tool fields are not rewritten"
 
 test("expandConfigEnvTokens: empty config is a no-op", () => {
     const config: IYamlConfig = {};
-    expandConfigEnvTokens(config, "/proj", "/home/ash", "test.yaml");
+    expandConfigEnvTokens(config, "/proj", "/home/user", "test.yaml");
     expect(config).toEqual({});
 });
 
@@ -4597,7 +4597,7 @@ test("expandConfigEnvTokens: rewrites bash section", () => {
     const config: IYamlConfig = {
         bash: { find: { cmd: "${{PROJECT_DIR}}/**", decide: "allow" } },
     };
-    expandConfigEnvTokens(config, "/proj", "/home/ash", "test.yaml");
+    expandConfigEnvTokens(config, "/proj", "/home/user", "test.yaml");
     expect(config.bash!.find).toMatchObject({ cmd: "/proj/**" });
 });
 
@@ -4609,15 +4609,15 @@ test("expandConfigEnvTokens: rewrites read, write, edit, multi_edit, webfetch se
         multi_edit: { cwd: "${{HOME}}/**", decide: "allow" },
         webfetch: { cwd: "${{PROJECT_DIR}}/**", decide: "allow" },
     };
-    expandConfigEnvTokens(config, "/proj", "/home/ash", "test.yaml");
+    expandConfigEnvTokens(config, "/proj", "/home/user", "test.yaml");
     const readEntry = config.read as IYamlEntry;
     expect(readEntry.path).toBe("/proj/src/*");
     const writeEntry = config.write as IYamlEntry;
-    expect(writeEntry.path).toBe("/home/ash/data/*");
+    expect(writeEntry.path).toBe("/home/user/data/*");
     const editEntry = config.edit as IYamlEntry;
     expect(editEntry.cwd).toBe("/proj/**");
     const multiEditEntry = config.multi_edit as IYamlEntry;
-    expect(multiEditEntry.cwd).toBe("/home/ash/**");
+    expect(multiEditEntry.cwd).toBe("/home/user/**");
     const webfetchEntry = config.webfetch as IYamlEntry;
     expect(webfetchEntry.cwd).toBe("/proj/**");
 });
@@ -4626,7 +4626,7 @@ test("expandConfigEnvTokens: rewrites top-level tool-name keys", () => {
     const toolEntry: IYamlEntry = { cwd: "${{PROJECT_DIR}}/**", decide: "allow" };
     const config: IYamlConfig = {};
     (config as Record<string, IYamlEntry>)["MyTool"] = toolEntry;
-    expandConfigEnvTokens(config, "/proj", "/home/ash", "test.yaml");
+    expandConfigEnvTokens(config, "/proj", "/home/user", "test.yaml");
     expect(toolEntry.cwd).toBe("/proj/**");
 });
 

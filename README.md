@@ -1,6 +1,6 @@
 # claude-permissions
 
-A expressive permissions system for Claude that actually works. Easily allow everything that's safe. Easily deny everything that's dangerous. Prompt the user for everything else.
+An expressive permissions system for Claude that actually works. Easily allow everything that's safe. Easily deny everything that's dangerous. Prompt the user for everything else.
 
 This is a plugin for Claude Code to handle permissions. You delegate all of Claude's permission requests to this plugin and then it will decide, through rules you have laid down in yaml configuration files, whether to allow or deny any particular tool use or command invocation.
 
@@ -19,8 +19,6 @@ This gives you permissions that work, even when:
     - [Argument matching across flags and aliases](#argument-matching-across-flags-and-aliases)
     - [Environment variables and working directory are tracked](#environment-variables-and-working-directory-are-tracked)
 - [Installation](#installation)
-    - [Stable release](#stable-release)
-    - [Pre-release / testing (pin to `dev` branch)](#pre-release--testing-pin-to-dev-branch)
 - [Verifying the plugin](#verifying-the-plugin)
 - [Configuration](#configuration)
     - [Global configuration (applies to every project)](#global-configuration-applies-to-every-project)
@@ -95,26 +93,35 @@ In a pipeline like `cd /restricted && SECRET=1 some-tool --flag`, the working di
 
 This plugin simulates `cd` and environment-variable assignments as it walks the AST, so every command node in the pipeline is evaluated with the cwd and env vars it would actually have at runtime. A rule that checks `cwd` or a specific env var will see the right values no matter where in the pipeline the command appears.
 
-## Installation
+## Prerequisites
 
-### Stable release
+This plugin runs its hooks and MCP server with [Node.js](https://nodejs.org). Node.js must be installed and on your `PATH` before you install the plugin. If Node.js is missing, the plugin's hooks fail and tool calls are not intercepted. (Bun is only needed if you want to build the plugin from source; see the [development guide](docs/DEVELOPMENT.md).)
+
+## Installation
 
 ```
 /plugin marketplace add ashleydavis/claude-permissions
-/plugin install claude-permissions@claude-permissions
+/plugin install claude-permissions@codecapers
+/reload-plugins
 ```
 
-### Pre-release / testing (pin to `dev` branch)
-
-```
-/plugin marketplace add https://github.com/ashleydavis/claude-permissions.git#dev
-/plugin install claude-permissions@claude-permissions
-/plugin marketplace update ash-tools   # pull latest dev commits
-```
+After installing, confirm the plugin is intercepting tool calls (see [Verifying the plugin](#verifying-the-plugin)).
 
 ## Verifying the plugin
 
-To confirm the plugin is active and intercepting tool calls, ask Claude to run a command that has no matching rule. For example, ask it to run `echo hello`. With no rule covering `echo`, the plugin defaults to `ask` and you should see a confirmation prompt. If the command runs silently without any prompt, the plugin is not intercepting calls.
+The plugin writes an audit log every time its hook runs, so the log is the most reliable proof that it is active:
+
+1. In Claude, ask it to run `echo hello`.
+2. In a terminal, check the log directory:
+
+```
+ls <project>/.claude/permissions-log/
+cat <project>/.claude/permissions-log/*
+```
+
+`<project>` is the directory where you launched Claude. Fresh entries in the log mean the plugin is intercepting tool calls. If the directory is missing, the plugin is not active.
+
+Once verified, you can safely set Claude Code itself to allow all tools (see [Configuration](#configuration)). The plugin then handles every permission decision, defaulting to `ask` for any command you have not explicitly allowed or denied.
 
 ## Configuration
 
@@ -132,6 +139,7 @@ Add the following to your settings to allow all tools. This causes the plugin's 
       "Read",
       "Write",
       "Edit",
+      "MultiEdit",
       "Glob",
       "Grep",
       "WebFetch",
@@ -226,4 +234,4 @@ See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for the full guide.
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).

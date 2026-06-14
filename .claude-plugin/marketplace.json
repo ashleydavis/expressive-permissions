@@ -1,5 +1,5 @@
 {
-    "name": "claude-permissions",
+    "name": "codecapers",
     "description": "Marketplace for the claude-permissions plugin",
     "owner": {
         "name": "Ashley Davis",
@@ -15,7 +15,9 @@
                 "email": "ashley@codecapers.com.au"
             },
             "homepage": "https://github.com/ashleydavis/claude-permissions",
-            "repository": "https://github.com/ashleydavis/claude-permissions"
+            "repository": "https://github.com/ashleydavis/claude-permissions",
+            "license": "MIT",
+            "tags": ["permissions", "security", "hooks", "pretooluse", "bash"]
         }
     ]
 }

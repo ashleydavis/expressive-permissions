@@ -4,28 +4,38 @@ A permissions plugin for Claude Code that intercepts every tool call and decides
 
 For the full explanation of why this exists and how it works, see the [project README on GitHub](https://github.com/ashleydavis/claude-permissions).
 
+## Prerequisites
+
+This plugin runs its hooks and MCP server with [Node.js](https://nodejs.org). Node.js must be installed and on your `PATH` before installing, otherwise the plugin's hooks fail and tool calls are not intercepted.
+
 ## Installation
 
 ```
 /plugin marketplace add ashleydavis/claude-permissions
-/plugin install claude-permissions@claude-permissions
+/plugin install claude-permissions@codecapers
+/reload-plugins
 ```
+
+After installing, confirm the plugin is intercepting tool calls (see [Verifying the plugin](#verifying-the-plugin) below).
 
 ## Configuration
 
-Place your rules in `.claude/permissions.yaml` at your project root (or `~/.claude/permissions.yaml` for global rules):
+Place your rules in `.claude/permissions.yaml` at your project root (or `~/.claude/permissions.yaml` for global rules).
+
+Each rule sits under a top-level tool key (`bash`, `Read`, `Write`, `WebFetch`, and so on), is optionally nested by command and subcommand, and sets `decide: allow`, `deny`, or `ask`, with an optional `reason`. Any tool call that matches no rule defaults to `ask`.
 
 ```yaml
 bash:
   git:
     status:
-      decide: allow
-
+      decide: allow          # allow `git status` with no prompt
+    add:
+      decide: ask            # ask before `git add`
   rm:
     options:
       - r|recursive
       - f|force
-    decide: deny
+    decide: deny             # deny `rm -rf` in any form
     reason: rm -rf in any format is not allowed
 ```
 
@@ -40,20 +50,41 @@ Then set Claude Code to allow all tools so the plugin is the sole decision-maker
       "Write",
       "Edit",
       "MultiEdit",
+      "Glob",
+      "Grep",
       "WebFetch",
+      "WebSearch",
+      "TodoWrite",
+      "Agent",
+      "NotebookEdit",
+      "ExitPlanMode",
+      "BashOutput",
+      "KillShell",
       "mcp__*"
     ]
   }
 }
 ```
 
-See the [full documentation](https://github.com/ashleydavis/claude-permissions#configuration) for more details.
+See the [full configuration guide](https://github.com/ashleydavis/claude-permissions/blob/main/docs/CONFIGURATION.md) for the complete rule syntax.
 
 Run `/reload-plugins` after editing rules to pick up changes.
 
 ## Verifying the plugin
 
-Ask Claude to run a command with no matching rule (e.g. `echo hello`). You should see a confirmation prompt. If the command runs silently, the plugin is not active.
+The plugin writes an audit log every time its hook runs:
+
+1. In Claude, ask it to run `echo hello`.
+2. In a terminal, check the log directory:
+
+```
+ls <project>/.claude/permissions-log/
+cat <project>/.claude/permissions-log/*
+```
+
+`<project>` is the directory where you launched Claude. Fresh entries mean the plugin is intercepting tool calls. If the directory is missing, the plugin is not active.
+
+Once verified, you can safely set Claude Code itself to allow all tools (see [Configuration](#configuration) above). The plugin then handles every permission decision, defaulting to `ask` for any command you have not explicitly allowed or denied.
 
 ## Troubleshooting rules
 
@@ -74,3 +105,7 @@ See the [full troubleshooting guide](https://github.com/ashleydavis/claude-permi
 - [Development guide](https://github.com/ashleydavis/claude-permissions/blob/main/docs/DEVELOPMENT.md)
 - [Permission REPL](https://github.com/ashleydavis/claude-permissions/blob/main/docs/REPL.md)
 - [MCP server](https://github.com/ashleydavis/claude-permissions/blob/main/docs/MCP-SERVER.md)
+
+## License
+
+MIT. See [LICENSE](https://github.com/ashleydavis/claude-permissions/blob/main/LICENSE).

@@ -1,11 +1,12 @@
 {
     "name": "claude-permissions",
-    "version": "1.0.0",
+    "version": "0.0.1",
     "type": "module",
+    "license": "MIT",
     "scripts": {
-        "bundle:pre": "bun build src/pre-hook.ts --outfile plugin/dist/pre-hook.js --target bun",
-        "bundle:post": "bun build src/post-hook.ts --outfile plugin/dist/post-hook.js --target bun",
-        "bundle:mcp": "bun build src/mcp-server.ts --outfile plugin/dist/mcp-server.js --target bun",
+        "bundle:pre": "bun build src/pre-hook.ts --outfile plugin/dist/pre-hook.js --target node",
+        "bundle:post": "bun build src/post-hook.ts --outfile plugin/dist/post-hook.js --target node",
+        "bundle:mcp": "bun build src/mcp-server.ts --outfile plugin/dist/mcp-server.js --target node",
         "bundle": "bun run bundle:pre && bun run bundle:post && bun run bundle:mcp",
         "b": "bun run bundle",
         "repl": "bun run src/repl.ts",
@@ -18,9 +19,10 @@
         "tw": "bun run test:watch",
         "smoke": "bash scripts/smoke-tests.sh",
         "smoke:repl": "bash scripts/repl-smoke-tests.sh",
-        "test:all": "bun run test && bash scripts/smoke-tests-bash-parser.sh && bash scripts/hook-smoke-tests.sh && bash scripts/smoke-tests.sh && bash scripts/repl-smoke-tests.sh",
+        "validate": "claude plugin validate ./plugin && claude plugin validate .",
+        "test:all": "bun run validate && bun run test && bash scripts/smoke-tests-bash-parser.sh && bash scripts/hook-smoke-tests.sh && bash scripts/smoke-tests.sh && bash scripts/repl-smoke-tests.sh",
         "ta": "bun run test:all",
-        "dev": "claude --plugin-dir /home/ash/projects/claude-permissions/plugin",
+        "dev": "claude --plugin-dir ./plugin",
         "d": "bun run dev"
     },
     "dependencies": {
