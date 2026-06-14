@@ -1,7 +1,8 @@
-import { mkdtempSync, readFileSync, rmSync, mkdirSync } from "fs";
+import { mkdtempSync, readFileSync, rmSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import {
+    ensureLogDirIgnored,
     resolveLogBaseDir,
     resolveJsonLogPath,
     resolveTextLogPath,
@@ -36,6 +37,27 @@ function makeTmpDir(): string {
 test("resolveLogBaseDir returns path with .claude/permissions-log suffix", () => {
     const result = resolveLogBaseDir("/home/user/project");
     expect(result).toBe("/home/user/project/.claude/permissions-log");
+});
+
+test("ensureLogDirIgnored creates a self-ignoring .gitignore in a new directory", async () => {
+    const tmpDir = makeTmpDir();
+    const baseDir = join(tmpDir, "permissions-log");
+    await ensureLogDirIgnored(baseDir);
+    const contents = readFileSync(join(baseDir, ".gitignore"), "utf-8");
+    expect(contents).toBe("*\n!.gitignore\n");
+    rmSync(tmpDir, { recursive: true, force: true });
+});
+
+test("ensureLogDirIgnored does not overwrite an existing .gitignore", async () => {
+    const tmpDir = makeTmpDir();
+    const baseDir = join(tmpDir, "permissions-log");
+    mkdirSync(baseDir, { recursive: true });
+    const gitignorePath = join(baseDir, ".gitignore");
+    writeFileSync(gitignorePath, "custom contents\n");
+    await ensureLogDirIgnored(baseDir);
+    const contents = readFileSync(gitignorePath, "utf-8");
+    expect(contents).toBe("custom contents\n");
+    rmSync(tmpDir, { recursive: true, force: true });
 });
 
 test("resolveJsonLogPath returns correct YYYY-MM/DD/HH.json path for a known date", () => {

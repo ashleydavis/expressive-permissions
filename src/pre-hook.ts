@@ -1,5 +1,5 @@
 import { decide } from "./interpret";
-import { createLogger } from "./audit-log";
+import { createLogger, ensureLogDirIgnored, resolveLogBaseDir } from "./audit-log";
 import { IToolCall } from "./types";
 // Debug log file production disabled. Restore to re-enable the debug log.
 // import { resolveDebugLogPath, appendDebugBlock, logDebugError, IDebugField } from "./debug-log";
@@ -44,6 +44,7 @@ export async function runHook(): Promise<void> {
         //     { key: "process.env", value: process.env },
         // ]);
         const logger = createLogger(projectDir, new Date());
+        await ensureLogDirIgnored(resolveLogBaseDir(projectDir));
         const layers: IRuleLayer[] = [
             new RuleLayer(builtinRules),
             new FileLayer(loadHomeConfigRules, "~/.claude/permissions.yaml", logger),

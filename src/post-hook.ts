@@ -1,4 +1,4 @@
-import { createLogger } from "./audit-log";
+import { createLogger, ensureLogDirIgnored, resolveLogBaseDir } from "./audit-log";
 import { IPostToolUseCall } from "./types";
 import { toLocalISOString } from "./audit-log";
 // Debug log file production disabled. Restore to re-enable the debug log.
@@ -31,6 +31,7 @@ export async function runPostHook(): Promise<void> {
         //     { key: "process.env", value: process.env },
         // ]);
         const logger = createLogger(projectDir, new Date());
+        await ensureLogDirIgnored(resolveLogBaseDir(projectDir));
         const isError = typeof call.tool_response["isError"] === "boolean"
             ? call.tool_response["isError"] as boolean
             : false;

@@ -1,4 +1,5 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "fs";
+import { access, mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 
 // Base interface shared by all audit log entry types.
@@ -132,6 +133,30 @@ export function toLocalISOString(date: Date): string {
 // resolveLogBaseDir returns the absolute path to the log directory for a given project root.
 export function resolveLogBaseDir(projectDir: string): string {
     return join(projectDir, ".claude", "permissions-log");
+}
+
+// logDirGitignoreContents is the body written into the log directory's .gitignore. It ignores
+// every file in the directory except the .gitignore itself, so the directory's contents stay
+// out of version control in any repo that contains it while the .gitignore remains tracked
+// (and therefore present on clone).
+const logDirGitignoreContents = "*\n!.gitignore\n";
+
+// ensureLogDirIgnored writes a self-ignoring .gitignore into the log base directory when one is
+// not already present, creating the directory if needed. This makes any repo containing the log
+// directory automatically exclude the audit log output from version control.
+export async function ensureLogDirIgnored(logBaseDir: string): Promise<void> {
+    const gitignorePath = join(logBaseDir, ".gitignore");
+
+    try {
+        await access(gitignorePath);
+        return;
+    }
+    catch {
+        // .gitignore is absent; fall through to create the directory and the file.
+    }
+
+    await mkdir(logBaseDir, { recursive: true });
+    await writeFile(gitignorePath, logDirGitignoreContents);
 }
 
 // resolveJsonLogPath returns the machine-readable JSON Lines log file path.
