@@ -1,0 +1,11 @@
+title: expressive-permissions
+description: A robust, configurable, expressive permissions system for Claude Code.
+theme: jekyll-theme-cayman
+plugins:
+  - jekyll-relative-links
+relative_links:
+  enabled: true
+  collections: false
+exclude:
+  - plans
+
