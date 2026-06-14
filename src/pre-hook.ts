@@ -1,7 +1,8 @@
 import { decide } from "./interpret";
 import { createLogger } from "./audit-log";
 import { IToolCall } from "./types";
-import { resolveDebugLogPath, appendDebugBlock, logDebugError, IDebugField } from "./debug-log";
+// Debug log file production disabled. Restore to re-enable the debug log.
+// import { resolveDebugLogPath, appendDebugBlock, logDebugError, IDebugField } from "./debug-log";
 import { RuleLayer, FileLayer, IRuleLayer, RuleRegistry } from "./rule-registry";
 import { builtinRules } from "./rules";
 import { loadHomeConfigRules, loadProjectConfigRules, discoverHomeConfigDirFiles, discoverProjectConfigDirFiles, makeConfigFileLoader } from "./load-config";
@@ -26,7 +27,8 @@ export async function readStdin(): Promise<string> {
 // runHook parses the ToolCall from stdin, runs the permission decision, and writes
 // the hookSpecificOutput to stdout, then exits 0. On any error it writes to stderr and exits 1.
 export async function runHook(): Promise<void> {
-    let logPath: string | undefined;
+    // Debug log file production disabled. Restore to re-enable the debug log.
+    // let logPath: string | undefined;
     try {
         const rawStdin = await readStdin();
         const call = JSON.parse(rawStdin) as IToolCall;
@@ -34,12 +36,13 @@ export async function runHook(): Promise<void> {
         if (!projectDir) {
             throw new Error("CLAUDE_PROJECT_DIR is not set");
         }
-        logPath = resolveDebugLogPath(projectDir);
-        await appendDebugBlock(logPath, "[PRE-HOOK ENTRY]", [
-            { key: "tool_call", value: call },
-            { key: "CLAUDE_PROJECT_DIR", value: projectDir },
-            { key: "process.env", value: process.env },
-        ]);
+        // Debug log file production disabled. Restore to re-enable the debug log.
+        // logPath = resolveDebugLogPath(projectDir);
+        // await appendDebugBlock(logPath, "[PRE-HOOK ENTRY]", [
+        //     { key: "tool_call", value: call },
+        //     { key: "CLAUDE_PROJECT_DIR", value: projectDir },
+        //     { key: "process.env", value: process.env },
+        // ]);
         const logger = createLogger(projectDir, new Date());
         const layers: IRuleLayer[] = [
             new RuleLayer(builtinRules),
@@ -57,18 +60,20 @@ export async function runHook(): Promise<void> {
         const decision = decide(call, logger, registry, descriptors);
         const permissionDecision = decision.action;
         const permissionDecisionReason = "reason" in decision ? decision.reason : undefined;
-        const exitFields: IDebugField[] = [{ key: "decision", value: permissionDecision }];
-        if (permissionDecisionReason !== undefined) {
-            exitFields.push({ key: "reason", value: permissionDecisionReason });
-        }
-        await appendDebugBlock(logPath, "[PRE-HOOK EXIT]", exitFields);
+        // Debug log file production disabled. Restore to re-enable the debug log.
+        // const exitFields: IDebugField[] = [{ key: "decision", value: permissionDecision }];
+        // if (permissionDecisionReason !== undefined) {
+        //     exitFields.push({ key: "reason", value: permissionDecisionReason });
+        // }
+        // await appendDebugBlock(logPath, "[PRE-HOOK EXIT]", exitFields);
         process.stdout.write(
             JSON.stringify({ hookSpecificOutput: { hookEventName, permissionDecision, permissionDecisionReason } }) + "\n"
         );
         process.exit(0);
     }
     catch (hookError) {
-        await logDebugError(logPath, hookError);
+        // Debug log file production disabled. Restore to re-enable the debug log.
+        // await logDebugError(logPath, hookError);
         process.stderr.write(String(hookError) + "\n");
         process.exit(1);
     }
