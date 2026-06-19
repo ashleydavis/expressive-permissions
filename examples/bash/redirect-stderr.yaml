@@ -1,4 +1,4 @@
-command: "cmd 2> err.log"
+command: cmd 2> err.log
 ast:
   type: command
   binary: cmd
@@ -6,6 +6,6 @@ ast:
   cmd: []
   envPrefix: {}
   redirects:
-    - op: "2>"
+    - op: 2>
       target: err.log
-  raw: "cmd 2> err.log"
+  raw: cmd 2> err.log

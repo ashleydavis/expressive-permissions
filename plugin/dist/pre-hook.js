@@ -8771,12 +8771,16 @@ function resolveFlagArity(descriptor, flagName) {
 }
 
 // src/parse-bash.ts
-var OPERATORS = ["&&", "||", "2>&", ">>", "&>", "2>", "|", ";", ">", "<"];
+var OPERATORS = ["&&", "||", "2>&", ";;", ">>", "&>", "2>", "|", ";", ">", "<", "(", ")", "&"];
 var REDIRECT_OPS = new Set([">>", ">", "<", "2>", "&>", "2>&"]);
 var DONE_TERMINATOR = new Set(["done"]);
 var THEN_TERMINATOR = new Set(["then"]);
 var IF_BODY_TERMINATORS = new Set(["elif", "else", "fi"]);
 var FI_TERMINATOR = new Set(["fi"]);
+var DO_TERMINATOR = new Set(["do"]);
+var CLOSE_PAREN_TERMINATOR = new Set([")"]);
+var CLOSE_BRACE_TERMINATOR = new Set(["}"]);
+var CASE_CLAUSE_TERMINATORS = new Set([";;", "esac"]);
 function isEnvAssignment(value) {
   return /^[A-Za-z_][A-Za-z0-9_]*=/.test(value);
 }
@@ -8784,6 +8788,13 @@ function lex(input) {
   const tokens = [];
   let pos = 0;
   while (pos < input.length) {
+    if (input[pos] === `
+` || input[pos] === "\r") {
+      const sepStart = pos;
+      pos++;
+      tokens.push({ kind: "op", value: ";", start: sepStart, end: pos });
+      continue;
+    }
     if (/\s/.test(input[pos])) {
       pos++;
       continue;
@@ -8793,7 +8804,8 @@ function lex(input) {
       if (input.startsWith(op, pos)) {
         const opStart = pos;
         pos += op.length;
-        tokens.push({ kind: "op", value: op, start: opStart, end: pos });
+        const value = op === "&" ? ";" : op;
+        tokens.push({ kind: "op", value, start: opStart, end: pos });
         opMatched = true;
         break;
       }
@@ -9053,7 +9065,14 @@ function parseCommand(state, descriptors) {
   const raw = firstTokenStart !== -1 ? state.raw.substring(firstTokenStart, lastTokenEnd) : "";
   const descriptor = descriptors.get(binary) ?? EMPTY_DESCRIPTOR;
   const argv = parseArgv(argTokens, descriptor);
-  return {
+  const substitutionSources = [binary, ...argTokens, ...redirects.map((redirect) => redirect.target), ...Object.values(envPrefix)];
+  const substitutions = [];
+  for (const source of substitutionSources) {
+    for (const inner of extractSubstitutions(source)) {
+      substitutions.push(parseBash(inner, descriptors));
+    }
+  }
+  const command = {
     type: "command",
     binary,
     options: argv.options,
@@ -9062,16 +9081,197 @@ function parseCommand(state, descriptors) {
     redirects,
     raw
   };
+  if (substitutions.length > 0) {
+    command.substitutions = substitutions;
+  }
+  return command;
+}
+function extractSubstitutions(text) {
+  const results = [];
+  let pos = 0;
+  while (pos < text.length) {
+    if (text[pos] === "$" && text[pos + 1] === "(") {
+      if (text[pos + 2] === "(") {
+        let depth2 = 0;
+        let scan2 = pos + 1;
+        while (scan2 < text.length) {
+          if (text[scan2] === "(") {
+            depth2++;
+          } else if (text[scan2] === ")") {
+            depth2--;
+            if (depth2 === 0) {
+              break;
+            }
+          }
+          scan2++;
+        }
+        pos = scan2 + 1;
+        continue;
+      }
+      let depth = 0;
+      let scan = pos + 1;
+      while (scan < text.length) {
+        if (text[scan] === "(") {
+          depth++;
+        } else if (text[scan] === ")") {
+          depth--;
+          if (depth === 0) {
+            break;
+          }
+        }
+        scan++;
+      }
+      results.push(text.substring(pos + 2, scan));
+      pos = scan + 1;
+      continue;
+    }
+    if (text[pos] === "`") {
+      let scan = pos + 1;
+      while (scan < text.length && text[scan] !== "`") {
+        scan++;
+      }
+      results.push(text.substring(pos + 1, scan));
+      pos = scan + 1;
+      continue;
+    }
+    pos++;
+  }
+  return results;
 }
 function parseStatement(state, descriptors) {
   const next = peek(state);
   if (next !== null && next.kind === "word" && next.value === "for") {
     return parseForLoop(state, descriptors);
   }
+  if (next !== null && next.kind === "word" && (next.value === "while" || next.value === "until")) {
+    return parseWhileLoop(state, descriptors);
+  }
   if (next !== null && next.kind === "word" && next.value === "if") {
     return parseIfStatement(state, descriptors);
   }
+  if (next !== null && next.kind === "word" && next.value === "case") {
+    return parseCaseStatement(state, descriptors);
+  }
+  if (next !== null && next.kind === "op" && next.value === "(") {
+    return parseSubshellGroup(state, descriptors);
+  }
+  if (next !== null && next.kind === "word" && next.value === "{") {
+    return parseBraceGroup(state, descriptors);
+  }
   return parseCommand(state, descriptors);
+}
+function parseWhileLoop(state, descriptors) {
+  const keywordToken = consume(state);
+  const startPos = keywordToken.start;
+  const until = keywordToken.value === "until";
+  const condition = parseSequenceUntil(state, descriptors, DO_TERMINATOR);
+  if (peek(state)?.value !== "do") {
+    return {
+      type: "while_loop",
+      until,
+      condition,
+      body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "" },
+      raw: state.raw.substring(startPos, peek(state)?.start ?? state.raw.length)
+    };
+  }
+  consume(state);
+  const body = parseSequenceUntilDone(state, descriptors);
+  let endPos = state.raw.length;
+  if (peek(state)?.value === "done") {
+    endPos = consume(state).end;
+  }
+  const whileLoop = {
+    type: "while_loop",
+    until,
+    condition,
+    body,
+    raw: state.raw.substring(startPos, endPos)
+  };
+  return whileLoop;
+}
+function parseSubshellGroup(state, descriptors) {
+  const openToken = consume(state);
+  const startPos = openToken.start;
+  const body = parseSequenceUntil(state, descriptors, CLOSE_PAREN_TERMINATOR);
+  let endPos = state.raw.length;
+  if (peek(state)?.value === ")") {
+    endPos = consume(state).end;
+  }
+  const group = {
+    type: "group",
+    style: "subshell",
+    body,
+    raw: state.raw.substring(startPos, endPos)
+  };
+  return group;
+}
+function parseBraceGroup(state, descriptors) {
+  const openToken = consume(state);
+  const startPos = openToken.start;
+  const body = parseSequenceUntil(state, descriptors, CLOSE_BRACE_TERMINATOR);
+  let endPos = state.raw.length;
+  if (peek(state)?.value === "}") {
+    endPos = consume(state).end;
+  }
+  const group = {
+    type: "group",
+    style: "brace",
+    body,
+    raw: state.raw.substring(startPos, endPos)
+  };
+  return group;
+}
+function parseCaseStatement(state, descriptors) {
+  const caseToken = consume(state);
+  const startPos = caseToken.start;
+  let word = "";
+  if (peek(state)?.kind === "word" && peek(state).value !== "in") {
+    word = consume(state).value;
+  }
+  if (peek(state)?.value === "in") {
+    consume(state);
+  }
+  skipSeparators(state);
+  const clauses = [];
+  while (peek(state) !== null && peek(state).value !== "esac") {
+    const clauseStartPos = state.pos;
+    if (peek(state)?.value === "(") {
+      consume(state);
+    }
+    const patterns = [];
+    if (peek(state)?.kind === "word") {
+      patterns.push(consume(state).value);
+    }
+    while (peek(state)?.value === "|") {
+      consume(state);
+      if (peek(state)?.kind === "word") {
+        patterns.push(consume(state).value);
+      }
+    }
+    if (peek(state)?.value === ")") {
+      consume(state);
+    }
+    const body = parseSequenceUntil(state, descriptors, CASE_CLAUSE_TERMINATORS);
+    clauses.push({ patterns, body });
+    if (peek(state)?.value === ";;") {
+      consume(state);
+    }
+    skipSeparators(state);
+    if (state.pos === clauseStartPos) {
+      break;
+    }
+  }
+  let endPos = state.raw.length;
+  if (peek(state)?.value === "esac") {
+    endPos = consume(state).end;
+  }
+  const caseStatement = {
+    type: "case_statement",
+    word,
+    clauses,
+    raw: state.raw.substring(startPos, endPos)
+  };
+  return caseStatement;
 }
 function parseForLoop(state, descriptors) {
   const forToken = consume(state);
@@ -9093,9 +9293,7 @@ function parseForLoop(state, descriptors) {
   while (peek(state) !== null && peek(state).kind === "word" && peek(state).value !== "do") {
     items.push(consume(state).value);
   }
-  if (peek(state)?.value === ";") {
-    consume(state);
-  }
+  skipSeparators(state);
   if (peek(state)?.value !== "do") {
     return {
       type: "for_loop",
@@ -9126,12 +9324,18 @@ function parseForLoop(state, descriptors) {
   };
   return forLoop;
 }
-function parseSequenceUntil(state, descriptors, terminators) {
-  let left = parseAnd(state, descriptors);
+function skipSeparators(state) {
   while (peek(state)?.value === ";") {
     consume(state);
+  }
+}
+function parseSequenceUntil(state, descriptors, terminators) {
+  skipSeparators(state);
+  let left = parseAnd(state, descriptors);
+  while (peek(state)?.value === ";") {
+    skipSeparators(state);
     const next = peek(state);
-    if (next === null || next.kind === "word" && terminators.has(next.value)) {
+    if (next === null || terminators.has(next.value)) {
       break;
     }
     const right = parseAnd(state, descriptors);
@@ -9209,17 +9413,9 @@ function parseAnd(state, descriptors) {
   }
   return left;
 }
+var NO_TERMINATORS = new Set;
 function parseSequence(state, descriptors) {
-  let left = parseAnd(state, descriptors);
-  while (peek(state)?.value === ";") {
-    consume(state);
-    if (state.pos >= state.tokens.length) {
-      break;
-    }
-    const right = parseAnd(state, descriptors);
-    left = { type: "binop", op: ";", left, right };
-  }
-  return left;
+  return parseSequenceUntil(state, descriptors, NO_TERMINATORS);
 }
 function parseBash(raw, descriptors) {
   const trimmed = raw.trim();
@@ -9317,17 +9513,24 @@ function parseXargsCommand(raw, descriptors) {
 }
 function transformXargsNodes(node, descriptors) {
   if (node.type === "command") {
-    if (node.binary !== "xargs") {
-      return node;
+    if (node.binary === "xargs") {
+      const { options, child } = parseXargsCommand(node.raw, descriptors);
+      const xargsNode = {
+        type: "xargs",
+        options,
+        child,
+        raw: node.raw
+      };
+      return xargsNode;
     }
-    const { options, child } = parseXargsCommand(node.raw, descriptors);
-    const xargsNode = {
-      type: "xargs",
-      options,
-      child,
-      raw: node.raw
-    };
-    return xargsNode;
+    if (node.substitutions !== undefined && node.substitutions.length > 0) {
+      const transformed = {
+        ...node,
+        substitutions: node.substitutions.map((substitution) => transformXargsNodes(substitution, descriptors))
+      };
+      return transformed;
+    }
+    return node;
   }
   if (node.type === "binop") {
     return {
@@ -9340,6 +9543,28 @@ function transformXargsNodes(node, descriptors) {
     return {
       ...node,
       body: transformXargsNodes(node.body, descriptors)
+    };
+  }
+  if (node.type === "while_loop") {
+    return {
+      ...node,
+      condition: transformXargsNodes(node.condition, descriptors),
+      body: transformXargsNodes(node.body, descriptors)
+    };
+  }
+  if (node.type === "group") {
+    return {
+      ...node,
+      body: transformXargsNodes(node.body, descriptors)
+    };
+  }
+  if (node.type === "case_statement") {
+    return {
+      ...node,
+      clauses: node.clauses.map((clause) => ({
+        ...clause,
+        body: transformXargsNodes(clause.body, descriptors)
+      }))
     };
   }
   if (node.type === "if_statement") {
@@ -9388,6 +9613,12 @@ function describeNode(node) {
     case "binop":
       return `${describeNode(node.left)} ${node.op} ${describeNode(node.right)}`;
     case "for_loop":
+      return node.raw;
+    case "while_loop":
+      return node.raw;
+    case "group":
+      return node.raw;
+    case "case_statement":
       return node.raw;
     case "if_statement":
       return node.raw;
@@ -9627,7 +9858,7 @@ function logConfigLoad(logger, displayPath, ruleCount) {
 // src/interpret.ts
 var ASK = { action: "ask" };
 function isLeaf(node) {
-  return node.type !== "binop" && node.type !== "bash" && node.type !== "for_loop" && node.type !== "xargs" && node.type !== "if_statement";
+  return node.type !== "binop" && node.type !== "bash" && node.type !== "for_loop" && node.type !== "while_loop" && node.type !== "xargs" && node.type !== "if_statement" && node.type !== "group" && node.type !== "case_statement";
 }
 function aggregateChildren(childIAnnotations) {
   for (const annotation of childIAnnotations) {
@@ -9683,6 +9914,35 @@ function walkChildren(node, env, call, logger, registry) {
       envOut: env
     };
   }
+  if (node.type === "while_loop") {
+    const conditionResult = interpret(node.condition, env, call, logger, registry);
+    const bodyResult = interpret(node.body, conditionResult.envOut, call, logger, registry);
+    return {
+      childIAnnotations: [conditionResult.annotation, bodyResult.annotation],
+      envOut: conditionResult.envOut
+    };
+  }
+  if (node.type === "group") {
+    const bodyResult = interpret(node.body, env, call, logger, registry);
+    return {
+      childIAnnotations: [bodyResult.annotation],
+      envOut: node.style === "brace" ? bodyResult.envOut : env
+    };
+  }
+  if (node.type === "case_statement") {
+    const childIAnnotations = [];
+    for (const clause of node.clauses) {
+      const clauseResult = interpret(clause.body, env, call, logger, registry);
+      childIAnnotations.push(clauseResult.annotation);
+    }
+    if (childIAnnotations.length === 0) {
+      childIAnnotations.push({ decision: { action: "abstain" } });
+    }
+    return {
+      childIAnnotations,
+      envOut: env
+    };
+  }
   if (node.type === "if_statement") {
     const conditionResult = interpret(node.condition, env, call, logger, registry);
     const childIAnnotations = [conditionResult.annotation];
@@ -9726,6 +9986,14 @@ function interpret(node, env, call, logger, registry) {
         cmd: describeNode(node)
       });
       annotation2 = { decision: ASK };
+    }
+    if (node.type === "command" && node.substitutions !== undefined && node.substitutions.length > 0) {
+      const substitutionAnnotations = [annotation2];
+      for (const substitution of node.substitutions) {
+        const substitutionResult = interpret(substitution, env, call, logger, registry);
+        substitutionAnnotations.push(substitutionResult.annotation);
+      }
+      annotation2 = aggregateChildren(substitutionAnnotations);
     }
     return { annotation: annotation2, envOut: envOut2 };
   }

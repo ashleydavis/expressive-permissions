@@ -1,20 +1,20 @@
-command: "a; b"
+command: echo a; echo b
 ast:
   type: binop
-  op: ";"
+  op: ;
   left:
     type: command
-    binary: a
+    binary: echo
     options: {}
-    cmd: []
+    cmd: a
     envPrefix: {}
     redirects: []
-    raw: a
+    raw: echo a
   right:
     type: command
-    binary: b
+    binary: echo
     options: {}
-    cmd: []
+    cmd: b
     envPrefix: {}
     redirects: []
-    raw: b
+    raw: echo b

@@ -70,6 +70,10 @@ export interface ICommand {
     envPrefix: Record<string, string>;
     // I/O redirections attached to this command
     redirects: IRedirect[];
+    // Inner commands from embedded command substitutions ($(...) or `...`) found anywhere in this
+    // command's words, redirect targets, or env values. Present only when at least one exists.
+    // The interpreter evaluates each so a denial inside a substitution denies the whole command.
+    substitutions?: BashAstNode[];
     // The original raw command string
     raw: string;
 }
@@ -118,6 +122,57 @@ export interface IIfStatement {
     raw: string;
 }
 
+// A loop node representing a Bash while/until loop. The interpreter walks the condition (which
+// always runs) and the body once for permission analysis; whether and how often the body runs at
+// runtime is not known statically.
+export interface IWhileLoop {
+    // Discriminator for the while-loop node type
+    type: "while_loop";
+    // true for `until` (body runs while the condition is false); false for `while`
+    until: boolean;
+    // The condition command(s) evaluated before each iteration
+    condition: BashAstNode;
+    // The loop body
+    body: BashAstNode;
+    // The original raw command string spanning the entire loop
+    raw: string;
+}
+
+// A grouped sub-expression. `( list )` runs in a subshell; `{ list; }` runs in the current shell.
+// For permission analysis both simply evaluate their inner list; the style controls whether
+// environment changes inside the group propagate to later sibling commands.
+export interface IGroup {
+    // Discriminator for the group node type
+    type: "group";
+    // "subshell" for ( ... ) (env changes are isolated); "brace" for { ...; } (env propagates)
+    style: "subshell" | "brace";
+    // The inner statement list
+    body: BashAstNode;
+    // The original raw command string including the group delimiters
+    raw: string;
+}
+
+// One pattern clause within a case statement (e.g. `a|b) cmds ;;`).
+export interface ICaseClause {
+    // The pattern alternatives before the `)` (e.g. ["a", "b"] for `a|b)`)
+    patterns: string[];
+    // The statement list run when one of the patterns matches
+    body: BashAstNode;
+}
+
+// A conditional node representing a Bash `case WORD in ... esac` statement. The interpreter walks
+// every clause body for permission analysis, since which clause matches is not known statically.
+export interface ICaseStatement {
+    // Discriminator for the case-statement node type
+    type: "case_statement";
+    // The word/expression being matched (opaque; not evaluated as a command)
+    word: string;
+    // The ordered list of pattern clauses
+    clauses: ICaseClause[];
+    // The original raw command string spanning the entire case statement
+    raw: string;
+}
+
 // An intermediate node representing an xargs invocation. The child is the parsed subcommand
 // that xargs will invoke; its decision bubbles up to become the decision of this node.
 export interface IXargsNode {
@@ -132,7 +187,7 @@ export interface IXargsNode {
 }
 
 // Union of all Bash sub-AST node types
-export type BashAstNode = ICommand | IBinOp | IForLoop | IXargsNode | IIfStatement;
+export type BashAstNode = ICommand | IBinOp | IForLoop | IXargsNode | IIfStatement | IWhileLoop | IGroup | ICaseStatement;
 
 // A single edit operation within a MultiEdit tool call
 export interface IEditEntry {

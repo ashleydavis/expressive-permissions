@@ -1,0 +1,32 @@
+tool_call:
+  tool_name: Bash
+  tool_input:
+    command: (cd /tmp && rm -rf build)
+ast:
+  type: bash
+  raw: (cd /tmp && rm -rf build)
+  ast:
+    type: group
+    style: subshell
+    body:
+      type: binop
+      op: "&&"
+      left:
+        type: command
+        binary: cd
+        options: {}
+        cmd: /tmp
+        envPrefix: {}
+        redirects: []
+        raw: cd /tmp
+      right:
+        type: command
+        binary: rm
+        options:
+          r: true
+          f: true
+        cmd: build
+        envPrefix: {}
+        redirects: []
+        raw: rm -rf build
+    raw: (cd /tmp && rm -rf build)

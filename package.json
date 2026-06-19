@@ -19,8 +19,9 @@
         "tw": "bun run test:watch",
         "smoke": "bash scripts/smoke-tests.sh",
         "smoke:repl": "bash scripts/repl-smoke-tests.sh",
+        "gen:examples": "bun run scripts/gen-examples.ts",
         "validate": "claude plugin validate ./plugin && claude plugin validate .",
-        "test:all": "bun run validate && bun run test && bash scripts/smoke-tests-bash-parser.sh && bash scripts/hook-smoke-tests.sh && bash scripts/smoke-tests.sh && bash scripts/repl-smoke-tests.sh",
+        "test:all": "bun run validate && bun run test && bash scripts/smoke-tests-bash-parser.sh && bash scripts/smoke-tests-bash-examples.sh && bash scripts/hook-smoke-tests.sh && bash scripts/smoke-tests.sh && bash scripts/repl-smoke-tests.sh",
         "ta": "bun run test:all",
         "dev": "claude --plugin-dir ./plugin",
         "d": "bun run dev"

@@ -1,5 +1,5 @@
 import { parseBash } from "../parse-bash";
-import { BashAstNode, ICommand, IBinOp, IForLoop, IIfStatement, ICommandDescriptor } from "../types";
+import { BashAstNode, ICommand, IBinOp, ICaseStatement, IForLoop, IGroup, IIfStatement, IWhileLoop, ICommandDescriptor } from "../types";
 
 // makeDescriptors returns a descriptor map with a single command whose named flags have arity 1.
 // All unlisted flags default to arity 0 via the EMPTY_DESCRIPTOR fallback.
@@ -513,6 +513,165 @@ describe("parseBash", () => {
             ]);
             expect((ifNode.thenBranch as ICommand).cmd).toBe("same");
             expect((ifNode.elseBranch as ICommand).cmd).toBe("diff");
+        });
+    });
+
+    describe("statement separators", () => {
+        test("newline separates statements like a semicolon", () => {
+            const node = parseBash("echo a\necho b", new Map());
+            const binop = expectBinOp(node, ";");
+            expect((binop.left as ICommand).binary).toBe("echo");
+            expect((binop.left as ICommand).cmd).toBe("a");
+            expect((binop.right as ICommand).cmd).toBe("b");
+        });
+
+        test("bare & separates statements and exposes the following command", () => {
+            const node = parseBash("sleep 10 & rm x", new Map());
+            const binop = expectBinOp(node, ";");
+            expect((binop.left as ICommand).binary).toBe("sleep");
+            expect((binop.right as ICommand).binary).toBe("rm");
+            expect((binop.right as ICommand).cmd).toBe("x");
+        });
+
+        test("trailing & on a single command yields just that command", () => {
+            const node = parseBash("sleep 10 &", new Map());
+            const cmd = expectCommand(node, "sleep");
+            expect(cmd.cmd).toBe("10");
+        });
+
+        test("blank lines collapse to a single separator", () => {
+            const node = parseBash("echo a\n\n\necho b", new Map());
+            const binop = expectBinOp(node, ";");
+            expect((binop.left as ICommand).cmd).toBe("a");
+            expect((binop.right as ICommand).cmd).toBe("b");
+        });
+
+        test("2>&1 is not mistaken for a bare & separator", () => {
+            const node = parseBash("cmd 2>&1", new Map());
+            const cmd = expectCommand(node, "cmd");
+            expect(cmd.redirects).toEqual([{ op: "2>&", target: "1" }]);
+        });
+    });
+
+    describe("while/until-loop", () => {
+        test("while loop captures condition and body", () => {
+            const node = parseBash("while read line; do rm $line; done", new Map());
+            expect(node.type).toBe("while_loop");
+            const loop = node as IWhileLoop;
+            expect(loop.until).toBe(false);
+            expect((loop.condition as ICommand).binary).toBe("read");
+            expect((loop.body as ICommand).binary).toBe("rm");
+            expect(loop.raw).toBe("while read line; do rm $line; done");
+        });
+
+        test("until loop sets until=true", () => {
+            const node = parseBash("until ping -c1 host; do sleep 1; done", new Map());
+            const loop = node as IWhileLoop;
+            expect(loop.until).toBe(true);
+            expect((loop.condition as ICommand).binary).toBe("ping");
+            expect((loop.body as ICommand).binary).toBe("sleep");
+        });
+
+        test("while loop body preserves a sequence", () => {
+            const node = parseBash("while true; do echo a; echo b; done", new Map());
+            const loop = node as IWhileLoop;
+            const body = loop.body as IBinOp;
+            expect(body.op).toBe(";");
+            expect((body.left as ICommand).cmd).toBe("a");
+            expect((body.right as ICommand).cmd).toBe("b");
+        });
+    });
+
+    describe("group", () => {
+        test("subshell group wraps its inner list", () => {
+            const node = parseBash("(cd /tmp && rm -rf x)", new Map());
+            expect(node.type).toBe("group");
+            const group = node as IGroup;
+            expect(group.style).toBe("subshell");
+            const body = group.body as IBinOp;
+            expect(body.op).toBe("&&");
+            expect((body.left as ICommand).binary).toBe("cd");
+            expect((body.right as ICommand).binary).toBe("rm");
+            expect(group.raw).toBe("(cd /tmp && rm -rf x)");
+        });
+
+        test("brace group wraps its inner list", () => {
+            const node = parseBash("{ echo a; rm b; }", new Map());
+            const group = node as IGroup;
+            expect(group.style).toBe("brace");
+            const body = group.body as IBinOp;
+            expect(body.op).toBe(";");
+            expect((body.left as ICommand).binary).toBe("echo");
+            expect((body.right as ICommand).binary).toBe("rm");
+        });
+
+        test("subshell group composes with an outer operator", () => {
+            const node = parseBash("(echo a) || echo b", new Map());
+            const binop = expectBinOp(node, "||");
+            expect((binop.left as IGroup).type).toBe("group");
+            expect((binop.right as ICommand).binary).toBe("echo");
+        });
+    });
+
+    describe("case-statement", () => {
+        test("case with alternation and wildcard clauses", () => {
+            const node = parseBash("case $x in a|b) rm y;; *) echo z;; esac", new Map());
+            expect(node.type).toBe("case_statement");
+            const caseNode = node as ICaseStatement;
+            expect(caseNode.word).toBe("$x");
+            expect(caseNode.clauses.length).toBe(2);
+            expect(caseNode.clauses[0].patterns).toEqual(["a", "b"]);
+            expect((caseNode.clauses[0].body as ICommand).binary).toBe("rm");
+            expect(caseNode.clauses[1].patterns).toEqual(["*"]);
+            expect((caseNode.clauses[1].body as ICommand).cmd).toBe("z");
+            expect(caseNode.raw).toBe("case $x in a|b) rm y;; *) echo z;; esac");
+        });
+
+        test("case clause body preserves a sequence", () => {
+            const node = parseBash("case $x in a) echo 1; echo 2;; esac", new Map());
+            const caseNode = node as ICaseStatement;
+            const body = caseNode.clauses[0].body as IBinOp;
+            expect(body.op).toBe(";");
+            expect((body.left as ICommand).cmd).toBe("1");
+            expect((body.right as ICommand).cmd).toBe("2");
+        });
+    });
+
+    describe("command substitution", () => {
+        test("$(...) inner command is captured as a substitution", () => {
+            const node = parseBash("echo $(rm -rf /)", new Map());
+            const cmd = expectCommand(node, "echo");
+            expect(cmd.substitutions).toBeDefined();
+            expect(cmd.substitutions!.length).toBe(1);
+            const inner = cmd.substitutions![0] as ICommand;
+            expect(inner.binary).toBe("rm");
+            expect(inner.cmd).toBe("/");
+        });
+
+        test("backtick inner command is captured as a substitution", () => {
+            const node = parseBash("echo `rm -rf /`", new Map());
+            const cmd = expectCommand(node, "echo");
+            const inner = cmd.substitutions![0] as ICommand;
+            expect(inner.binary).toBe("rm");
+        });
+
+        test("substitution embedded inside an argument is captured", () => {
+            const node = parseBash("cp a $(date +%s).bak", new Map());
+            const cmd = expectCommand(node, "cp");
+            expect(cmd.substitutions!.length).toBe(1);
+            expect((cmd.substitutions![0] as ICommand).binary).toBe("date");
+        });
+
+        test("arithmetic expansion is not treated as a command substitution", () => {
+            const node = parseBash("echo $((1 + 2))", new Map());
+            const cmd = expectCommand(node, "echo");
+            expect(cmd.substitutions).toBeUndefined();
+        });
+
+        test("a command with no substitution omits the substitutions field", () => {
+            const node = parseBash("echo hello", new Map());
+            const cmd = expectCommand(node, "echo");
+            expect(cmd.substitutions).toBeUndefined();
         });
     });
 });

@@ -1,0 +1,17 @@
+command: for f in a b c; do echo $f; done
+ast:
+  type: for_loop
+  variable: f
+  items:
+    - a
+    - b
+    - c
+  body:
+    type: command
+    binary: echo
+    options: {}
+    cmd: $f
+    envPrefix: {}
+    redirects: []
+    raw: echo $f
+  raw: for f in a b c; do echo $f; done

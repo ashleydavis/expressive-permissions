@@ -1,5 +1,5 @@
 import { buildAst, expandToken, expandCommandOptions, describeNode } from "../build-ast";
-import { IToolCall, IBash, IBinOp, IIfStatement, IRead, IWrite, IEdit, IMultiEdit, IOtherTool, IXargsNode, ICommand, ICommandDescriptor } from "../types";
+import { IToolCall, IBash, IBinOp, ICaseStatement, IGroup, IIfStatement, IRead, IWrite, IEdit, IMultiEdit, IOtherTool, IWhileLoop, IXargsNode, ICommand, ICommandDescriptor } from "../types";
 
 // makeDescriptors builds a one-command descriptor map with arity-1 flags for the given names.
 function makeDescriptors(cmd: string, arity1Flags: string[]): Map<string, ICommandDescriptor> {
@@ -290,6 +290,25 @@ describe("describeNode", () => {
         const ifNode: IIfStatement = { type: "if_statement", condition, thenBranch, raw: "if test; then echo; fi" };
         expect(describeNode(ifNode)).toBe("if test; then echo; fi");
     });
+
+    test("while-loop node returns raw", () => {
+        const condition: ICommand = { type: "command", binary: "true", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "true" };
+        const body: ICommand = { type: "command", binary: "echo", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "echo" };
+        const loop: IWhileLoop = { type: "while_loop", until: false, condition, body, raw: "while true; do echo; done" };
+        expect(describeNode(loop)).toBe("while true; do echo; done");
+    });
+
+    test("group node returns raw", () => {
+        const body: ICommand = { type: "command", binary: "echo", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "echo" };
+        const group: IGroup = { type: "group", style: "subshell", body, raw: "(echo)" };
+        expect(describeNode(group)).toBe("(echo)");
+    });
+
+    test("case-statement node returns raw", () => {
+        const body: ICommand = { type: "command", binary: "echo", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "echo" };
+        const caseNode: ICaseStatement = { type: "case_statement", word: "$x", clauses: [{ patterns: ["a"], body }], raw: "case $x in a) echo;; esac" };
+        expect(describeNode(caseNode)).toBe("case $x in a) echo;; esac");
+    });
 });
 
 describe("transformXargsNodes via buildAst", () => {
@@ -304,6 +323,55 @@ describe("transformXargsNodes via buildAst", () => {
         expect(ifNode.type).toBe("if_statement");
         const pipeline = ifNode.thenBranch as IBinOp;
         expect(pipeline.op).toBe("|");
+        expect(pipeline.right.type).toBe("xargs");
+    });
+
+    test("xargs inside a while-loop body is transformed", () => {
+        const call: IToolCall = {
+            tool_name: "Bash",
+            tool_input: { command: "while true; do find . | xargs rm; done" },
+            cwd: "/start",
+        };
+        const root = buildAst(call, new Map()) as IBash;
+        const loop = root.ast as IWhileLoop;
+        const pipeline = loop.body as IBinOp;
+        expect(pipeline.right.type).toBe("xargs");
+    });
+
+    test("xargs inside a subshell group is transformed", () => {
+        const call: IToolCall = {
+            tool_name: "Bash",
+            tool_input: { command: "(find . | xargs rm)" },
+            cwd: "/start",
+        };
+        const root = buildAst(call, new Map()) as IBash;
+        const group = root.ast as IGroup;
+        const pipeline = group.body as IBinOp;
+        expect(pipeline.right.type).toBe("xargs");
+    });
+
+    test("xargs inside a case clause body is transformed", () => {
+        const call: IToolCall = {
+            tool_name: "Bash",
+            tool_input: { command: "case $x in a) find . | xargs rm;; esac" },
+            cwd: "/start",
+        };
+        const root = buildAst(call, new Map()) as IBash;
+        const caseNode = root.ast as ICaseStatement;
+        const pipeline = caseNode.clauses[0].body as IBinOp;
+        expect(pipeline.right.type).toBe("xargs");
+    });
+
+    test("xargs inside a command substitution is transformed", () => {
+        const call: IToolCall = {
+            tool_name: "Bash",
+            tool_input: { command: "echo $(find . | xargs rm)" },
+            cwd: "/start",
+        };
+        const root = buildAst(call, new Map()) as IBash;
+        const command = root.ast as ICommand;
+        expect(command.substitutions).toBeDefined();
+        const pipeline = command.substitutions![0] as IBinOp;
         expect(pipeline.right.type).toBe("xargs");
     });
 });

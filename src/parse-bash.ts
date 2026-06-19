@@ -1,4 +1,4 @@
-import { BashAstNode, ICommand, ICommandDescriptor, IForLoop, IIfStatement, IRedirect } from "./types";
+import { BashAstNode, ICaseClause, ICaseStatement, ICommand, ICommandDescriptor, IForLoop, IGroup, IIfStatement, IRedirect, IWhileLoop } from "./types";
 import { resolveFlagArity } from "./load-commands";
 
 // A single token produced by the lexer
@@ -23,8 +23,10 @@ interface IParserState {
     raw: string;
 }
 
-// Operator token strings, longer alternatives listed first to prevent prefix mis-matches
-const OPERATORS = ["&&", "||", "2>&", ">>", "&>", "2>", "|", ";", ">", "<"];
+// Operator token strings, longer alternatives listed first to prevent prefix mis-matches.
+// "(" / ")" delimit subshell groups, ";;" terminates a case clause, and bare "&" is a statement
+// separator (normalised to ";" by the lexer, see below).
+const OPERATORS = ["&&", "||", "2>&", ";;", ">>", "&>", "2>", "|", ";", ">", "<", "(", ")", "&"];
 
 // The subset of operators that introduce an I/O redirection (consume the next token as target)
 const REDIRECT_OPS = new Set([">>", ">", "<", "2>", "&>", "2>&"]);
@@ -41,6 +43,18 @@ const IF_BODY_TERMINATORS = new Set(["elif", "else", "fi"]);
 // Block keyword that terminates an else-branch sequence (`else ... fi`)
 const FI_TERMINATOR = new Set(["fi"]);
 
+// Block keyword that terminates a while/until condition sequence (`while COND ; do ...`)
+const DO_TERMINATOR = new Set(["do"]);
+
+// Token that terminates a subshell group body (`( ... )`)
+const CLOSE_PAREN_TERMINATOR = new Set([")"]);
+
+// Token that terminates a brace group body (`{ ...; }`)
+const CLOSE_BRACE_TERMINATOR = new Set(["}"]);
+
+// Tokens that terminate a case clause body (`;;` between clauses, `esac` to close the statement)
+const CASE_CLAUSE_TERMINATORS = new Set([";;", "esac"]);
+
 // Returns true when a word token value is a shell environment assignment (KEY=...)
 function isEnvAssignment(value: string): boolean {
     return /^[A-Za-z_][A-Za-z0-9_]*=/.test(value);
@@ -54,19 +68,31 @@ export function lex(input: string): IToken[] {
     let pos = 0;
 
     while (pos < input.length) {
-        // Discard whitespace between tokens
+        // A newline acts as a statement separator, normalised to ";" so the parser treats it
+        // identically to an explicit semicolon. Runs of separators are collapsed later.
+        if (input[pos] === "\n" || input[pos] === "\r") {
+            const sepStart = pos;
+            pos++;
+            tokens.push({ kind: "op", value: ";", start: sepStart, end: pos });
+            continue;
+        }
+
+        // Discard other whitespace between tokens
         if (/\s/.test(input[pos])) {
             pos++;
             continue;
         }
 
-        // Try operator tokens before words; check longer alternatives first
+        // Try operator tokens before words; check longer alternatives first. A bare "&"
+        // backgrounds the preceding command but, for permission analysis, behaves like a
+        // statement separator, so it is normalised to ";".
         let opMatched = false;
         for (const op of OPERATORS) {
             if (input.startsWith(op, pos)) {
                 const opStart = pos;
                 pos += op.length;
-                tokens.push({ kind: "op", value: op, start: opStart, end: pos });
+                const value = op === "&" ? ";" : op;
+                tokens.push({ kind: "op", value, start: opStart, end: pos });
                 opMatched = true;
                 break;
             }
@@ -410,7 +436,18 @@ function parseCommand(state: IParserState, descriptors: Map<string, ICommandDesc
 
     const descriptor = descriptors.get(binary) ?? EMPTY_DESCRIPTOR;
     const argv = parseArgv(argTokens, descriptor);
-    return {
+
+    // Collect any embedded command substitutions from every textual piece of the command, so the
+    // inner commands are evaluated for permissions rather than treated as opaque text.
+    const substitutionSources = [binary, ...argTokens, ...redirects.map((redirect) => redirect.target), ...Object.values(envPrefix)];
+    const substitutions: BashAstNode[] = [];
+    for (const source of substitutionSources) {
+        for (const inner of extractSubstitutions(source)) {
+            substitutions.push(parseBash(inner, descriptors));
+        }
+    }
+
+    const command: ICommand = {
         type: "command",
         binary,
         options: argv.options,
@@ -419,20 +456,251 @@ function parseCommand(state: IParserState, descriptors: Map<string, ICommandDesc
         redirects,
         raw,
     };
+    if (substitutions.length > 0) {
+        command.substitutions = substitutions;
+    }
+    return command;
+}
+
+// extractSubstitutions scans a single text fragment and returns the inner command string of each
+// command substitution it contains: `$(...)` (paren-balanced) and backtick `` `...` ``. Arithmetic
+// expansions `$(( ... ))` are skipped, as they contain an expression rather than a command.
+function extractSubstitutions(text: string): string[] {
+    const results: string[] = [];
+    let pos = 0;
+
+    while (pos < text.length) {
+        if (text[pos] === "$" && text[pos + 1] === "(") {
+            // Skip arithmetic expansion $(( ... )), which is not a command
+            if (text[pos + 2] === "(") {
+                let depth = 0;
+                let scan = pos + 1;
+                while (scan < text.length) {
+                    if (text[scan] === "(") {
+                        depth++;
+                    }
+                    else if (text[scan] === ")") {
+                        depth--;
+                        if (depth === 0) {
+                            break;
+                        }
+                    }
+                    scan++;
+                }
+                pos = scan + 1;
+                continue;
+            }
+
+            let depth = 0;
+            let scan = pos + 1;
+            while (scan < text.length) {
+                if (text[scan] === "(") {
+                    depth++;
+                }
+                else if (text[scan] === ")") {
+                    depth--;
+                    if (depth === 0) {
+                        break;
+                    }
+                }
+                scan++;
+            }
+            results.push(text.substring(pos + 2, scan));
+            pos = scan + 1;
+            continue;
+        }
+
+        if (text[pos] === "`") {
+            let scan = pos + 1;
+            while (scan < text.length && text[scan] !== "`") {
+                scan++;
+            }
+            results.push(text.substring(pos + 1, scan));
+            pos = scan + 1;
+            continue;
+        }
+
+        pos++;
+    }
+
+    return results;
 }
 
 // parseStatement: dispatches between block constructs and a single command based on the leading
-// word. A leading word "for" introduces a for-loop, "if" introduces an if-statement; anything
-// else is a single command leaf.
+// token. Leading words introduce loops (`for`, `while`, `until`), an if-statement (`if`), or a
+// case statement (`case`); a leading `(` opens a subshell group and a leading `{` a brace group;
+// anything else is a single command leaf.
 function parseStatement(state: IParserState, descriptors: Map<string, ICommandDescriptor>): BashAstNode {
     const next = peek(state);
     if (next !== null && next.kind === "word" && next.value === "for") {
         return parseForLoop(state, descriptors);
     }
+    if (next !== null && next.kind === "word" && (next.value === "while" || next.value === "until")) {
+        return parseWhileLoop(state, descriptors);
+    }
     if (next !== null && next.kind === "word" && next.value === "if") {
         return parseIfStatement(state, descriptors);
     }
+    if (next !== null && next.kind === "word" && next.value === "case") {
+        return parseCaseStatement(state, descriptors);
+    }
+    if (next !== null && next.kind === "op" && next.value === "(") {
+        return parseSubshellGroup(state, descriptors);
+    }
+    if (next !== null && next.kind === "word" && next.value === "{") {
+        return parseBraceGroup(state, descriptors);
+    }
     return parseCommand(state, descriptors);
+}
+
+// parseWhileLoop: parses `while|until COND ; do BODY ; done` into a WhileLoop node. The condition
+// and body are full sub-sequences, so operators and nested blocks inside them build normal trees.
+function parseWhileLoop(state: IParserState, descriptors: Map<string, ICommandDescriptor>): BashAstNode {
+    const keywordToken = consume(state);
+    const startPos = keywordToken.start;
+    const until = keywordToken.value === "until";
+
+    const condition = parseSequenceUntil(state, descriptors, DO_TERMINATOR);
+
+    if (peek(state)?.value !== "do") {
+        return {
+            type: "while_loop",
+            until,
+            condition,
+            body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "" },
+            raw: state.raw.substring(startPos, peek(state)?.start ?? state.raw.length),
+        };
+    }
+    consume(state);
+
+    const body = parseSequenceUntilDone(state, descriptors);
+
+    let endPos = state.raw.length;
+    if (peek(state)?.value === "done") {
+        endPos = consume(state).end;
+    }
+
+    const whileLoop: IWhileLoop = {
+        type: "while_loop",
+        until,
+        condition,
+        body,
+        raw: state.raw.substring(startPos, endPos),
+    };
+    return whileLoop;
+}
+
+// parseSubshellGroup: parses `( LIST )` into a subshell Group node. The inner list is a full
+// sub-sequence; the closing `)` is consumed here.
+function parseSubshellGroup(state: IParserState, descriptors: Map<string, ICommandDescriptor>): BashAstNode {
+    const openToken = consume(state);
+    const startPos = openToken.start;
+
+    const body = parseSequenceUntil(state, descriptors, CLOSE_PAREN_TERMINATOR);
+
+    let endPos = state.raw.length;
+    if (peek(state)?.value === ")") {
+        endPos = consume(state).end;
+    }
+
+    const group: IGroup = {
+        type: "group",
+        style: "subshell",
+        body,
+        raw: state.raw.substring(startPos, endPos),
+    };
+    return group;
+}
+
+// parseBraceGroup: parses `{ LIST ; }` into a brace Group node. The opening `{` and closing `}`
+// are standalone word tokens (Bash requires surrounding whitespace); the closing `}` is consumed
+// here.
+function parseBraceGroup(state: IParserState, descriptors: Map<string, ICommandDescriptor>): BashAstNode {
+    const openToken = consume(state);
+    const startPos = openToken.start;
+
+    const body = parseSequenceUntil(state, descriptors, CLOSE_BRACE_TERMINATOR);
+
+    let endPos = state.raw.length;
+    if (peek(state)?.value === "}") {
+        endPos = consume(state).end;
+    }
+
+    const group: IGroup = {
+        type: "group",
+        style: "brace",
+        body,
+        raw: state.raw.substring(startPos, endPos),
+    };
+    return group;
+}
+
+// parseCaseStatement: parses `case WORD in [PATTERN[|PATTERN]* ) LIST ;;]* esac` into a
+// CaseStatement node. The matched word is opaque; each clause body is a full sub-sequence.
+function parseCaseStatement(state: IParserState, descriptors: Map<string, ICommandDescriptor>): BashAstNode {
+    const caseToken = consume(state);
+    const startPos = caseToken.start;
+
+    let word = "";
+    if (peek(state)?.kind === "word" && peek(state)!.value !== "in") {
+        word = consume(state).value;
+    }
+
+    if (peek(state)?.value === "in") {
+        consume(state);
+    }
+    skipSeparators(state);
+
+    const clauses: ICaseClause[] = [];
+    while (peek(state) !== null && peek(state)!.value !== "esac") {
+        const clauseStartPos = state.pos;
+
+        // An optional leading `(` may precede the pattern list, as in `(a|b)`
+        if (peek(state)?.value === "(") {
+            consume(state);
+        }
+
+        const patterns: string[] = [];
+        if (peek(state)?.kind === "word") {
+            patterns.push(consume(state).value);
+        }
+        while (peek(state)?.value === "|") {
+            consume(state);
+            if (peek(state)?.kind === "word") {
+                patterns.push(consume(state).value);
+            }
+        }
+
+        if (peek(state)?.value === ")") {
+            consume(state);
+        }
+
+        const body = parseSequenceUntil(state, descriptors, CASE_CLAUSE_TERMINATORS);
+        clauses.push({ patterns, body });
+
+        if (peek(state)?.value === ";;") {
+            consume(state);
+        }
+        skipSeparators(state);
+
+        // Safety: if a malformed clause made no progress, stop to avoid an infinite loop
+        if (state.pos === clauseStartPos) {
+            break;
+        }
+    }
+
+    let endPos = state.raw.length;
+    if (peek(state)?.value === "esac") {
+        endPos = consume(state).end;
+    }
+
+    const caseStatement: ICaseStatement = {
+        type: "case_statement",
+        word,
+        clauses,
+        raw: state.raw.substring(startPos, endPos),
+    };
+    return caseStatement;
 }
 
 // parseForLoop: parses `for VAR [in ITEMS] ; do BODY ; done` into a ForLoop node.
@@ -462,9 +730,7 @@ function parseForLoop(state: IParserState, descriptors: Map<string, ICommandDesc
         items.push(consume(state).value);
     }
 
-    if (peek(state)?.value === ";") {
-        consume(state);
-    }
+    skipSeparators(state);
 
     if (peek(state)?.value !== "do") {
         return {
@@ -500,16 +766,27 @@ function parseForLoop(state: IParserState, descriptors: Map<string, ICommandDesc
     return forLoop;
 }
 
-// parseSequenceUntil: parses a `;`-separated sequence of statements until the next statement
-// would begin with one of the given block terminator keywords (e.g. "done", "then", "else",
-// "elif", "fi"), which the caller consumes. Mirrors parseSequence but stops at block keywords
-// instead of running to the end of the token stream.
-function parseSequenceUntil(state: IParserState, descriptors: Map<string, ICommandDescriptor>, terminators: Set<string>): BashAstNode {
-    let left: BashAstNode = parseAnd(state, descriptors);
+// skipSeparators: consumes a run of consecutive `;` separator tokens. Newlines and bare `&` are
+// normalised to `;` by the lexer, so this also collapses blank lines and stray separators, and
+// skips any leading separators at the start of a sequence or block body.
+function skipSeparators(state: IParserState): void {
     while (peek(state)?.value === ";") {
         consume(state);
+    }
+}
+
+// parseSequenceUntil: parses a `;`-separated sequence of statements until the next statement
+// would begin with one of the given block terminator tokens (e.g. "done", "then", "else",
+// "elif", "fi", ")", "}", "esac", ";;"), which the caller consumes. Leading and repeated
+// separators are collapsed. Mirrors parseSequence but stops at block terminators instead of
+// running to the end of the token stream.
+function parseSequenceUntil(state: IParserState, descriptors: Map<string, ICommandDescriptor>, terminators: Set<string>): BashAstNode {
+    skipSeparators(state);
+    let left: BashAstNode = parseAnd(state, descriptors);
+    while (peek(state)?.value === ";") {
+        skipSeparators(state);
         const next = peek(state);
-        if (next === null || (next.kind === "word" && terminators.has(next.value))) {
+        if (next === null || terminators.has(next.value)) {
             break;
         }
         const right = parseAnd(state, descriptors);
@@ -622,19 +899,13 @@ function parseAnd(state: IParserState, descriptors: Map<string, ICommandDescript
     return left;
 }
 
-// parseSequence: parseAnd (';' parseAnd)*  — lowest operator precedence
+// The empty terminator set used by the top-level sequence, which runs to the end of the stream.
+const NO_TERMINATORS = new Set<string>();
+
+// parseSequence: parseAnd (';' parseAnd)*  — lowest operator precedence. Runs to the end of the
+// token stream, collapsing leading, repeated, and trailing separators.
 function parseSequence(state: IParserState, descriptors: Map<string, ICommandDescriptor>): BashAstNode {
-    let left: BashAstNode = parseAnd(state, descriptors);
-    while (peek(state)?.value === ";") {
-        consume(state);
-        // Trailing semicolons produce no extra leaf
-        if (state.pos >= state.tokens.length) {
-            break;
-        }
-        const right = parseAnd(state, descriptors);
-        left = { type: "binop", op: ";", left, right };
-    }
-    return left;
+    return parseSequenceUntil(state, descriptors, NO_TERMINATORS);
 }
 
 // parseBash: entry point that converts a raw Bash command string into a BashAstNode.

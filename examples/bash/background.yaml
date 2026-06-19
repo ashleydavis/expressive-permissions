@@ -1,0 +1,20 @@
+command: server & client
+ast:
+  type: binop
+  op: ;
+  left:
+    type: command
+    binary: server
+    options: {}
+    cmd: []
+    envPrefix: {}
+    redirects: []
+    raw: server
+  right:
+    type: command
+    binary: client
+    options: {}
+    cmd: []
+    envPrefix: {}
+    redirects: []
+    raw: client

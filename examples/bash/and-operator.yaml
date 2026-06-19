@@ -1,4 +1,4 @@
-command: "cd /tmp && rm -rf *"
+command: cd /tmp && rm -rf *
 ast:
   type: binop
   op: "&&"
@@ -9,7 +9,7 @@ ast:
     cmd: /tmp
     envPrefix: {}
     redirects: []
-    raw: "cd /tmp"
+    raw: cd /tmp
   right:
     type: command
     binary: rm
@@ -19,4 +19,4 @@ ast:
     cmd: "*"
     envPrefix: {}
     redirects: []
-    raw: "rm -rf *"
+    raw: rm -rf *

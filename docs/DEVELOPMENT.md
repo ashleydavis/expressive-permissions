@@ -289,6 +289,15 @@ bun run scripts/run-e2e-test.ts e2e/bash/bash-and-both-allow
 
 Unit tests live under `src/test/` mirroring the source tree. `src/test/pre-hook.test.ts` covers the hook runner (stdin parsing, stdout output, error path). Run `bun run smoke` to build and then run the end-to-end smoke tests in `scripts/smoke-tests.sh`.
 
+### AST example fixtures
+
+Parser behaviour is also pinned by YAML fixtures, one per Bash construct:
+
+- [`examples/bash/`](../examples/bash) — compact fixtures asserting only the parsed Bash sub-AST (`command` + bare `ast`), checked by `scripts/check-bash-example.ts` via `scripts/smoke-tests-bash-examples.sh`.
+- [`examples/ast/`](../examples/ast) — full tool-call fixtures (`tool_call` + `ToolRoot` `ast`), checked by `scripts/check-ast-example.ts` via `scripts/smoke-tests-bash-parser.sh`.
+
+Each fixture has a sibling `.md` file with a Mermaid diagram of its AST. Regenerate the `examples/bash/` fixtures and **all** diagrams (both directories) with `bun run gen:examples` (`scripts/gen-examples.ts`). Both fixture suites run as part of `bun run test:all`.
+
 ## Publishing
 
 The `plugin/` subdirectory is the distribution subtree:

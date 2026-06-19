@@ -26,10 +26,19 @@ export interface IInterpretResult {
 
 // isLeaf returns true for AST nodes that have no child nodes to walk.
 // Intermediate nodes carry child references in well-known fields: IBinOp uses "left"/"right",
-// Bash uses "ast", ForLoop uses "body", xargs uses "child", IfStatement uses
-// "condition"/"thenBranch"/"elseBranch". Any node without those fields is a leaf.
+// Bash uses "ast", ForLoop/WhileLoop use "body", xargs uses "child", IfStatement uses
+// "condition"/"thenBranch"/"elseBranch", Group uses "body", CaseStatement uses "clauses". Any
+// node without those fields is a leaf. (A command leaf may carry "substitutions", which the
+// interpreter evaluates inline rather than via walkChildren.)
 export function isLeaf(node: AstNode): boolean {
-    return node.type !== "binop" && node.type !== "bash" && node.type !== "for_loop" && node.type !== "xargs" && node.type !== "if_statement";
+    return node.type !== "binop"
+        && node.type !== "bash"
+        && node.type !== "for_loop"
+        && node.type !== "while_loop"
+        && node.type !== "xargs"
+        && node.type !== "if_statement"
+        && node.type !== "group"
+        && node.type !== "case_statement";
 }
 
 
@@ -120,6 +129,44 @@ export function walkChildren(
         };
     }
 
+    if (node.type === "while_loop") {
+        // The condition always runs; its env changes flow into the body. The body is walked once
+        // for analysis (it may run any number of times). Only the condition's env propagates
+        // upward, since the number of iterations is indeterminate.
+        const conditionResult = interpret(node.condition, env, call, logger, registry);
+        const bodyResult = interpret(node.body, conditionResult.envOut, call, logger, registry);
+        return {
+            childIAnnotations: [conditionResult.annotation, bodyResult.annotation],
+            envOut: conditionResult.envOut,
+        };
+    }
+
+    if (node.type === "group") {
+        // A subshell `( ... )` isolates env changes; a brace group `{ ...; }` propagates them.
+        const bodyResult = interpret(node.body, env, call, logger, registry);
+        return {
+            childIAnnotations: [bodyResult.annotation],
+            envOut: node.style === "brace" ? bodyResult.envOut : env,
+        };
+    }
+
+    if (node.type === "case_statement") {
+        // Every clause body is walked since which pattern matches is not known statically. Each
+        // body sees the parent env (clauses are alternatives), and parent env propagates upward.
+        const childIAnnotations: IAnnotation[] = [];
+        for (const clause of node.clauses) {
+            const clauseResult = interpret(clause.body, env, call, logger, registry);
+            childIAnnotations.push(clauseResult.annotation);
+        }
+        if (childIAnnotations.length === 0) {
+            childIAnnotations.push({ decision: { action: "abstain" } });
+        }
+        return {
+            childIAnnotations,
+            envOut: env,
+        };
+    }
+
     if (node.type === "if_statement") {
         // The condition always runs; its env changes (e.g. a cd in the test) flow into both
         // branches, matching Bash. then/else are mutually exclusive at runtime but both are
@@ -179,6 +226,17 @@ function interpret(node: AstNode, env: IEnvironment, call: IToolCall, logger: IA
                 cmd: describeNode(node),
             });
             annotation = { decision: ASK };
+        }
+
+        // Evaluate any embedded command substitutions ($(...) / `...`). They run in subshells, so
+        // their env changes are discarded, but a denial inside one denies the whole command.
+        if (node.type === "command" && node.substitutions !== undefined && node.substitutions.length > 0) {
+            const substitutionAnnotations: IAnnotation[] = [annotation];
+            for (const substitution of node.substitutions) {
+                const substitutionResult = interpret(substitution, env, call, logger, registry);
+                substitutionAnnotations.push(substitutionResult.annotation);
+            }
+            annotation = aggregateChildren(substitutionAnnotations);
         }
         return { annotation, envOut };
     }

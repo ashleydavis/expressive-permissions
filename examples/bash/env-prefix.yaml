@@ -1,4 +1,4 @@
-command: "FOO=bar cmd"
+command: FOO=bar cmd
 ast:
   type: command
   binary: cmd
@@ -7,4 +7,4 @@ ast:
   envPrefix:
     FOO: bar
   redirects: []
-  raw: "FOO=bar cmd"
+  raw: FOO=bar cmd

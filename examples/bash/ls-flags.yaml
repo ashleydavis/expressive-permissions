@@ -1,4 +1,4 @@
-command: "ls -la /tmp"
+command: ls -la /tmp
 ast:
   type: command
   binary: ls
@@ -8,4 +8,4 @@ ast:
   cmd: /tmp
   envPrefix: {}
   redirects: []
-  raw: "ls -la /tmp"
+  raw: ls -la /tmp

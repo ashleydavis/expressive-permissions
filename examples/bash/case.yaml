@@ -1,0 +1,37 @@
+command: case $1 in start) run;; stop|halt) halt;; *) usage;; esac
+ast:
+  type: case_statement
+  word: $1
+  clauses:
+    - patterns:
+        - start
+      body:
+        type: command
+        binary: run
+        options: {}
+        cmd: []
+        envPrefix: {}
+        redirects: []
+        raw: run
+    - patterns:
+        - stop
+        - halt
+      body:
+        type: command
+        binary: halt
+        options: {}
+        cmd: []
+        envPrefix: {}
+        redirects: []
+        raw: halt
+    - patterns:
+        - "*"
+      body:
+        type: command
+        binary: usage
+        options: {}
+        cmd: []
+        envPrefix: {}
+        redirects: []
+        raw: usage
+  raw: case $1 in start) run;; stop|halt) halt;; *) usage;; esac

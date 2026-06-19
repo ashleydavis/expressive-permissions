@@ -1,0 +1,30 @@
+tool_call:
+  tool_name: Bash
+  tool_input:
+    command: "{ echo start; make all; }"
+ast:
+  type: bash
+  raw: "{ echo start; make all; }"
+  ast:
+    type: group
+    style: brace
+    body:
+      type: binop
+      op: ;
+      left:
+        type: command
+        binary: echo
+        options: {}
+        cmd: start
+        envPrefix: {}
+        redirects: []
+        raw: echo start
+      right:
+        type: command
+        binary: make
+        options: {}
+        cmd: all
+        envPrefix: {}
+        redirects: []
+        raw: make all
+    raw: "{ echo start; make all; }"

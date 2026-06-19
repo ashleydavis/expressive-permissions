@@ -1,0 +1,29 @@
+tool_call:
+  tool_name: Bash
+  tool_input:
+    command: until ping -c1 host; do sleep 1; done
+ast:
+  type: bash
+  raw: until ping -c1 host; do sleep 1; done
+  ast:
+    type: while_loop
+    until: true
+    condition:
+      type: command
+      binary: ping
+      options:
+        "1": true
+        c: true
+      cmd: host
+      envPrefix: {}
+      redirects: []
+      raw: ping -c1 host
+    body:
+      type: command
+      binary: sleep
+      options: {}
+      cmd: "1"
+      envPrefix: {}
+      redirects: []
+      raw: sleep 1
+    raw: until ping -c1 host; do sleep 1; done

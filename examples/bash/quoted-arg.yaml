@@ -1,9 +1,9 @@
-command: 'echo "hello world"'
+command: echo "hello world"
 ast:
   type: command
   binary: echo
   options: {}
-  cmd: "hello world"
+  cmd: hello world
   envPrefix: {}
   redirects: []
-  raw: 'echo "hello world"'
+  raw: echo "hello world"

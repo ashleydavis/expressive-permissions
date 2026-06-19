@@ -1,0 +1,43 @@
+tool_call:
+  tool_name: Bash
+  tool_input:
+    command: case $1 in start) echo go;; stop|halt) echo stop;; *) echo usage;; esac
+ast:
+  type: bash
+  raw: case $1 in start) echo go;; stop|halt) echo stop;; *) echo usage;; esac
+  ast:
+    type: case_statement
+    word: $1
+    clauses:
+      - patterns:
+          - start
+        body:
+          type: command
+          binary: echo
+          options: {}
+          cmd: go
+          envPrefix: {}
+          redirects: []
+          raw: echo go
+      - patterns:
+          - stop
+          - halt
+        body:
+          type: command
+          binary: echo
+          options: {}
+          cmd: stop
+          envPrefix: {}
+          redirects: []
+          raw: echo stop
+      - patterns:
+          - "*"
+        body:
+          type: command
+          binary: echo
+          options: {}
+          cmd: usage
+          envPrefix: {}
+          redirects: []
+          raw: echo usage
+    raw: case $1 in start) echo go;; stop|halt) echo stop;; *) echo usage;; esac

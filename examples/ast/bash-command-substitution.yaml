@@ -1,0 +1,23 @@
+tool_call:
+  tool_name: Bash
+  tool_input:
+    command: echo $(whoami)
+ast:
+  type: bash
+  raw: echo $(whoami)
+  ast:
+    type: command
+    binary: echo
+    options: {}
+    cmd: $(whoami)
+    envPrefix: {}
+    redirects: []
+    raw: echo $(whoami)
+    substitutions:
+      - type: command
+        binary: whoami
+        options: {}
+        cmd: []
+        envPrefix: {}
+        redirects: []
+        raw: whoami

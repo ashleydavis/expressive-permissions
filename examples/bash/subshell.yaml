@@ -1,10 +1,24 @@
-command: "$(which sudo) -i"
+command: (cd src && make)
 ast:
-  type: command
-  binary: "$(which sudo)"
-  options:
-    i: true
-  cmd: []
-  envPrefix: {}
-  redirects: []
-  raw: "$(which sudo) -i"
+  type: group
+  style: subshell
+  body:
+    type: binop
+    op: "&&"
+    left:
+      type: command
+      binary: cd
+      options: {}
+      cmd: src
+      envPrefix: {}
+      redirects: []
+      raw: cd src
+    right:
+      type: command
+      binary: make
+      options: {}
+      cmd: []
+      envPrefix: {}
+      redirects: []
+      raw: make
+  raw: (cd src && make)

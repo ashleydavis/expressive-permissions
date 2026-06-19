@@ -5,7 +5,7 @@ import { RuleLayer, RuleRegistry } from "../rule-registry";
 import { cdRule } from "../rules/builtin/cd";
 import { envPrefixRule } from "../rules/builtin/env-prefix";
 import { envSetRule } from "../rules/builtin/env-set";
-import { AstNode, Decision, IEnvironment, IRule, IRuleOutcome, IToolCall, ABSTAIN, rank, IBash, IBinOp, ICommand, ICommandDescriptor, IEdit, IIfStatement, IMultiEdit, IOtherTool, IRead, IWrite, IXargsNode } from "../types";
+import { AstNode, Decision, IEnvironment, IRule, IRuleOutcome, IToolCall, ABSTAIN, rank, IBash, IBinOp, ICaseStatement, ICommand, ICommandDescriptor, IEdit, IGroup, IIfStatement, IMultiEdit, IOtherTool, IRead, IWrite, IWhileLoop, IXargsNode } from "../types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -931,6 +931,25 @@ test("isLeaf: if-statement node is not a leaf", () => {
     expect(isLeaf(ifNode)).toBe(false);
 });
 
+test("isLeaf: while-loop node is not a leaf", () => {
+    const condition: ICommand = { type: "command", binary: "true", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "true" };
+    const body: ICommand = { type: "command", binary: "echo", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "echo" };
+    const loop: IWhileLoop = { type: "while_loop", until: false, condition, body, raw: "while true; do echo; done" };
+    expect(isLeaf(loop)).toBe(false);
+});
+
+test("isLeaf: group node is not a leaf", () => {
+    const body: ICommand = { type: "command", binary: "echo", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "echo" };
+    const group: IGroup = { type: "group", style: "subshell", body, raw: "(echo)" };
+    expect(isLeaf(group)).toBe(false);
+});
+
+test("isLeaf: case-statement node is not a leaf", () => {
+    const body: ICommand = { type: "command", binary: "echo", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "echo" };
+    const caseNode: ICaseStatement = { type: "case_statement", word: "$x", clauses: [{ patterns: ["a"], body }], raw: "case $x in a) echo;; esac" };
+    expect(isLeaf(caseNode)).toBe(false);
+});
+
 // ---------------------------------------------------------------------------
 // aggregateChildren — direct unit tests
 // ---------------------------------------------------------------------------
@@ -1308,6 +1327,118 @@ test("if-statement: a cd in the condition sets cwd for both branch rules", () =>
         new NullAuditLogger()
     );
     expect(seenCwds).toEqual(["/etc", "/etc"]);
+});
+
+// ---------------------------------------------------------------------------
+// while/until, group, case, and command substitution walking
+// ---------------------------------------------------------------------------
+
+// denyBinaryRule denies a named binary, allows any other command, and abstains on non-commands.
+function denyBinaryRule(binaryToDeny: string, reason: string): IRule {
+    return function denyBinary(node: AstNode): IRuleOutcome {
+        if (node.type === "command" && node.binary === binaryToDeny) {
+            return { decision: { action: "deny", reason } };
+        }
+        if (node.type === "command" && node.binary !== "") {
+            return { decision: { action: "allow" } };
+        }
+        return ABSTAIN;
+    };
+}
+
+test("while-loop: a deny in the body denies the loop", () => {
+    testRules.push(denyBinaryRule("rm", "no rm"));
+    const result = decide(makeBashCall("while read line; do rm $line; done"), new NullAuditLogger());
+    expect(result.action).toBe("deny");
+    expect(result.reason).toBe("no rm");
+});
+
+test("while-loop: a deny in the condition denies the loop", () => {
+    testRules.push(denyBinaryRule("rm", "no rm"));
+    const result = decide(makeBashCall("while rm flag; do echo go; done"), new NullAuditLogger());
+    expect(result.action).toBe("deny");
+});
+
+test("while-loop: a cd in the condition sets cwd for the body", () => {
+    const seenCwds: string[] = [];
+    const captureRule: IRule = function captureRule(node: AstNode, env: IEnvironment): IRuleOutcome {
+        if (node.type === "command" && node.binary === "echo") {
+            seenCwds.push(env.cwd);
+            return { decision: { action: "allow" } };
+        }
+        return ABSTAIN;
+    };
+    testRules.push(cdRule);
+    testRules.push(captureRule);
+    decide(makeBashCall("while cd /etc; do echo body; done", "/start"), new NullAuditLogger());
+    expect(seenCwds).toEqual(["/etc"]);
+});
+
+test("group: a deny anywhere inside a subshell denies the group", () => {
+    testRules.push(denyBinaryRule("rm", "no rm"));
+    const result = decide(makeBashCall("(cd /tmp && rm -rf x)"), new NullAuditLogger());
+    expect(result.action).toBe("deny");
+});
+
+test("group: a cd inside a subshell does NOT leak to a later sibling", () => {
+    const seenCwds: string[] = [];
+    const captureRule: IRule = function captureRule(node: AstNode, env: IEnvironment): IRuleOutcome {
+        if (node.type === "command" && node.binary === "echo") {
+            seenCwds.push(env.cwd);
+            return { decision: { action: "allow" } };
+        }
+        return ABSTAIN;
+    };
+    testRules.push(cdRule);
+    testRules.push(captureRule);
+    decide(makeBashCall("(cd /etc); echo after", "/start"), new NullAuditLogger());
+    expect(seenCwds).toEqual(["/start"]);
+});
+
+test("group: a cd inside a brace group DOES leak to a later sibling", () => {
+    const seenCwds: string[] = [];
+    const captureRule: IRule = function captureRule(node: AstNode, env: IEnvironment): IRuleOutcome {
+        if (node.type === "command" && node.binary === "echo") {
+            seenCwds.push(env.cwd);
+            return { decision: { action: "allow" } };
+        }
+        return ABSTAIN;
+    };
+    testRules.push(cdRule);
+    testRules.push(captureRule);
+    decide(makeBashCall("{ cd /etc; }; echo after", "/start"), new NullAuditLogger());
+    expect(seenCwds).toEqual(["/etc"]);
+});
+
+test("case-statement: a deny in any clause body denies the statement", () => {
+    testRules.push(denyBinaryRule("rm", "no rm"));
+    const result = decide(makeBashCall("case $x in a) echo ok;; *) rm y;; esac"), new NullAuditLogger());
+    expect(result.action).toBe("deny");
+});
+
+test("case-statement: all-allow clauses allow the statement", () => {
+    testRules.push(nodeMatchRule((node: AstNode) => node.type === "command", { decision: { action: "allow" } }));
+    const result = decide(makeBashCall("case $x in a) echo a;; *) echo b;; esac"), new NullAuditLogger());
+    expect(result.action).toBe("allow");
+});
+
+test("command substitution: a deny inside $(...) denies the outer command", () => {
+    testRules.push(denyBinaryRule("rm", "no rm"));
+    const result = decide(makeBashCall("echo $(rm -rf /)"), new NullAuditLogger());
+    expect(result.action).toBe("deny");
+    expect(result.reason).toBe("no rm");
+});
+
+test("command substitution: a deny inside backticks denies the outer command", () => {
+    testRules.push(denyBinaryRule("rm", "no rm"));
+    const result = decide(makeBashCall("echo `rm -rf /`"), new NullAuditLogger());
+    expect(result.action).toBe("deny");
+});
+
+test("command substitution: an allowed inner command leaves the outer command allowed", () => {
+    testRules.push(nodeMatchRule((node: AstNode) => node.type === "command", { decision: { action: "allow" } }));
+    const result = decide(makeBashCall("echo $(date +%s)"), new NullAuditLogger());
+    expect(result.action).toBe("allow");
 });
 
 // ---------------------------------------------------------------------------

@@ -1,0 +1,24 @@
+command: "{ echo a; echo b; }"
+ast:
+  type: group
+  style: brace
+  body:
+    type: binop
+    op: ;
+    left:
+      type: command
+      binary: echo
+      options: {}
+      cmd: a
+      envPrefix: {}
+      redirects: []
+      raw: echo a
+    right:
+      type: command
+      binary: echo
+      options: {}
+      cmd: b
+      envPrefix: {}
+      redirects: []
+      raw: echo b
+  raw: "{ echo a; echo b; }"

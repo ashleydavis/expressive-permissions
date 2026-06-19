@@ -1,20 +1,20 @@
-command: "a || b"
+command: make || echo failed
 ast:
   type: binop
   op: "||"
   left:
     type: command
-    binary: a
+    binary: make
     options: {}
     cmd: []
     envPrefix: {}
     redirects: []
-    raw: a
+    raw: make
   right:
     type: command
-    binary: b
+    binary: echo
     options: {}
-    cmd: []
+    cmd: failed
     envPrefix: {}
     redirects: []
-    raw: b
+    raw: echo failed

@@ -112,20 +112,28 @@ export function parseXargsCommand(raw: string, descriptors: Map<string, ICommand
 }
 
 // Recursively transforms Command nodes with binary "xargs" into IXargsNode intermediate nodes.
-// BinOp and ForLoop nodes are walked to transform their children; other nodes are returned unchanged.
+// Intermediate nodes (binop, loops, if, group, case) are walked to transform their children;
+// embedded command substitutions are walked too. Other nodes are returned unchanged.
 export function transformXargsNodes(node: BashAstNode, descriptors: Map<string, ICommandDescriptor>): BashAstNode {
     if (node.type === "command") {
-        if (node.binary !== "xargs") {
-            return node;
+        if (node.binary === "xargs") {
+            const { options, child } = parseXargsCommand(node.raw, descriptors);
+            const xargsNode: IXargsNode = {
+                type: "xargs",
+                options,
+                child,
+                raw: node.raw,
+            };
+            return xargsNode;
         }
-        const { options, child } = parseXargsCommand(node.raw, descriptors);
-        const xargsNode: IXargsNode = {
-            type: "xargs",
-            options,
-            child,
-            raw: node.raw,
-        };
-        return xargsNode;
+        if (node.substitutions !== undefined && node.substitutions.length > 0) {
+            const transformed: ICommand = {
+                ...node,
+                substitutions: node.substitutions.map((substitution) => transformXargsNodes(substitution, descriptors)),
+            };
+            return transformed;
+        }
+        return node;
     }
 
     if (node.type === "binop") {
@@ -140,6 +148,31 @@ export function transformXargsNodes(node: BashAstNode, descriptors: Map<string, 
         return {
             ...node,
             body: transformXargsNodes(node.body, descriptors),
+        };
+    }
+
+    if (node.type === "while_loop") {
+        return {
+            ...node,
+            condition: transformXargsNodes(node.condition, descriptors),
+            body: transformXargsNodes(node.body, descriptors),
+        };
+    }
+
+    if (node.type === "group") {
+        return {
+            ...node,
+            body: transformXargsNodes(node.body, descriptors),
+        };
+    }
+
+    if (node.type === "case_statement") {
+        return {
+            ...node,
+            clauses: node.clauses.map((clause) => ({
+                ...clause,
+                body: transformXargsNodes(clause.body, descriptors),
+            })),
         };
     }
 
@@ -207,6 +240,12 @@ export function describeNode(node: AstNode): string {
         case "binop":
             return `${describeNode((node as IBinOp).left)} ${(node as IBinOp).op} ${describeNode((node as IBinOp).right)}`;
         case "for_loop":
+            return node.raw;
+        case "while_loop":
+            return node.raw;
+        case "group":
+            return node.raw;
+        case "case_statement":
             return node.raw;
         case "if_statement":
             return node.raw;

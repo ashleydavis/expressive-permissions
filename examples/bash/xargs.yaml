@@ -1,0 +1,24 @@
+command: find . | xargs rm
+ast:
+  type: binop
+  op: "|"
+  left:
+    type: command
+    binary: find
+    options: {}
+    cmd: .
+    envPrefix: {}
+    redirects: []
+    raw: find .
+  right:
+    type: xargs
+    options: {}
+    child:
+      type: command
+      binary: rm
+      options: {}
+      cmd: []
+      envPrefix: {}
+      redirects: []
+      raw: rm
+    raw: xargs rm

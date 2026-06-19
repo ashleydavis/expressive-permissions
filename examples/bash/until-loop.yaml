@@ -1,0 +1,22 @@
+command: until test -f /tmp/ready; do sleep 1; done
+ast:
+  type: while_loop
+  until: true
+  condition:
+    type: command
+    binary: test
+    options:
+      f: true
+    cmd: /tmp/ready
+    envPrefix: {}
+    redirects: []
+    raw: test -f /tmp/ready
+  body:
+    type: command
+    binary: sleep
+    options: {}
+    cmd: "1"
+    envPrefix: {}
+    redirects: []
+    raw: sleep 1
+  raw: until test -f /tmp/ready; do sleep 1; done

@@ -1,0 +1,23 @@
+tool_call:
+  tool_name: Bash
+  tool_input:
+    command: rm `cat list.txt`
+ast:
+  type: bash
+  raw: rm `cat list.txt`
+  ast:
+    type: command
+    binary: rm
+    options: {}
+    cmd: "`cat list.txt`"
+    envPrefix: {}
+    redirects: []
+    raw: rm `cat list.txt`
+    substitutions:
+      - type: command
+        binary: cat
+        options: {}
+        cmd: list.txt
+        envPrefix: {}
+        redirects: []
+        raw: cat list.txt

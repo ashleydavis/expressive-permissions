@@ -1,4 +1,4 @@
-command: "A=1 B=2 cmd"
+command: A=1 B=2 cmd
 ast:
   type: command
   binary: cmd
@@ -8,4 +8,4 @@ ast:
     A: "1"
     B: "2"
   redirects: []
-  raw: "A=1 B=2 cmd"
+  raw: A=1 B=2 cmd
