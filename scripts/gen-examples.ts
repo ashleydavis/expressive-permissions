@@ -1,4 +1,4 @@
-import { readdir, readFile, writeFile } from "fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "fs/promises";
 import { join } from "path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { buildAst } from "../src/build-ast";
@@ -188,39 +188,42 @@ interface IExampleDoc {
     ast: IDiagramNode;
 }
 
-// writeDiagram renders the Mermaid markdown file next to a single example YAML file.
-async function writeDiagram(directory: string, fileName: string): Promise<void> {
-    const baseName = fileName.replace(/\.yaml$/, "");
-    const content = await readFile(join(directory, fileName), "utf-8");
+// writeDiagram renders the Mermaid markdown file (index.md) inside a single example directory.
+async function writeDiagram(parentDirectory: string, exampleName: string): Promise<void> {
+    const exampleDirectory = join(parentDirectory, exampleName);
+    const content = await readFile(join(exampleDirectory, "index.yaml"), "utf-8");
     const doc = parseYaml(content) as IExampleDoc;
     const command = doc.tool_call?.tool_input?.command ?? doc.command ?? "";
     const diagram = renderMermaid(doc.ast);
 
-    const markdown = `# ${baseName}\n\nCommand:\n\n\`\`\`sh\n${command}\n\`\`\`\n\nAST:\n\n\`\`\`mermaid\n${diagram}\n\`\`\`\n`;
-    await writeFile(join(directory, `${baseName}.md`), markdown);
+    const markdown = `# ${exampleName}\n\nCommand:\n\n\`\`\`sh\n${command}\n\`\`\`\n\nAST:\n\n\`\`\`mermaid\n${diagram}\n\`\`\`\n`;
+    await writeFile(join(exampleDirectory, "index.md"), markdown);
 }
 
-// generateBashExamples writes one YAML fixture per entry in BASH_SPECS, with the expected AST
-// produced by the live parser.
+// generateBashExamples writes one fixture per entry in BASH_SPECS to its own subdirectory
+// (examples/bash/<name>/index.yaml), with the expected AST produced by the live parser.
 async function generateBashExamples(): Promise<void> {
     for (const spec of BASH_SPECS) {
         const toolCall: IToolCall = { tool_name: "Bash", tool_input: { command: spec.command }, cwd: "/work" };
         const root = buildAst(toolCall, new Map());
         const doc = { command: spec.command, ast: root.type === "bash" ? root.ast : root };
         const yaml = stringifyYaml(doc, { lineWidth: 0 });
-        await writeFile(join("examples/bash", `${spec.name}.yaml`), yaml);
-        process.stdout.write(`wrote examples/bash/${spec.name}.yaml\n`);
+        const exampleDirectory = join("examples/bash", spec.name);
+        await mkdir(exampleDirectory, { recursive: true });
+        await writeFile(join(exampleDirectory, "index.yaml"), yaml);
+        process.stdout.write(`wrote examples/bash/${spec.name}/index.yaml\n`);
     }
 }
 
-// generateDiagrams writes a Mermaid markdown file next to every YAML example in both directories.
+// generateDiagrams writes an index.md Mermaid diagram inside every example subdirectory in both
+// example trees. Each example lives in its own subdirectory holding index.yaml and index.md.
 async function generateDiagrams(): Promise<void> {
     for (const directory of ["examples/ast", "examples/bash"]) {
-        const entries = await readdir(directory);
-        for (const fileName of entries) {
-            if (fileName.endsWith(".yaml")) {
-                await writeDiagram(directory, fileName);
-                process.stdout.write(`wrote ${directory}/${fileName.replace(/\.yaml$/, ".md")}\n`);
+        const entries = await readdir(directory, { withFileTypes: true });
+        for (const entry of entries) {
+            if (entry.isDirectory()) {
+                await writeDiagram(directory, entry.name);
+                process.stdout.write(`wrote ${directory}/${entry.name}/index.md\n`);
             }
         }
     }

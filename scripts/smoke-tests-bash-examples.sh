@@ -7,9 +7,9 @@ CHECK_SCRIPT="$SCRIPT_DIR/../scripts/check-bash-example.ts"
 passed=0
 failed=0
 
-for yaml_file in "$EXAMPLES_DIR"/*.yaml; do
+for yaml_file in "$EXAMPLES_DIR"/*/index.yaml; do
     [ -f "$yaml_file" ] || continue
-    name=$(basename "$yaml_file" .yaml)
+    name=$(basename "$(dirname "$yaml_file")")
 
     if error_output=$(bun "$CHECK_SCRIPT" "$yaml_file" 2>&1); then
         printf "PASS  %s\n" "$name"
