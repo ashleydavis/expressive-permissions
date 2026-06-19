@@ -40,9 +40,9 @@ test("envSetRule: standalone with empty envPrefix → abstain", () => {
 // Matching nodes (binary === "" with envPrefix entries)
 // ---------------------------------------------------------------------------
 
-test("envSetRule: decision is always abstain on match", () => {
+test("envSetRule: decision is always allow on match", () => {
     const result = envSetRule(makeCommand("", { FOO: "bar" }), makeEnv(), dummyCall);
-    expect(result.decision.action).toBe("abstain");
+    expect(result.decision.action).toBe("allow");
 });
 
 test("envSetRule: returns persistent env with var set", () => {

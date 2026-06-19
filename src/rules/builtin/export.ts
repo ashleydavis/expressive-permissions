@@ -2,7 +2,8 @@ import { AstNode, IEnvironment, IRule, IRuleOutcome, IToolCall, ABSTAIN } from "
 
 // exportRule: built-in semantic rule that handles `export FOO=bar [BAZ=qux ...]` commands.
 // Matches any Command leaf with binary "export". Parses KEY=VALUE tokens from the positionals
-// and merges them into a persistent env update. Decision is always abstain.
+// and merges them into a persistent env update. Decision is always allow: setting env vars
+// runs no command and is always safe to permit.
 // Abstains when there are no KEY=VALUE tokens (e.g. `export` with no args).
 export const exportRule: IRule = function exportRule(node: AstNode, env: IEnvironment, _call: IToolCall): IRuleOutcome {
     if (node.type !== "command" || node.binary !== "export") {
@@ -24,7 +25,7 @@ export const exportRule: IRule = function exportRule(node: AstNode, env: IEnviro
     }
 
     return {
-        decision: { action: "abstain" },
+        decision: { action: "allow", reason: "set environment variable" },
         env: { ...env, env: { ...env.env, ...updates } },
     };
 };

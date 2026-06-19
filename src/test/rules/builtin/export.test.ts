@@ -32,12 +32,12 @@ test("exportRule: export with bare name (no =) → abstain", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Decision is always abstain
+// Decision is always allow
 // ---------------------------------------------------------------------------
 
-test("exportRule: decision is always abstain on match", () => {
+test("exportRule: decision is always allow on match", () => {
     const result = exportRule(makeCommand("export", makeOptions({}), ["FOO=bar"], {}), makeEnv("/start", true, {}), dummyCall);
-    expect(result.decision.action).toBe("abstain");
+    expect(result.decision.action).toBe("allow");
 });
 
 // ---------------------------------------------------------------------------

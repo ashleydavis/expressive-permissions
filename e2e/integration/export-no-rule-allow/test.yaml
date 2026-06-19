@@ -1,0 +1,13 @@
+description: "integration: export FOO=bar with no user rule, built-in export allows it"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "export FOO=bar"
+  cwd: /home/user/project
+
+rules:
+  bash: {}
+
+expected:
+  decision: allow

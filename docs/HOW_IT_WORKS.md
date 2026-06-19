@@ -205,15 +205,15 @@ Worked examples:
 
 ## 6. Built-in rules
 
-These rules handle Bash semantics. They always `abstain` on the decision and only update `env` as a side effect, so they never block a call on their own.
+These rules handle Bash semantics. Most only update `env` as a side effect and `abstain` on the decision, so they never block a call on their own. The exceptions are `envSetRule` and `exportRule`: a bare assignment or `export` runs no command, so they `allow` it outright (as well as updating `env`).
 
-| Rule | File | Matches | Env effect |
-|---|---|---|---|
-| `cdRule` | `src/rules/builtin/cd.ts` | `cd <path>` | Updates `env.cwd` persistently via `&&` / `;` propagation |
-| `envPrefixRule` | `src/rules/builtin/env-prefix.ts` | `FOO=bar cmd` (non-empty binary + envPrefix) | Installs prefix vars into `env.env` for this command only (`scopedEnv` - transient) |
-| `envSetRule` | `src/rules/builtin/env-set.ts` | `FOO=bar` with no binary | Updates `env.env` persistently |
-| `exportRule` | `src/rules/builtin/export.ts` | `export FOO=bar [BAZ=qux …]` | Updates `env.env` persistently |
-| `xargsRule` | `src/rules/builtin/xargs.ts` | `IXargsNode` (any xargs command) | None -- always abstains; child decision propagates |
+| Rule | File | Matches | Decision | Env effect |
+|---|---|---|---|---|
+| `cdRule` | `src/rules/builtin/cd.ts` | `cd <path>` | abstain | Updates `env.cwd` persistently via `&&` / `;` propagation |
+| `envPrefixRule` | `src/rules/builtin/env-prefix.ts` | `FOO=bar cmd` (non-empty binary + envPrefix) | abstain | Installs prefix vars into `env.env` for this command only (`scopedEnv` - transient) |
+| `envSetRule` | `src/rules/builtin/env-set.ts` | `FOO=bar` with no binary | allow | Updates `env.env` persistently |
+| `exportRule` | `src/rules/builtin/export.ts` | `export FOO=bar [BAZ=qux …]` | allow | Updates `env.env` persistently |
+| `xargsRule` | `src/rules/builtin/xargs.ts` | `IXargsNode` (any xargs command) | abstain | None -- child decision propagates |
 
 Built-ins are registered first in `src/rules/index.ts` so their env updates land in `runningEnv` before permission rules read them - e.g. `NODE_ENV=production npm start` makes `NODE_ENV` visible to a permission rule that wants to deny production runs.
 
