@@ -4,7 +4,9 @@ A robust, configurable, flexible and decidedly not annoying expressive permissio
 
 This is a plugin for Claude Code to handle permissions. You delegate all of Claude's permission requests to this plugin and then it will decide, through rules you have laid down in yaml configuration files, whether to allow or deny any particular tool use or command invocation.
 
-📖 Read the full documentation at [https://ashleydavis.github.io/expressive-permissions/](https://ashleydavis.github.io/expressive-permissions/).
+Read the full documentation at [https://ashleydavis.github.io/expressive-permissions/](https://ashleydavis.github.io/expressive-permissions/).
+
+See comprehensive examples of permissions configuration in [my personal Claude Code config repo](https://github.com/ashleydavis/claude-config/tree/main/home/.claude/permissions.d).
 
 This gives you permissions that work, even when:
 - Commands are embedded in a pipeline in a variable order.
