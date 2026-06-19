@@ -317,6 +317,19 @@ function matchesOptions(entry: IYamlEntry, node: ICommand): boolean {
     return true;
 }
 
+// Expands `$NAME` and `${NAME}` references in value using the known env vars. A reference
+// whose variable is not present in envVars is left untouched, so an unknown variable never
+// resolves to an allowed path; it stays literal and falls through to the safe default. This
+// lets a rule match the real value of an argument like "$B" once B is known, either from a
+// preceding `X=Y` assignment in the same command sequence or from an inline env prefix.
+export function expandEnvVars(value: string, envVars: Record<string, string>): string {
+    return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (fullMatch: string, bracedName: string, bareName: string): string => {
+        const variableName = bracedName !== undefined ? bracedName : bareName;
+        const replacement = envVars[variableName];
+        return replacement !== undefined ? replacement : fullMatch;
+    });
+}
+
 // Returns true when value matches pattern using path-aware semantics if the pattern is a
 // path-style pattern (./* or /*), otherwise falls through to the string-glob matchesPattern.
 // Used inside matchesCmd to dispatch per pattern–arg pair. The resolved pattern is assumed
@@ -334,7 +347,9 @@ function matchesCmdPattern(pattern: string, arg: string, env: IEnvironment): boo
 // env is threaded in so path-aware patterns (./* or /*) can resolve relative positional args
 // against env.cwd before matching.
 function matchesCmd(entry: IYamlEntry, node: ICommand, cmdOffset: number, env: IEnvironment): boolean {
-    const cmdArray = Array.isArray(node.cmd) ? node.cmd : [node.cmd];
+    const rawCmdArray = Array.isArray(node.cmd) ? node.cmd : [node.cmd];
+    // Expand known env-var references (e.g. "$B") so the rule matches the variable's value.
+    const cmdArray = rawCmdArray.map((token: string) => expandEnvVars(token, env.env));
 
     if (entry["cmd-in"] !== undefined) {
         const slice = cmdArray.slice(cmdOffset);

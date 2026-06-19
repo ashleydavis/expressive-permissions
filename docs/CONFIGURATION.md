@@ -393,6 +393,8 @@ bash:
     reason: Only HTTPS allowed
 ```
 
+**Environment variable expansion**: before a positional argument is matched (for both `cmd` and `cmd-in`), any `$NAME` or `${NAME}` reference in it is expanded using the variables known at that point in the command. Those come from `X=Y` assignments earlier in the same command, an inline prefix (`X=Y cmd`), or `export X=Y`, threaded through `;` and `&&`. So with `B=/tmp/out.txt; sed -i 's/a/b/' "$B"`, the rule sees `/tmp/out.txt` and a `cmd-in: ["/tmp/**"]` matcher fires. A reference whose variable is not known (set in an earlier, separate command, or only in the real shell's environment) is left literal, so it will not match an allowed path and falls through to the default ask.
+
 For file paths, `path-in` matches when the path matches any entry:
 
 ```yaml

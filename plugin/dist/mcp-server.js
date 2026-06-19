@@ -22968,6 +22968,13 @@ function matchesOptions(entry, node) {
   }
   return true;
 }
+function expandEnvVars(value, envVars) {
+  return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (fullMatch, bracedName, bareName) => {
+    const variableName = bracedName !== undefined ? bracedName : bareName;
+    const replacement = envVars[variableName];
+    return replacement !== undefined ? replacement : fullMatch;
+  });
+}
 function matchesCmdPattern(pattern, arg, env) {
   if (!isCmdPathPattern(pattern)) {
     return matchesPattern(pattern, arg);
@@ -22976,7 +22983,8 @@ function matchesCmdPattern(pattern, arg, env) {
   return matchesPathGlob(pattern, resolvedArg);
 }
 function matchesCmd(entry, node, cmdOffset, env) {
-  const cmdArray = Array.isArray(node.cmd) ? node.cmd : [node.cmd];
+  const rawCmdArray = Array.isArray(node.cmd) ? node.cmd : [node.cmd];
+  const cmdArray = rawCmdArray.map((token) => expandEnvVars(token, env.env));
   if (entry["cmd-in"] !== undefined) {
     const slice = cmdArray.slice(cmdOffset);
     return entry["cmd-in"].some((pattern) => slice.some((positional) => matchesCmdPattern(pattern, positional, env)));

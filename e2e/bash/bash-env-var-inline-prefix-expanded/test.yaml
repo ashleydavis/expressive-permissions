@@ -1,0 +1,19 @@
+description: "bash: an inline env prefix (X=Y cmd) is visible to the same command, so $X in its args is expanded before cmd matching"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: 'F=/tmp/out.log sed -i ''s/a/b/'' "$F"'
+  cwd: /home/user/outside-the-project
+
+rules:
+  bash:
+    sed:
+      cmd-in:
+        - "/tmp/**"
+      decide: allow
+      reason: sed within /tmp
+
+expected:
+  decision: allow
+  reason: sed within /tmp

@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync, rmSync, mkdtempSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { loadConfigRules, loadConfigRulesFromFile, loadHomeConfigRules, loadProjectConfigRules, validateConfig, resolveCwdPattern, resolveEntryCwdPatterns, resolveRelativeCwdPatterns, isCmdPathPattern, resolveCmdPathPattern, resolveEntryCmdPatterns, resolveRelativeCmdPatterns, expandEntryEnvTokens, expandConfigEnvTokens, aggregateOutcomes, buildBashScopedRule, buildFileScopedRule, notFieldsAllMatch, evaluateFileField, matchesFileField, lineOfOffset, annotateLines, compileTopLevelToolRules, discoverConfigDirFiles, discoverHomeConfigDirFiles, discoverProjectConfigDirFiles, makeConfigFileLoader, IYamlEntry, IYamlConfig, INotFields, IFileMatch, IConfigError, IConfigFileSource } from "../load-config";
+import { loadConfigRules, loadConfigRulesFromFile, loadHomeConfigRules, loadProjectConfigRules, validateConfig, resolveCwdPattern, resolveEntryCwdPatterns, resolveRelativeCwdPatterns, isCmdPathPattern, resolveCmdPathPattern, resolveEntryCmdPatterns, resolveRelativeCmdPatterns, expandEntryEnvTokens, expandConfigEnvTokens, aggregateOutcomes, buildBashScopedRule, buildFileScopedRule, notFieldsAllMatch, evaluateFileField, matchesFileField, lineOfOffset, annotateLines, compileTopLevelToolRules, discoverConfigDirFiles, discoverHomeConfigDirFiles, discoverProjectConfigDirFiles, makeConfigFileLoader, expandEnvVars, IYamlEntry, IYamlConfig, INotFields, IFileMatch, IConfigError, IConfigFileSource } from "../load-config";
 import { parseDocument } from "yaml";
 import { IRule, IRuleOutcome, AstNode, IEnvironment, IToolCall, ICommand } from "../types";
 
@@ -4750,5 +4750,127 @@ bash:
         const outcomeInTest = rules[0](nodeInTest, makeEnv(projectDir, true), dummyCall);
         expect(outcomeInSrc.decision.action).toBe("allow");
         expect(outcomeInTest.decision.action).toBe("allow");
+    });
+});
+
+// ---------------------------------------------------------------------------
+// expandEnvVars
+// ---------------------------------------------------------------------------
+
+test("expandEnvVars: replaces a bare $NAME with its value", () => {
+    expect(expandEnvVars("$B", { B: "/tmp/x.txt" })).toBe("/tmp/x.txt");
+});
+
+test("expandEnvVars: replaces a braced ${NAME} with its value", () => {
+    expect(expandEnvVars("${DIR}/sub", { DIR: "/var/log" })).toBe("/var/log/sub");
+});
+
+test("expandEnvVars: replaces multiple references in one value", () => {
+    expect(expandEnvVars("$A/$B", { A: "/tmp", B: "f.txt" })).toBe("/tmp/f.txt");
+});
+
+test("expandEnvVars: leaves an unknown variable untouched", () => {
+    expect(expandEnvVars("$MISSING/x", {})).toBe("$MISSING/x");
+});
+
+test("expandEnvVars: leaves a value with no references untouched", () => {
+    expect(expandEnvVars("plain/path.txt", { B: "x" })).toBe("plain/path.txt");
+});
+
+// ---------------------------------------------------------------------------
+// cmd matching expands env-var references using the threaded environment
+// ---------------------------------------------------------------------------
+
+test("bash cmd: a $VAR positional is expanded against env before path matching", () => {
+    const yaml = `
+bash:
+  sed:
+    cmd-in:
+      - "/tmp/**"
+    decide: allow
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const envWithVar = makeEnv("/elsewhere", true, { B: "/tmp/scratch.txt" });
+        const matchNode = makeCommand("sed", ["s/a/b/", "$B"]);
+        expect(rules[0](matchNode, envWithVar, dummyCall).decision.action).toBe("allow");
+
+        // Same command, but B is unknown: the literal "$B" must not match /tmp/**.
+        const envNoVar = makeEnv("/elsewhere", true, {});
+        expect(rules[0](matchNode, envNoVar, dummyCall).decision.action).toBe("abstain");
+    });
+});
+
+test("bash cmd (positional form): a ${VAR} positional is expanded before path matching", () => {
+    const yaml = `
+bash:
+  mytool:
+    cmd: "/tmp/**"
+    decide: allow
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const envWithVar = makeEnv("/elsewhere", true, { OUT: "/tmp/result.log" });
+        const matchNode = makeCommand("mytool", ["${OUT}"]);
+        expect(rules[0](matchNode, envWithVar, dummyCall).decision.action).toBe("allow");
+
+        const envNoVar = makeEnv("/elsewhere", true, {});
+        expect(rules[0](matchNode, envNoVar, dummyCall).decision.action).toBe("abstain");
+    });
+});
+
+test("notFieldsAllMatch: a $VAR positional is expanded before matching inside a not: block", () => {
+    const env = makeEnv("/elsewhere", true, { B: "/tmp/scratch.txt" });
+    const node = makeCommand("sed", ["s/a/b/", "$B"]);
+    const notWithVar: INotFields = { "cmd-in": ["/tmp/**"] };
+    expect(notFieldsAllMatch(notWithVar, node, env, 0)).toBe(true);
+
+    // Unknown variable: the literal "$B" must not match, so the not: block does not fire.
+    const envNoVar = makeEnv("/elsewhere", true, {});
+    expect(notFieldsAllMatch(notWithVar, node, envNoVar, 0)).toBe(false);
+});
+
+test("expandEnvVars: expands a variable used as a path prefix with a literal suffix", () => {
+    expect(expandEnvVars("$B/out.txt", { B: "/tmp" })).toBe("/tmp/out.txt");
+});
+
+test("expandEnvVars: expands a braced reference adjacent to surrounding text", () => {
+    expect(expandEnvVars("pre${X}post", { X: "MID" })).toBe("preMIDpost");
+});
+
+test("expandEnvVars: expands two adjacent references with no separator", () => {
+    expect(expandEnvVars("$A$B", { A: "x", B: "y" })).toBe("xy");
+});
+
+test("bash cmd: a variable used as a path prefix is expanded then matched", () => {
+    const yaml = `
+bash:
+  sed:
+    cmd-in:
+      - "/tmp/**"
+    decide: allow
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const env = makeEnv("/elsewhere", true, { B: "/tmp" });
+        const node = makeCommand("sed", ["s/a/b/", "$B/out.txt"]);
+        expect(rules[0](node, env, dummyCall).decision.action).toBe("allow");
+    });
+});
+
+test("bash cmd: expansion applies to deny rules too, not just allow", () => {
+    const yaml = `
+bash:
+  curl:
+    cmd-in:
+      - "http://*"
+    decide: deny
+    reason: Only HTTPS allowed
+`;
+    withYamlFixtures(null, yaml, (rules) => {
+        const env = makeEnv("/elsewhere", true, { U: "http://insecure.example" });
+        const node = makeCommand("curl", ["$U"]);
+        expect(rules[0](node, env, dummyCall).decision.action).toBe("deny");
+
+        // Unknown URL variable stays literal and does not match http://*.
+        const envNoVar = makeEnv("/elsewhere", true, {});
+        expect(rules[0](node, envNoVar, dummyCall).decision.action).toBe("abstain");
     });
 });

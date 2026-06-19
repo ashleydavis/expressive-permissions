@@ -1,0 +1,19 @@
+description: "bash: an assignment on the left of && propagates its var to the right, so $B is expanded before cmd matching"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: 'B=/tmp/out.log && sed -i ''s/a/b/'' "$B"'
+  cwd: /home/user/outside-the-project
+
+rules:
+  bash:
+    sed:
+      cmd-in:
+        - "/tmp/**"
+      decide: allow
+      reason: sed within /tmp
+
+expected:
+  decision: allow
+  reason: sed within /tmp

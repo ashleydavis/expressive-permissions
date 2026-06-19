@@ -1,0 +1,19 @@
+description: "bash: a variable set with export is persistent, so $G in a later command is expanded before cmd matching"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: 'export G=/tmp/out.log; sed -i ''s/a/b/'' "$G"'
+  cwd: /home/user/outside-the-project
+
+rules:
+  bash:
+    sed:
+      cmd-in:
+        - "/tmp/**"
+      decide: allow
+      reason: sed within /tmp
+
+expected:
+  decision: allow
+  reason: sed within /tmp
