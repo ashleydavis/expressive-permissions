@@ -1,0 +1,60 @@
+tool_call:
+  tool_name: Bash
+  tool_input:
+    command: 'cd /work/tf-config && for f in behavior_locals.tf behavior_variables.tf versions.tf; do if diff -q variant-1a/$f variant-2/$f >/dev/null 2>&1; then echo "SAME (1a==2): $f"; else echo "DIFFERS (1a vs 2): $f"; fi; done'
+ast:
+  type: bash
+  raw: 'cd /work/tf-config && for f in behavior_locals.tf behavior_variables.tf versions.tf; do if diff -q variant-1a/$f variant-2/$f >/dev/null 2>&1; then echo "SAME (1a==2): $f"; else echo "DIFFERS (1a vs 2): $f"; fi; done'
+  ast:
+    type: binop
+    op: "&&"
+    left:
+      type: command
+      binary: cd
+      options: {}
+      cmd: /work/tf-config
+      envPrefix: {}
+      redirects: []
+      raw: "cd /work/tf-config"
+    right:
+      type: for_loop
+      variable: f
+      items:
+        - behavior_locals.tf
+        - behavior_variables.tf
+        - versions.tf
+      body:
+        type: if_statement
+        condition:
+          type: command
+          binary: diff
+          options:
+            q: true
+          cmd:
+            - "variant-1a/$f"
+            - "variant-2/$f"
+          envPrefix: {}
+          redirects:
+            - op: ">"
+              target: "/dev/null"
+            - op: "2>&"
+              target: "1"
+          raw: "diff -q variant-1a/$f variant-2/$f >/dev/null 2>&1"
+        thenBranch:
+          type: command
+          binary: echo
+          options: {}
+          cmd: 'SAME (1a==2): $f'
+          envPrefix: {}
+          redirects: []
+          raw: 'echo "SAME (1a==2): $f"'
+        elseBranch:
+          type: command
+          binary: echo
+          options: {}
+          cmd: 'DIFFERS (1a vs 2): $f'
+          envPrefix: {}
+          redirects: []
+          raw: 'echo "DIFFERS (1a vs 2): $f"'
+        raw: 'if diff -q variant-1a/$f variant-2/$f >/dev/null 2>&1; then echo "SAME (1a==2): $f"; else echo "DIFFERS (1a vs 2): $f"; fi'
+      raw: 'for f in behavior_locals.tf behavior_variables.tf versions.tf; do if diff -q variant-1a/$f variant-2/$f >/dev/null 2>&1; then echo "SAME (1a==2): $f"; else echo "DIFFERS (1a vs 2): $f"; fi; done'

@@ -101,6 +101,23 @@ export interface IForLoop {
     raw: string;
 }
 
+// A conditional node representing a Bash if/then/elif/else/fi statement. The interpreter walks
+// the condition (which always runs) and each branch body for permission analysis, since which
+// branch executes at runtime cannot be known statically. An elif chain is represented as a
+// nested IfStatement node in elseBranch.
+export interface IIfStatement {
+    // Discriminator for the if-statement node type
+    type: "if_statement";
+    // The condition command(s) evaluated to decide which branch runs
+    condition: BashAstNode;
+    // The body that runs when the condition succeeds
+    thenBranch: BashAstNode;
+    // Optional body that runs when the condition fails; an elif chain nests another IfStatement here
+    elseBranch?: BashAstNode;
+    // The original raw command string spanning the entire if statement
+    raw: string;
+}
+
 // An intermediate node representing an xargs invocation. The child is the parsed subcommand
 // that xargs will invoke; its decision bubbles up to become the decision of this node.
 export interface IXargsNode {
@@ -115,7 +132,7 @@ export interface IXargsNode {
 }
 
 // Union of all Bash sub-AST node types
-export type BashAstNode = ICommand | IBinOp | IForLoop | IXargsNode;
+export type BashAstNode = ICommand | IBinOp | IForLoop | IXargsNode | IIfStatement;
 
 // A single edit operation within a MultiEdit tool call
 export interface IEditEntry {

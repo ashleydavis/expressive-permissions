@@ -1,4 +1,4 @@
-import { IToolCall, ToolRoot, IEditEntry, IRead, IEdit, AstNode, IBinOp, ICommand, ICommandDescriptor, BashAstNode, IXargsNode } from "./types";
+import { IToolCall, ToolRoot, IEditEntry, IRead, IEdit, AstNode, IBinOp, ICommand, ICommandDescriptor, BashAstNode, IXargsNode, IIfStatement } from "./types";
 import { parseBash, lex, IToken } from "./parse-bash";
 
 // Single-character xargs flags that consume the next token as their value.
@@ -143,6 +143,18 @@ export function transformXargsNodes(node: BashAstNode, descriptors: Map<string, 
         };
     }
 
+    if (node.type === "if_statement") {
+        const transformed: IIfStatement = {
+            ...node,
+            condition: transformXargsNodes(node.condition, descriptors),
+            thenBranch: transformXargsNodes(node.thenBranch, descriptors),
+        };
+        if (node.elseBranch !== undefined) {
+            transformed.elseBranch = transformXargsNodes(node.elseBranch, descriptors);
+        }
+        return transformed;
+    }
+
     return node;
 }
 
@@ -195,6 +207,8 @@ export function describeNode(node: AstNode): string {
         case "binop":
             return `${describeNode((node as IBinOp).left)} ${(node as IBinOp).op} ${describeNode((node as IBinOp).right)}`;
         case "for_loop":
+            return node.raw;
+        case "if_statement":
             return node.raw;
         case "bash":
             return node.raw;

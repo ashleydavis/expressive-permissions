@@ -44,7 +44,7 @@ flowchart LR
 
 `buildAst` switches on `tool_name` and lifts the relevant fields into a typed node. For Bash, it first loads **command descriptor files** via `loadCommandDescriptors(projectDir)` from `~/.claude/permissions.d/commands/` (home) and `.claude/permissions.d/commands/` (project, wins on conflict). The resulting `Map<string, ICommandDescriptor>` is threaded into `parseBash`, which uses it to determine flag arity (whether a flag consumes the next token as its value) and positional kinds (path vs. string). Without a descriptor for a command, all flags default to arity 0.
 
-`parseBash` runs a hand-written recursive descent parser: a flat lexer produces a token stream, then grammar functions (`parseSequence` / `parseAnd` / `parseOr` / `parsePipe` / `parseCommand`) call each other recursively to build a left-associative sub-AST of `Command` leaves connected by `BinOp` nodes (`pipe`, `and`, `or`, `seq`). After parsing, `buildAst` applies `transformXargsNodes` to the sub-tree: every `Command` leaf with `binary: "xargs"` is replaced by an `IXargsNode` intermediate node whose `child` is the parsed subcommand.
+`parseBash` runs a hand-written recursive descent parser: a flat lexer produces a token stream, then grammar functions (`parseSequence` / `parseAnd` / `parseOr` / `parsePipe` / `parseStatement` / `parseCommand`) call each other recursively to build a left-associative sub-AST of `Command` leaves connected by `BinOp` nodes (`pipe`, `and`, `or`, `seq`). `parseStatement` also recognises block constructs: a leading `for` produces a `for_loop` node (`for VAR in ITEMS; do BODY; done`) and a leading `if` produces an `if_statement` node (`if COND; then BODY [elif COND; then BODY]* [else BODY]; fi`). The condition and each branch are themselves parsed as full sub-sequences, so operators, pipelines, and nested blocks inside them build normal sub-trees. An `elif` chain is represented as a nested `if_statement` in the `elseBranch` field. After parsing, `buildAst` applies `transformXargsNodes` to the sub-tree: every `Command` leaf with `binary: "xargs"` is replaced by an `IXargsNode` intermediate node whose `child` is the parsed subcommand.
 
 For `find . | xargs grep -l "pattern"`:
 
@@ -63,6 +63,15 @@ graph TD
   Bash["bash<br/>raw: cd /etc &amp;&amp; rm -rf /"] --> And["and"]
   And --> Cd["command<br/>binary: cd<br/>cmd: /etc"]
   And --> Rm["command<br/>binary: rm<br/>options: { r: true, f: true }<br/>cmd: /"]
+```
+
+For `if diff -q a b >/dev/null 2>&1; then echo same; else echo differ; fi` - the condition and both branches become children of the `if_statement`:
+
+```mermaid
+graph TD
+  If["if_statement"] --> Cond["command<br/>binary: diff<br/>options: { q: true }<br/>cmd: [a, b]"]
+  If --> Then["command<br/>binary: echo<br/>cmd: same"]
+  If --> Else["command<br/>binary: echo<br/>cmd: differ"]
 ```
 
 For an `Edit` tool call - there is no Bash sub-tree; the AST is a single typed leaf:
@@ -105,6 +114,15 @@ sequenceDiagram
 | `pipe` (`\|`) | parent env | parent env (each side is a subshell) | parent env |
 
 `or` and `pipe` discard subtree env changes; `seq` and `and` propagate left→right→up.
+
+### Block construct env semantics
+
+| Construct | Children walked | Env into children | Env returned to parent |
+|---|---|---|---|
+| `for_loop` | `body` once per item, with `env[variable]` set to that item | parent env + the per-iteration loop variable | parent env (loop-local changes do not leak) |
+| `if_statement` | `condition`, then `thenBranch`, then `elseBranch` (if present) | condition sees parent env; both branches see the env after the condition | env after the condition (the taken branch is indeterminate, so branch changes do not propagate) |
+
+Both branches of an `if_statement` are walked even though only one runs at execution time: the analysis cannot know which branch is taken, so a deny anywhere in the condition or either branch denies the whole statement (strictest-wins aggregation, same as any other intermediate node).
 
 ## 4. Per-node rule evaluation
 

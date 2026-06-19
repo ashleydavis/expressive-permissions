@@ -1,5 +1,5 @@
 import { parseBash } from "../parse-bash";
-import { BashAstNode, ICommand, IBinOp, IForLoop, ICommandDescriptor } from "../types";
+import { BashAstNode, ICommand, IBinOp, IForLoop, IIfStatement, ICommandDescriptor } from "../types";
 
 // makeDescriptors returns a descriptor map with a single command whose named flags have arity 1.
 // All unlisted flags default to arity 0 via the EMPTY_DESCRIPTOR fallback.
@@ -442,6 +442,77 @@ describe("parseBash", () => {
             const node = parseBash("cmd 2>&1", new Map());
             const cmd = node as ICommand;
             expect(cmd.redirects).toEqual([{ op: "2>&", target: "1" }]);
+        });
+    });
+
+    describe("if-statement", () => {
+        test("simple if/then/fi without else", () => {
+            const node = parseBash("if test -f a; then echo yes; fi", new Map());
+            expect(node.type).toBe("if_statement");
+            const ifNode = node as IIfStatement;
+            expect((ifNode.condition as ICommand).binary).toBe("test");
+            expect((ifNode.thenBranch as ICommand).binary).toBe("echo");
+            expect(ifNode.elseBranch).toBeUndefined();
+            expect(ifNode.raw).toBe("if test -f a; then echo yes; fi");
+        });
+
+        test("if/then/else/fi captures both branches", () => {
+            const node = parseBash("if test -f a; then echo yes; else echo no; fi", new Map());
+            const ifNode = node as IIfStatement;
+            const thenBranch = ifNode.thenBranch as ICommand;
+            const elseBranch = ifNode.elseBranch as ICommand;
+            expect(thenBranch.binary).toBe("echo");
+            expect(thenBranch.cmd).toBe("yes");
+            expect(elseBranch.binary).toBe("echo");
+            expect(elseBranch.cmd).toBe("no");
+        });
+
+        test("condition preserves a multi-command sequence", () => {
+            const node = parseBash("if cd /tmp; ls; then echo ok; fi", new Map());
+            const ifNode = node as IIfStatement;
+            const condition = ifNode.condition as IBinOp;
+            expect(condition.type).toBe("binop");
+            expect(condition.op).toBe(";");
+            expect((condition.left as ICommand).binary).toBe("cd");
+            expect((condition.right as ICommand).binary).toBe("ls");
+        });
+
+        test("elif chain nests an if-statement in elseBranch", () => {
+            const node = parseBash("if test a; then echo a; elif test b; then echo b; else echo c; fi", new Map());
+            const ifNode = node as IIfStatement;
+            expect((ifNode.thenBranch as ICommand).cmd).toBe("a");
+            const elif = ifNode.elseBranch as IIfStatement;
+            expect(elif.type).toBe("if_statement");
+            expect((elif.condition as ICommand).binary).toBe("test");
+            expect((elif.thenBranch as ICommand).cmd).toBe("b");
+            expect((elif.elseBranch as ICommand).cmd).toBe("c");
+        });
+
+        test("then-branch preserves a pipeline", () => {
+            const node = parseBash("if test a; then cat f | grep x; fi", new Map());
+            const ifNode = node as IIfStatement;
+            const thenBranch = ifNode.thenBranch as IBinOp;
+            expect(thenBranch.type).toBe("binop");
+            expect(thenBranch.op).toBe("|");
+            expect((thenBranch.left as ICommand).binary).toBe("cat");
+            expect((thenBranch.right as ICommand).binary).toBe("grep");
+        });
+
+        test("if-statement nested inside a for-loop body", () => {
+            const node = parseBash("for f in a b; do if diff -q $f other >/dev/null 2>&1; then echo same; else echo diff; fi; done", new Map());
+            expect(node.type).toBe("for_loop");
+            const loop = node as IForLoop;
+            expect(loop.items).toEqual(["a", "b"]);
+            const ifNode = loop.body as IIfStatement;
+            expect(ifNode.type).toBe("if_statement");
+            const condition = ifNode.condition as ICommand;
+            expect(condition.binary).toBe("diff");
+            expect(condition.redirects).toEqual([
+                { op: ">", target: "/dev/null" },
+                { op: "2>&", target: "1" },
+            ]);
+            expect((ifNode.thenBranch as ICommand).cmd).toBe("same");
+            expect((ifNode.elseBranch as ICommand).cmd).toBe("diff");
         });
     });
 });

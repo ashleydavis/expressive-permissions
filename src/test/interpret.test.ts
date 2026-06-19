@@ -5,7 +5,7 @@ import { RuleLayer, RuleRegistry } from "../rule-registry";
 import { cdRule } from "../rules/builtin/cd";
 import { envPrefixRule } from "../rules/builtin/env-prefix";
 import { envSetRule } from "../rules/builtin/env-set";
-import { AstNode, Decision, IEnvironment, IRule, IRuleOutcome, IToolCall, ABSTAIN, rank, IBash, IBinOp, ICommand, ICommandDescriptor, IEdit, IMultiEdit, IOtherTool, IRead, IWrite, IXargsNode } from "../types";
+import { AstNode, Decision, IEnvironment, IRule, IRuleOutcome, IToolCall, ABSTAIN, rank, IBash, IBinOp, ICommand, ICommandDescriptor, IEdit, IIfStatement, IMultiEdit, IOtherTool, IRead, IWrite, IXargsNode } from "../types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -924,6 +924,13 @@ test("isLeaf: xargs node is not a leaf", () => {
     expect(isLeaf(xargsNode)).toBe(false);
 });
 
+test("isLeaf: if-statement node is not a leaf", () => {
+    const condition: ICommand = { type: "command", binary: "test", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "test" };
+    const thenBranch: ICommand = { type: "command", binary: "echo", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "echo" };
+    const ifNode: IIfStatement = { type: "if_statement", condition, thenBranch, raw: "if test; then echo; fi" };
+    expect(isLeaf(ifNode)).toBe(false);
+});
+
 // ---------------------------------------------------------------------------
 // aggregateChildren — direct unit tests
 // ---------------------------------------------------------------------------
@@ -1210,6 +1217,97 @@ test("for-loop: $variable inside command options is expanded from the iteration 
         "arn:aws:eks:ap-northwest-1:1234:cluster/c",
         "arn:aws:eks:na-central-1:1234:cluster/c",
     ]);
+});
+
+// ---------------------------------------------------------------------------
+// if-statement: condition and both branches are walked for permission analysis
+// ---------------------------------------------------------------------------
+
+test("if-statement: a deny in the then-branch denies the whole statement", () => {
+    const denyRm: IRule = function denyRm(node: AstNode): IRuleOutcome {
+        if (node.type === "command" && node.binary === "rm") {
+            return { decision: { action: "deny", reason: "no rm" } };
+        }
+        if (node.type === "command") {
+            return { decision: { action: "allow" } };
+        }
+        return ABSTAIN;
+    };
+    testRules.push(denyRm);
+    const result = decide(
+        makeBashCall("if test -f a; then rm a; else echo no; fi"),
+        new NullAuditLogger()
+    );
+    expect(result.action).toBe("deny");
+    expect(result.reason).toBe("no rm");
+});
+
+test("if-statement: a deny in the else-branch denies the whole statement", () => {
+    const denyRm: IRule = function denyRm(node: AstNode): IRuleOutcome {
+        if (node.type === "command" && node.binary === "rm") {
+            return { decision: { action: "deny", reason: "no rm" } };
+        }
+        if (node.type === "command") {
+            return { decision: { action: "allow" } };
+        }
+        return ABSTAIN;
+    };
+    testRules.push(denyRm);
+    const result = decide(
+        makeBashCall("if test -f a; then echo ok; else rm a; fi"),
+        new NullAuditLogger()
+    );
+    expect(result.action).toBe("deny");
+    expect(result.reason).toBe("no rm");
+});
+
+test("if-statement: a deny in the condition denies the whole statement", () => {
+    const denyRm: IRule = function denyRm(node: AstNode): IRuleOutcome {
+        if (node.type === "command" && node.binary === "rm") {
+            return { decision: { action: "deny", reason: "no rm" } };
+        }
+        if (node.type === "command") {
+            return { decision: { action: "allow" } };
+        }
+        return ABSTAIN;
+    };
+    testRules.push(denyRm);
+    const result = decide(
+        makeBashCall("if rm a; then echo ok; else echo no; fi"),
+        new NullAuditLogger()
+    );
+    expect(result.action).toBe("deny");
+    expect(result.reason).toBe("no rm");
+});
+
+test("if-statement: allow when every command in condition and branches is allowed", () => {
+    testRules.push(nodeMatchRule(
+        (node: AstNode) => node.type === "command",
+        { decision: { action: "allow" } }
+    ));
+    const result = decide(
+        makeBashCall("if test -f a; then echo yes; else echo no; fi"),
+        new NullAuditLogger()
+    );
+    expect(result.action).toBe("allow");
+});
+
+test("if-statement: a cd in the condition sets cwd for both branch rules", () => {
+    const seenCwds: string[] = [];
+    const captureRule: IRule = function captureRule(node: AstNode, env: IEnvironment): IRuleOutcome {
+        if (node.type === "command" && node.binary === "echo") {
+            seenCwds.push(env.cwd);
+            return { decision: { action: "allow" } };
+        }
+        return ABSTAIN;
+    };
+    testRules.push(cdRule);
+    testRules.push(captureRule);
+    decide(
+        makeBashCall("if cd /etc; then echo then; else echo else; fi", "/start"),
+        new NullAuditLogger()
+    );
+    expect(seenCwds).toEqual(["/etc", "/etc"]);
 });
 
 // ---------------------------------------------------------------------------

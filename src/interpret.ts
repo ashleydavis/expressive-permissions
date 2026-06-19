@@ -26,9 +26,10 @@ export interface IInterpretResult {
 
 // isLeaf returns true for AST nodes that have no child nodes to walk.
 // Intermediate nodes carry child references in well-known fields: IBinOp uses "left"/"right",
-// Bash uses "ast", ForLoop uses "body", xargs uses "child". Any node without those fields is a leaf.
+// Bash uses "ast", ForLoop uses "body", xargs uses "child", IfStatement uses
+// "condition"/"thenBranch"/"elseBranch". Any node without those fields is a leaf.
 export function isLeaf(node: AstNode): boolean {
-    return node.type !== "binop" && node.type !== "bash" && node.type !== "for_loop" && node.type !== "xargs";
+    return node.type !== "binop" && node.type !== "bash" && node.type !== "for_loop" && node.type !== "xargs" && node.type !== "if_statement";
 }
 
 
@@ -116,6 +117,28 @@ export function walkChildren(
         return {
             childIAnnotations,
             envOut: env,
+        };
+    }
+
+    if (node.type === "if_statement") {
+        // The condition always runs; its env changes (e.g. a cd in the test) flow into both
+        // branches, matching Bash. then/else are mutually exclusive at runtime but both are
+        // walked for permission analysis since the taken branch is not known statically. Only
+        // the condition's env propagates upward, as the branch outcome is indeterminate.
+        const conditionResult = interpret(node.condition, env, call, logger, registry);
+        const childIAnnotations: IAnnotation[] = [conditionResult.annotation];
+
+        const thenResult = interpret(node.thenBranch, conditionResult.envOut, call, logger, registry);
+        childIAnnotations.push(thenResult.annotation);
+
+        if (node.elseBranch !== undefined) {
+            const elseResult = interpret(node.elseBranch, conditionResult.envOut, call, logger, registry);
+            childIAnnotations.push(elseResult.annotation);
+        }
+
+        return {
+            childIAnnotations,
+            envOut: conditionResult.envOut,
         };
     }
 

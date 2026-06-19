@@ -8773,6 +8773,10 @@ function resolveFlagArity(descriptor, flagName) {
 // src/parse-bash.ts
 var OPERATORS = ["&&", "||", "2>&", ">>", "&>", "2>", "|", ";", ">", "<"];
 var REDIRECT_OPS = new Set([">>", ">", "<", "2>", "&>", "2>&"]);
+var DONE_TERMINATOR = new Set(["done"]);
+var THEN_TERMINATOR = new Set(["then"]);
+var IF_BODY_TERMINATORS = new Set(["elif", "else", "fi"]);
+var FI_TERMINATOR = new Set(["fi"]);
 function isEnvAssignment(value) {
   return /^[A-Za-z_][A-Za-z0-9_]*=/.test(value);
 }
@@ -9064,6 +9068,9 @@ function parseStatement(state, descriptors) {
   if (next !== null && next.kind === "word" && next.value === "for") {
     return parseForLoop(state, descriptors);
   }
+  if (next !== null && next.kind === "word" && next.value === "if") {
+    return parseIfStatement(state, descriptors);
+  }
   return parseCommand(state, descriptors);
 }
 function parseForLoop(state, descriptors) {
@@ -9119,17 +9126,61 @@ function parseForLoop(state, descriptors) {
   };
   return forLoop;
 }
-function parseSequenceUntilDone(state, descriptors) {
+function parseSequenceUntil(state, descriptors, terminators) {
   let left = parseAnd(state, descriptors);
   while (peek(state)?.value === ";") {
     consume(state);
-    if (peek(state) === null || peek(state).value === "done") {
+    const next = peek(state);
+    if (next === null || next.kind === "word" && terminators.has(next.value)) {
       break;
     }
     const right = parseAnd(state, descriptors);
     left = { type: "binop", op: ";", left, right };
   }
   return left;
+}
+function parseSequenceUntilDone(state, descriptors) {
+  return parseSequenceUntil(state, descriptors, DONE_TERMINATOR);
+}
+function parseIfStatement(state, descriptors) {
+  const ifToken = consume(state);
+  const clauses = [];
+  const node = parseIfClause(state, descriptors, ifToken.start, clauses);
+  let endPos = state.raw.length;
+  if (peek(state)?.value === "fi") {
+    endPos = consume(state).end;
+  }
+  for (const clause of clauses) {
+    clause.node.raw = state.raw.substring(clause.start, endPos);
+  }
+  return node;
+}
+function parseIfClause(state, descriptors, clauseStart, clauses) {
+  const condition = parseSequenceUntil(state, descriptors, THEN_TERMINATOR);
+  if (peek(state)?.value === "then") {
+    consume(state);
+  }
+  const thenBranch = parseSequenceUntil(state, descriptors, IF_BODY_TERMINATORS);
+  let elseBranch = undefined;
+  const next = peek(state);
+  if (next?.value === "elif") {
+    const elifToken = consume(state);
+    elseBranch = parseIfClause(state, descriptors, elifToken.start, clauses);
+  } else if (next?.value === "else") {
+    consume(state);
+    elseBranch = parseSequenceUntil(state, descriptors, FI_TERMINATOR);
+  }
+  const node = {
+    type: "if_statement",
+    condition,
+    thenBranch,
+    raw: ""
+  };
+  if (elseBranch !== undefined) {
+    node.elseBranch = elseBranch;
+  }
+  clauses.push({ node, start: clauseStart });
+  return node;
 }
 function parsePipe(state, descriptors) {
   let left = parseStatement(state, descriptors);
@@ -9291,6 +9342,17 @@ function transformXargsNodes(node, descriptors) {
       body: transformXargsNodes(node.body, descriptors)
     };
   }
+  if (node.type === "if_statement") {
+    const transformed = {
+      ...node,
+      condition: transformXargsNodes(node.condition, descriptors),
+      thenBranch: transformXargsNodes(node.thenBranch, descriptors)
+    };
+    if (node.elseBranch !== undefined) {
+      transformed.elseBranch = transformXargsNodes(node.elseBranch, descriptors);
+    }
+    return transformed;
+  }
   return node;
 }
 function expandToken(token, vars) {
@@ -9326,6 +9388,8 @@ function describeNode(node) {
     case "binop":
       return `${describeNode(node.left)} ${node.op} ${describeNode(node.right)}`;
     case "for_loop":
+      return node.raw;
+    case "if_statement":
       return node.raw;
     case "bash":
       return node.raw;
@@ -9563,7 +9627,7 @@ function logConfigLoad(logger, displayPath, ruleCount) {
 // src/interpret.ts
 var ASK = { action: "ask" };
 function isLeaf(node) {
-  return node.type !== "binop" && node.type !== "bash" && node.type !== "for_loop" && node.type !== "xargs";
+  return node.type !== "binop" && node.type !== "bash" && node.type !== "for_loop" && node.type !== "xargs" && node.type !== "if_statement";
 }
 function aggregateChildren(childIAnnotations) {
   for (const annotation of childIAnnotations) {
@@ -9617,6 +9681,20 @@ function walkChildren(node, env, call, logger, registry) {
     return {
       childIAnnotations,
       envOut: env
+    };
+  }
+  if (node.type === "if_statement") {
+    const conditionResult = interpret(node.condition, env, call, logger, registry);
+    const childIAnnotations = [conditionResult.annotation];
+    const thenResult = interpret(node.thenBranch, conditionResult.envOut, call, logger, registry);
+    childIAnnotations.push(thenResult.annotation);
+    if (node.elseBranch !== undefined) {
+      const elseResult = interpret(node.elseBranch, conditionResult.envOut, call, logger, registry);
+      childIAnnotations.push(elseResult.annotation);
+    }
+    return {
+      childIAnnotations,
+      envOut: conditionResult.envOut
     };
   }
   const binop = node;

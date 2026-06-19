@@ -1,4 +1,4 @@
-import { BashAstNode, ICommand, ICommandDescriptor, IForLoop, IRedirect } from "./types";
+import { BashAstNode, ICommand, ICommandDescriptor, IForLoop, IIfStatement, IRedirect } from "./types";
 import { resolveFlagArity } from "./load-commands";
 
 // A single token produced by the lexer
@@ -28,6 +28,18 @@ const OPERATORS = ["&&", "||", "2>&", ">>", "&>", "2>", "|", ";", ">", "<"];
 
 // The subset of operators that introduce an I/O redirection (consume the next token as target)
 const REDIRECT_OPS = new Set([">>", ">", "<", "2>", "&>", "2>&"]);
+
+// Block keyword that terminates a for-loop body sequence (`do ... done`)
+const DONE_TERMINATOR = new Set(["done"]);
+
+// Block keyword that terminates an if/elif condition sequence (`if COND ; then ...`)
+const THEN_TERMINATOR = new Set(["then"]);
+
+// Block keywords that terminate an if/elif then-branch sequence (continuation or close)
+const IF_BODY_TERMINATORS = new Set(["elif", "else", "fi"]);
+
+// Block keyword that terminates an else-branch sequence (`else ... fi`)
+const FI_TERMINATOR = new Set(["fi"]);
 
 // Returns true when a word token value is a shell environment assignment (KEY=...)
 function isEnvAssignment(value: string): boolean {
@@ -409,12 +421,16 @@ function parseCommand(state: IParserState, descriptors: Map<string, ICommandDesc
     };
 }
 
-// parseStatement: dispatches between parseForLoop and parseCommand based on the leading word.
-// A leading word "for" introduces a for-loop; anything else is a single command leaf.
+// parseStatement: dispatches between block constructs and a single command based on the leading
+// word. A leading word "for" introduces a for-loop, "if" introduces an if-statement; anything
+// else is a single command leaf.
 function parseStatement(state: IParserState, descriptors: Map<string, ICommandDescriptor>): BashAstNode {
     const next = peek(state);
     if (next !== null && next.kind === "word" && next.value === "for") {
         return parseForLoop(state, descriptors);
+    }
+    if (next !== null && next.kind === "word" && next.value === "if") {
+        return parseIfStatement(state, descriptors);
     }
     return parseCommand(state, descriptors);
 }
@@ -484,19 +500,93 @@ function parseForLoop(state: IParserState, descriptors: Map<string, ICommandDesc
     return forLoop;
 }
 
-// parseSequenceUntilDone: parses a `;`-separated sequence of statements until the next
-// non-`;` token is the literal word "done", which the caller (parseForLoop) consumes.
-function parseSequenceUntilDone(state: IParserState, descriptors: Map<string, ICommandDescriptor>): BashAstNode {
+// parseSequenceUntil: parses a `;`-separated sequence of statements until the next statement
+// would begin with one of the given block terminator keywords (e.g. "done", "then", "else",
+// "elif", "fi"), which the caller consumes. Mirrors parseSequence but stops at block keywords
+// instead of running to the end of the token stream.
+function parseSequenceUntil(state: IParserState, descriptors: Map<string, ICommandDescriptor>, terminators: Set<string>): BashAstNode {
     let left: BashAstNode = parseAnd(state, descriptors);
     while (peek(state)?.value === ";") {
         consume(state);
-        if (peek(state) === null || peek(state)!.value === "done") {
+        const next = peek(state);
+        if (next === null || (next.kind === "word" && terminators.has(next.value))) {
             break;
         }
         const right = parseAnd(state, descriptors);
         left = { type: "binop", op: ";", left, right };
     }
     return left;
+}
+
+// parseSequenceUntilDone: parses a `;`-separated sequence of statements until the next
+// non-`;` token is the literal word "done", which the caller (parseForLoop) consumes.
+function parseSequenceUntilDone(state: IParserState, descriptors: Map<string, ICommandDescriptor>): BashAstNode {
+    return parseSequenceUntil(state, descriptors, DONE_TERMINATOR);
+}
+
+// Pairs a parsed if-clause node with the offset of its first token. After the whole statement
+// is parsed, the shared closing `fi` offset is back-filled into every clause's raw field.
+interface IIfClauseStart {
+    // The if-statement node produced for this clause (the top-level if, or a nested elif)
+    node: IIfStatement;
+    // The start offset of this clause's first token in the raw input
+    start: number;
+}
+
+// parseIfStatement: parses `if COND ; then BODY [elif COND ; then BODY]* [else BODY] ; fi` into
+// an IfStatement node. elif clauses are represented as nested IfStatement nodes in elseBranch.
+// The closing `fi` is consumed here and its offset back-filled into every clause's raw field.
+function parseIfStatement(state: IParserState, descriptors: Map<string, ICommandDescriptor>): BashAstNode {
+    const ifToken = consume(state);
+    const clauses: IIfClauseStart[] = [];
+    const node = parseIfClause(state, descriptors, ifToken.start, clauses);
+
+    let endPos = state.raw.length;
+    if (peek(state)?.value === "fi") {
+        endPos = consume(state).end;
+    }
+
+    for (const clause of clauses) {
+        clause.node.raw = state.raw.substring(clause.start, endPos);
+    }
+    return node;
+}
+
+// parseIfClause: parses one `COND ; then BODY` clause plus its optional elif/else continuation.
+// An "elif" recurses to build a nested IfStatement; an "else" parses a final branch. The closing
+// `fi` belongs to the top-level parseIfStatement, not to any clause. Each clause records its start
+// offset in clauses so its raw can be back-filled once the `fi` offset is known.
+function parseIfClause(state: IParserState, descriptors: Map<string, ICommandDescriptor>, clauseStart: number, clauses: IIfClauseStart[]): IIfStatement {
+    const condition = parseSequenceUntil(state, descriptors, THEN_TERMINATOR);
+
+    if (peek(state)?.value === "then") {
+        consume(state);
+    }
+
+    const thenBranch = parseSequenceUntil(state, descriptors, IF_BODY_TERMINATORS);
+
+    let elseBranch: BashAstNode | undefined = undefined;
+    const next = peek(state);
+    if (next?.value === "elif") {
+        const elifToken = consume(state);
+        elseBranch = parseIfClause(state, descriptors, elifToken.start, clauses);
+    }
+    else if (next?.value === "else") {
+        consume(state);
+        elseBranch = parseSequenceUntil(state, descriptors, FI_TERMINATOR);
+    }
+
+    const node: IIfStatement = {
+        type: "if_statement",
+        condition,
+        thenBranch,
+        raw: "",
+    };
+    if (elseBranch !== undefined) {
+        node.elseBranch = elseBranch;
+    }
+    clauses.push({ node, start: clauseStart });
+    return node;
 }
 
 // parsePipe: parseStatement ('|' parseStatement)*  — highest operator precedence

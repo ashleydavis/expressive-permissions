@@ -1,5 +1,5 @@
 import { buildAst, expandToken, expandCommandOptions, describeNode } from "../build-ast";
-import { IToolCall, IBash, IRead, IWrite, IEdit, IMultiEdit, IOtherTool, IXargsNode, ICommand, ICommandDescriptor } from "../types";
+import { IToolCall, IBash, IBinOp, IIfStatement, IRead, IWrite, IEdit, IMultiEdit, IOtherTool, IXargsNode, ICommand, ICommandDescriptor } from "../types";
 
 // makeDescriptors builds a one-command descriptor map with arity-1 flags for the given names.
 function makeDescriptors(cmd: string, arity1Flags: string[]): Map<string, ICommandDescriptor> {
@@ -282,5 +282,28 @@ describe("describeNode", () => {
         const child: ICommand = { type: "command", binary: "grep", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "grep" };
         const xargsNode: IXargsNode = { type: "xargs", options: {}, child, raw: "xargs grep -l pattern" };
         expect(describeNode(xargsNode)).toBe("xargs grep -l pattern");
+    });
+
+    test("if-statement node returns raw", () => {
+        const condition: ICommand = { type: "command", binary: "test", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "test" };
+        const thenBranch: ICommand = { type: "command", binary: "echo", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "echo" };
+        const ifNode: IIfStatement = { type: "if_statement", condition, thenBranch, raw: "if test; then echo; fi" };
+        expect(describeNode(ifNode)).toBe("if test; then echo; fi");
+    });
+});
+
+describe("transformXargsNodes via buildAst", () => {
+    test("xargs inside an if-statement branch is transformed to an xargs node", () => {
+        const call: IToolCall = {
+            tool_name: "Bash",
+            tool_input: { command: "if test -f list; then cat list | xargs rm; fi" },
+            cwd: "/start",
+        };
+        const root = buildAst(call, new Map()) as IBash;
+        const ifNode = root.ast as IIfStatement;
+        expect(ifNode.type).toBe("if_statement");
+        const pipeline = ifNode.thenBranch as IBinOp;
+        expect(pipeline.op).toBe("|");
+        expect(pipeline.right.type).toBe("xargs");
     });
 });
