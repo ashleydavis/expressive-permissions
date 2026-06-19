@@ -1,6 +1,7 @@
 import { createLogger, ensureLogDirIgnored, resolveLogBaseDir } from "./audit-log";
 import { IPostToolUseCall } from "./types";
 import { toLocalISOString } from "./audit-log";
+import { cleanupStalePendingPrompts, removePendingPrompt } from "./pending-prompt-log";
 // Debug log file production disabled. Restore to re-enable the debug log.
 // import { resolveDebugLogPath, appendDebugBlock, logDebugError } from "./debug-log";
 
@@ -44,6 +45,8 @@ export async function runPostHook(): Promise<void> {
             response: call.tool_response,
             isError,
         });
+        await removePendingPrompt(projectDir, call);
+        await cleanupStalePendingPrompts(projectDir, new Date(), 7);
         // Debug log file production disabled. Restore to re-enable the debug log.
         // await appendDebugBlock(logPath, "[POST-HOOK EXIT]", [
         //     { key: "tool", value: call.tool_name },

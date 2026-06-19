@@ -15,7 +15,8 @@ It converts each tool call into an abstract syntax tree (AST), threads a simulat
 - [How it works](HOW_IT_WORKS.md) - Architecture deep-dive with AST diagrams, env-threading details, and a guide to writing non-trivial rules.
 - [Protecting production](PROTECTING-PRODUCTION.md) - Recipes for locking down production environments covering AWS CLI and kubectl.
 - [Audit log](AUDIT-LOG.md) - Audit log format and retention policy for the machine-readable and human-readable logs.
-- [Troubleshooting](TROUBLESHOOTING.md) - Troubleshooting rules: audit log, interactive REPL, and MCP server.
+- [Pending approvals](PENDING-APPROVALS.md) - Markdown files written when Claude asks you to approve a tool call; open these while deciding on a prompt.
+- [Troubleshooting](TROUBLESHOOTING.md) - Troubleshooting rules: pending approval files, audit log, interactive REPL, and MCP server.
 - [REPL](REPL.md) - Interactive REPL for testing commands against your `permissions.yaml`.
 - [MCP server](MCP-SERVER.md) - MCP server that lets Claude explain permission decisions in natural language.
 - [Development](DEVELOPMENT.md) - Instructions on cloning, building, and running the plugin locally.

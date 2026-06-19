@@ -1,6 +1,7 @@
 import { decide } from "./interpret";
 import { createLogger, ensureLogDirIgnored, resolveLogBaseDir } from "./audit-log";
 import { IToolCall } from "./types";
+import { cleanupStalePendingPrompts, writePendingPrompt } from "./pending-prompt-log";
 // Debug log file production disabled. Restore to re-enable the debug log.
 // import { resolveDebugLogPath, appendDebugBlock, logDebugError, IDebugField } from "./debug-log";
 import { RuleLayer, FileLayer, IRuleLayer, RuleRegistry } from "./rule-registry";
@@ -45,6 +46,7 @@ export async function runHook(): Promise<void> {
         // ]);
         const logger = createLogger(projectDir, new Date());
         await ensureLogDirIgnored(resolveLogBaseDir(projectDir));
+        await cleanupStalePendingPrompts(projectDir, new Date(), 7);
         const layers: IRuleLayer[] = [
             new RuleLayer(builtinRules),
             new FileLayer(loadHomeConfigRules, "~/.claude/permissions.yaml", logger),
@@ -58,9 +60,20 @@ export async function runHook(): Promise<void> {
         }
         const registry = new RuleRegistry(layers);
         const descriptors = await loadCommandDescriptors(homeDir, projectDir);
-        const decision = decide(call, logger, registry, descriptors);
-        const permissionDecision = decision.action;
-        const permissionDecisionReason = "reason" in decision ? decision.reason : undefined;
+        const decideResult = decide(call, logger, registry, descriptors);
+        const permissionDecision = decideResult.decision.action;
+        const permissionDecisionReason = "reason" in decideResult.decision ? decideResult.decision.reason : undefined;
+        if (decideResult.decision.action === "ask") {
+            await writePendingPrompt(
+                projectDir,
+                call,
+                decideResult.root,
+                decideResult.leafEvaluations,
+                decideResult.decision.action,
+                permissionDecisionReason,
+                new Date()
+            );
+        }
         // Debug log file production disabled. Restore to re-enable the debug log.
         // const exitFields: IDebugField[] = [{ key: "decision", value: permissionDecision }];
         // if (permissionDecisionReason !== undefined) {

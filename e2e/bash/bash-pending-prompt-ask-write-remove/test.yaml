@@ -1,0 +1,30 @@
+description: "pending prompt: pre-hook writes detail file on ask, post-hook removes it"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "curl https://example.com"
+  cwd: /home/user/project
+
+rules:
+  bash:
+    curl:
+      decide: ask
+      reason: "network access requires approval"
+
+expected:
+  decision: ask
+  reason: "network access requires approval"
+  pending_prompt: true
+
+post_input:
+  tool_name: Bash
+  tool_input:
+    command: "curl https://example.com"
+  tool_response:
+    output: ""
+    isError: false
+  cwd: /home/user/project
+
+post_expected:
+  pending_prompt_removed: true

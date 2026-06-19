@@ -1,9 +1,10 @@
-import { mkdtempSync, rmSync, readFileSync } from "fs";
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { spawnSync, SpawnSyncReturns } from "child_process";
 import { resolveJsonLogPath, resolveLogBaseDir } from "../audit-log";
 import { IToolExecutionEntry } from "../audit-log";
+import { computePendingPromptKey, resolvePendingDir } from "../pending-prompt-log";
 
 // makeTmpDir creates a temporary directory and returns its path.
 function makeTmpDir(): string {
@@ -19,6 +20,16 @@ function makePostStdin(overrides: Record<string, unknown>): string {
         cwd: "/home/user/project",
     };
     return JSON.stringify({ ...base, ...overrides });
+}
+
+// spawnPreHook spawns pre-hook.ts via bun with the given stdin and env, returning the result.
+function spawnPreHook(stdinData: string, env: Record<string, string>): SpawnSyncReturns<string> {
+    const preHookPath = join(__dirname, "..", "pre-hook.ts");
+    return spawnSync("bun", [preHookPath], {
+        input: stdinData,
+        env,
+        encoding: "utf-8",
+    });
 }
 
 // spawnPostHook spawns post-hook.ts via bun with the given stdin and env, returning the result.
@@ -95,4 +106,43 @@ test("runPostHook exits 1 when CLAUDE_PROJECT_DIR is absent", () => {
     const result = spawnPostHook(stdinData, envWithoutProjectDir);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("CLAUDE_PROJECT_DIR is not set");
+});
+
+test("runPostHook removes the pending prompt file written by pre-hook", () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "post-hook-pending-"));
+    mkdirSync(join(tmpDir, ".claude"), { recursive: true });
+    writeFileSync(
+        join(tmpDir, ".claude", "permissions.yaml"),
+        "bash:\n  curl:\n    decide: ask\n    reason: network access requires approval\n",
+        "utf-8"
+    );
+    const command = "curl https://example.com";
+    const preInput = JSON.stringify({
+        tool_name: "Bash",
+        tool_input: { command },
+        cwd: tmpDir,
+    });
+    const env = buildEnv(tmpDir);
+    try {
+        const preResult = spawnPreHook(preInput, env);
+        expect(preResult.status).toBe(0);
+        const call = {
+            tool_name: "Bash",
+            tool_input: { command },
+            cwd: tmpDir,
+        };
+        const key = computePendingPromptKey(call);
+        const pendingPath = join(resolvePendingDir(tmpDir), `${key}.md`);
+        expect(existsSync(pendingPath)).toBe(true);
+        const postInput = makePostStdin({
+            tool_input: { command },
+            cwd: tmpDir,
+        });
+        const postResult = spawnPostHook(postInput, env);
+        expect(postResult.status).toBe(0);
+        expect(existsSync(pendingPath)).toBe(false);
+    }
+    finally {
+        rmSync(tmpDir, { recursive: true, force: true });
+    }
 });

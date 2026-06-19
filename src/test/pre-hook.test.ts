@@ -1,7 +1,8 @@
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "fs";
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { readStdin, runHook } from "../pre-hook";
+import { computePendingPromptKey, resolvePendingDir } from "../pending-prompt-log";
 
 // An async iterable that yields a single Buffer chunk, used to mock process.stdin.
 interface IMockStdin {
@@ -137,6 +138,47 @@ describe("runHook", () => {
             const parsed = JSON.parse(written) as { hookSpecificOutput: { permissionDecision: string; permissionDecisionReason?: string } };
             expect(parsed.hookSpecificOutput.permissionDecision).toBe("deny");
             expect(parsed.hookSpecificOutput.permissionDecisionReason).toBe("blocked by drop-in");
+        }
+        finally {
+            if (savedHome !== undefined) {
+                process.env["HOME"] = savedHome;
+            }
+            else {
+                delete process.env["HOME"];
+            }
+            rmSync(emptyHomeDir, { recursive: true, force: true });
+            rmSync(projectDir, { recursive: true, force: true });
+        }
+    });
+
+    test("ask decision writes a pending prompt detail file", async () => {
+        const projectDir = mkdtempSync(join(tmpdir(), "pre-hook-pending-"));
+        mkdirSync(join(projectDir, ".claude"), { recursive: true });
+        writeFileSync(
+            join(projectDir, ".claude", "permissions.yaml"),
+            "bash:\n  curl:\n    decide: ask\n    reason: network access requires approval\n",
+            "utf-8"
+        );
+        const emptyHomeDir = mkdtempSync(join(tmpdir(), "pre-hook-pending-home-"));
+        const savedHome = process.env["HOME"];
+        process.env["HOME"] = emptyHomeDir;
+        process.env["CLAUDE_PROJECT_DIR"] = projectDir;
+        try {
+            const toolCall = JSON.stringify({
+                tool_name: "Bash",
+                tool_input: { command: "curl https://example.com" },
+                cwd: projectDir,
+            });
+            setStdin(createMockStdin(toolCall));
+            await runHook();
+            const call = {
+                tool_name: "Bash",
+                tool_input: { command: "curl https://example.com" },
+                cwd: projectDir,
+            };
+            const key = computePendingPromptKey(call);
+            const pendingPath = join(resolvePendingDir(projectDir), `${key}.md`);
+            expect(existsSync(pendingPath)).toBe(true);
         }
         finally {
             if (savedHome !== undefined) {

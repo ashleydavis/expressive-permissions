@@ -58,13 +58,13 @@ beforeEach(() => {
 // from the current testRules. Tests mutate testRules then call decide(...) like before.
 function decide(call: IToolCall, logger: IAuditLogger): Decision {
     const testRegistry = new RuleRegistry([new RuleLayer(testRules)]);
-    return decideWithRegistry(call, logger, testRegistry, new Map());
+    return decideWithRegistry(call, logger, testRegistry, new Map()).decision;
 }
 
 // decideWith is like decide but accepts a descriptor map for tests that need arity-1 flags.
 function decideWith(call: IToolCall, logger: IAuditLogger, descriptors: Map<string, ICommandDescriptor>): Decision {
     const testRegistry = new RuleRegistry([new RuleLayer(testRules)]);
-    return decideWithRegistry(call, logger, testRegistry, descriptors);
+    return decideWithRegistry(call, logger, testRegistry, descriptors).decision;
 }
 
 // ---------------------------------------------------------------------------

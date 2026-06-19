@@ -25303,16 +25303,40 @@ function combine(childrenIAnnotation, ownRuleIAnnotation) {
   }
   return ownRuleIAnnotation;
 }
-function walkChildren(node, env, call, logger, registry2) {
+function recordLeafEvaluation(leafEvaluations, node, annotation, allRulesAbstained) {
+  const cmd = describeNode(node);
+  if (allRulesAbstained) {
+    leafEvaluations.push({
+      cmd,
+      decision: "NOMATCH",
+      source: "no-rule-match"
+    });
+    return;
+  }
+  const action = annotation.decision.action;
+  let source = "matched-rule";
+  if (action === "deny") {
+    source = "deny-rule";
+  }
+  leafEvaluations.push({
+    cmd,
+    decision: action.toUpperCase(),
+    ruleFile: annotation.ruleFile,
+    ruleLine: annotation.ruleLine,
+    reason: annotation.decision.reason,
+    source
+  });
+}
+function walkChildren(node, env, call, logger, registry2, leafEvaluations) {
   if (node.type === "bash") {
-    const childResult = interpret(node.ast, env, call, logger, registry2);
+    const childResult = interpret(node.ast, env, call, logger, registry2, leafEvaluations);
     return {
       childIAnnotations: [childResult.annotation],
       envOut: childResult.envOut
     };
   }
   if (node.type === "xargs") {
-    const childResult = interpret(node.child, env, call, logger, registry2);
+    const childResult = interpret(node.child, env, call, logger, registry2, leafEvaluations);
     return {
       childIAnnotations: [childResult.annotation],
       envOut: childResult.envOut
@@ -25325,7 +25349,7 @@ function walkChildren(node, env, call, logger, registry2) {
         ...env,
         env: { ...env.env, [node.variable]: item }
       };
-      const bodyResult = interpret(node.body, iterEnv, call, logger, registry2);
+      const bodyResult = interpret(node.body, iterEnv, call, logger, registry2, leafEvaluations);
       childIAnnotations.push(bodyResult.annotation);
     }
     if (childIAnnotations.length === 0) {
@@ -25337,15 +25361,15 @@ function walkChildren(node, env, call, logger, registry2) {
     };
   }
   if (node.type === "while_loop") {
-    const conditionResult = interpret(node.condition, env, call, logger, registry2);
-    const bodyResult = interpret(node.body, conditionResult.envOut, call, logger, registry2);
+    const conditionResult = interpret(node.condition, env, call, logger, registry2, leafEvaluations);
+    const bodyResult = interpret(node.body, conditionResult.envOut, call, logger, registry2, leafEvaluations);
     return {
       childIAnnotations: [conditionResult.annotation, bodyResult.annotation],
       envOut: conditionResult.envOut
     };
   }
   if (node.type === "group") {
-    const bodyResult = interpret(node.body, env, call, logger, registry2);
+    const bodyResult = interpret(node.body, env, call, logger, registry2, leafEvaluations);
     return {
       childIAnnotations: [bodyResult.annotation],
       envOut: node.style === "brace" ? bodyResult.envOut : env
@@ -25354,7 +25378,7 @@ function walkChildren(node, env, call, logger, registry2) {
   if (node.type === "case_statement") {
     const childIAnnotations = [];
     for (const clause of node.clauses) {
-      const clauseResult = interpret(clause.body, env, call, logger, registry2);
+      const clauseResult = interpret(clause.body, env, call, logger, registry2, leafEvaluations);
       childIAnnotations.push(clauseResult.annotation);
     }
     if (childIAnnotations.length === 0) {
@@ -25366,12 +25390,12 @@ function walkChildren(node, env, call, logger, registry2) {
     };
   }
   if (node.type === "if_statement") {
-    const conditionResult = interpret(node.condition, env, call, logger, registry2);
+    const conditionResult = interpret(node.condition, env, call, logger, registry2, leafEvaluations);
     const childIAnnotations = [conditionResult.annotation];
-    const thenResult = interpret(node.thenBranch, conditionResult.envOut, call, logger, registry2);
+    const thenResult = interpret(node.thenBranch, conditionResult.envOut, call, logger, registry2, leafEvaluations);
     childIAnnotations.push(thenResult.annotation);
     if (node.elseBranch !== undefined) {
-      const elseResult = interpret(node.elseBranch, conditionResult.envOut, call, logger, registry2);
+      const elseResult = interpret(node.elseBranch, conditionResult.envOut, call, logger, registry2, leafEvaluations);
       childIAnnotations.push(elseResult.annotation);
     }
     return {
@@ -25381,26 +25405,28 @@ function walkChildren(node, env, call, logger, registry2) {
   }
   const binop = node;
   if (binop.op === ";" || binop.op === "&&") {
-    const leftResult2 = interpret(binop.left, env, call, logger, registry2);
-    const rightResult2 = interpret(binop.right, leftResult2.envOut, call, logger, registry2);
+    const leftResult2 = interpret(binop.left, env, call, logger, registry2, leafEvaluations);
+    const rightResult2 = interpret(binop.right, leftResult2.envOut, call, logger, registry2, leafEvaluations);
     return {
       childIAnnotations: [leftResult2.annotation, rightResult2.annotation],
       envOut: rightResult2.envOut
     };
   }
-  const leftResult = interpret(binop.left, env, call, logger, registry2);
-  const rightResult = interpret(binop.right, env, call, logger, registry2);
+  const leftResult = interpret(binop.left, env, call, logger, registry2, leafEvaluations);
+  const rightResult = interpret(binop.right, env, call, logger, registry2, leafEvaluations);
   return {
     childIAnnotations: [leftResult.annotation, rightResult.annotation],
     envOut: env
   };
 }
-function interpret(node, env, call, logger, registry2) {
+function interpret(node, env, call, logger, registry2, leafEvaluations) {
   if (isLeaf(node)) {
     const rulesResult2 = registry2.runRules(node, env, call, logger);
     const envOut2 = rulesResult2.envUpdate(env);
     let annotation2 = rulesResult2.annotation;
-    if (annotation2.decision.action === "abstain") {
+    const allRulesAbstained = annotation2.decision.action === "abstain";
+    recordLeafEvaluation(leafEvaluations, node, annotation2, allRulesAbstained);
+    if (allRulesAbstained) {
       logger.log({
         type: "no_rule_match",
         timestamp: toLocalISOString(new Date),
@@ -25412,14 +25438,14 @@ function interpret(node, env, call, logger, registry2) {
     if (node.type === "command" && node.substitutions !== undefined && node.substitutions.length > 0) {
       const substitutionAnnotations = [annotation2];
       for (const substitution of node.substitutions) {
-        const substitutionResult = interpret(substitution, env, call, logger, registry2);
+        const substitutionResult = interpret(substitution, env, call, logger, registry2, leafEvaluations);
         substitutionAnnotations.push(substitutionResult.annotation);
       }
       annotation2 = aggregateChildren(substitutionAnnotations);
     }
     return { annotation: annotation2, envOut: envOut2 };
   }
-  const childrenResult = walkChildren(node, env, call, logger, registry2);
+  const childrenResult = walkChildren(node, env, call, logger, registry2, leafEvaluations);
   const childrenIAnnotation = aggregateChildren(childrenResult.childIAnnotations);
   if (childrenIAnnotation.decision.action === "deny") {
     const denyReason = childrenIAnnotation.decision.reason;
@@ -25460,7 +25486,8 @@ function decide(call, logger, registry2, descriptors) {
     cwdResolved: true,
     env: {}
   };
-  const result = interpret(root, env0, call, logger, registry2);
+  const leafEvaluations = [];
+  const result = interpret(root, env0, call, logger, registry2, leafEvaluations);
   let decision = result.annotation.decision;
   if (decision.action === "abstain") {
     decision = ASK;
@@ -25474,7 +25501,7 @@ function decide(call, logger, registry2, descriptors) {
     decision: decision.action,
     reason: finalReason
   });
-  return decision;
+  return { decision, root, leafEvaluations };
 }
 
 // src/analyze.ts
@@ -25529,7 +25556,7 @@ async function analyzePermission(input, cwd, projectDir, homeDir) {
   const registry2 = buildAnalysisRegistry(projectDir, logger);
   const toolCall = parseToolCallInput(input, cwd);
   const descriptors = await loadCommandDescriptors(homeDir, projectDir);
-  const decision = decide(toolCall, logger, registry2, descriptors);
+  const { decision } = decide(toolCall, logger, registry2, descriptors);
   return {
     decision: decision.action,
     reason: "reason" in decision ? decision.reason : undefined,

@@ -107,3 +107,7 @@ View all tool executions that errored:
 ```sh
 grep '"type":"tool_execution"' .claude/permissions-log/**/*.json | grep '"isError":true'
 ```
+
+## Pending approval files
+
+When the pre-hook returns `ask`, a separate Markdown file is written under `.claude/permissions-log/pending/` for use while the approval prompt is on screen. These files are not part of the hourly audit log. See [PENDING-APPROVALS.md](PENDING-APPROVALS.md) for the format, lifecycle, and how to list outstanding prompts.

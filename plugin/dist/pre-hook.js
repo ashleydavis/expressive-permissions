@@ -9888,16 +9888,40 @@ function combine(childrenIAnnotation, ownRuleIAnnotation) {
   }
   return ownRuleIAnnotation;
 }
-function walkChildren(node, env, call, logger, registry) {
+function recordLeafEvaluation(leafEvaluations, node, annotation, allRulesAbstained) {
+  const cmd = describeNode(node);
+  if (allRulesAbstained) {
+    leafEvaluations.push({
+      cmd,
+      decision: "NOMATCH",
+      source: "no-rule-match"
+    });
+    return;
+  }
+  const action = annotation.decision.action;
+  let source = "matched-rule";
+  if (action === "deny") {
+    source = "deny-rule";
+  }
+  leafEvaluations.push({
+    cmd,
+    decision: action.toUpperCase(),
+    ruleFile: annotation.ruleFile,
+    ruleLine: annotation.ruleLine,
+    reason: annotation.decision.reason,
+    source
+  });
+}
+function walkChildren(node, env, call, logger, registry, leafEvaluations) {
   if (node.type === "bash") {
-    const childResult = interpret(node.ast, env, call, logger, registry);
+    const childResult = interpret(node.ast, env, call, logger, registry, leafEvaluations);
     return {
       childIAnnotations: [childResult.annotation],
       envOut: childResult.envOut
     };
   }
   if (node.type === "xargs") {
-    const childResult = interpret(node.child, env, call, logger, registry);
+    const childResult = interpret(node.child, env, call, logger, registry, leafEvaluations);
     return {
       childIAnnotations: [childResult.annotation],
       envOut: childResult.envOut
@@ -9910,7 +9934,7 @@ function walkChildren(node, env, call, logger, registry) {
         ...env,
         env: { ...env.env, [node.variable]: item }
       };
-      const bodyResult = interpret(node.body, iterEnv, call, logger, registry);
+      const bodyResult = interpret(node.body, iterEnv, call, logger, registry, leafEvaluations);
       childIAnnotations.push(bodyResult.annotation);
     }
     if (childIAnnotations.length === 0) {
@@ -9922,15 +9946,15 @@ function walkChildren(node, env, call, logger, registry) {
     };
   }
   if (node.type === "while_loop") {
-    const conditionResult = interpret(node.condition, env, call, logger, registry);
-    const bodyResult = interpret(node.body, conditionResult.envOut, call, logger, registry);
+    const conditionResult = interpret(node.condition, env, call, logger, registry, leafEvaluations);
+    const bodyResult = interpret(node.body, conditionResult.envOut, call, logger, registry, leafEvaluations);
     return {
       childIAnnotations: [conditionResult.annotation, bodyResult.annotation],
       envOut: conditionResult.envOut
     };
   }
   if (node.type === "group") {
-    const bodyResult = interpret(node.body, env, call, logger, registry);
+    const bodyResult = interpret(node.body, env, call, logger, registry, leafEvaluations);
     return {
       childIAnnotations: [bodyResult.annotation],
       envOut: node.style === "brace" ? bodyResult.envOut : env
@@ -9939,7 +9963,7 @@ function walkChildren(node, env, call, logger, registry) {
   if (node.type === "case_statement") {
     const childIAnnotations = [];
     for (const clause of node.clauses) {
-      const clauseResult = interpret(clause.body, env, call, logger, registry);
+      const clauseResult = interpret(clause.body, env, call, logger, registry, leafEvaluations);
       childIAnnotations.push(clauseResult.annotation);
     }
     if (childIAnnotations.length === 0) {
@@ -9951,12 +9975,12 @@ function walkChildren(node, env, call, logger, registry) {
     };
   }
   if (node.type === "if_statement") {
-    const conditionResult = interpret(node.condition, env, call, logger, registry);
+    const conditionResult = interpret(node.condition, env, call, logger, registry, leafEvaluations);
     const childIAnnotations = [conditionResult.annotation];
-    const thenResult = interpret(node.thenBranch, conditionResult.envOut, call, logger, registry);
+    const thenResult = interpret(node.thenBranch, conditionResult.envOut, call, logger, registry, leafEvaluations);
     childIAnnotations.push(thenResult.annotation);
     if (node.elseBranch !== undefined) {
-      const elseResult = interpret(node.elseBranch, conditionResult.envOut, call, logger, registry);
+      const elseResult = interpret(node.elseBranch, conditionResult.envOut, call, logger, registry, leafEvaluations);
       childIAnnotations.push(elseResult.annotation);
     }
     return {
@@ -9966,26 +9990,28 @@ function walkChildren(node, env, call, logger, registry) {
   }
   const binop = node;
   if (binop.op === ";" || binop.op === "&&") {
-    const leftResult2 = interpret(binop.left, env, call, logger, registry);
-    const rightResult2 = interpret(binop.right, leftResult2.envOut, call, logger, registry);
+    const leftResult2 = interpret(binop.left, env, call, logger, registry, leafEvaluations);
+    const rightResult2 = interpret(binop.right, leftResult2.envOut, call, logger, registry, leafEvaluations);
     return {
       childIAnnotations: [leftResult2.annotation, rightResult2.annotation],
       envOut: rightResult2.envOut
     };
   }
-  const leftResult = interpret(binop.left, env, call, logger, registry);
-  const rightResult = interpret(binop.right, env, call, logger, registry);
+  const leftResult = interpret(binop.left, env, call, logger, registry, leafEvaluations);
+  const rightResult = interpret(binop.right, env, call, logger, registry, leafEvaluations);
   return {
     childIAnnotations: [leftResult.annotation, rightResult.annotation],
     envOut: env
   };
 }
-function interpret(node, env, call, logger, registry) {
+function interpret(node, env, call, logger, registry, leafEvaluations) {
   if (isLeaf(node)) {
     const rulesResult2 = registry.runRules(node, env, call, logger);
     const envOut2 = rulesResult2.envUpdate(env);
     let annotation2 = rulesResult2.annotation;
-    if (annotation2.decision.action === "abstain") {
+    const allRulesAbstained = annotation2.decision.action === "abstain";
+    recordLeafEvaluation(leafEvaluations, node, annotation2, allRulesAbstained);
+    if (allRulesAbstained) {
       logger.log({
         type: "no_rule_match",
         timestamp: toLocalISOString(new Date),
@@ -9997,14 +10023,14 @@ function interpret(node, env, call, logger, registry) {
     if (node.type === "command" && node.substitutions !== undefined && node.substitutions.length > 0) {
       const substitutionAnnotations = [annotation2];
       for (const substitution of node.substitutions) {
-        const substitutionResult = interpret(substitution, env, call, logger, registry);
+        const substitutionResult = interpret(substitution, env, call, logger, registry, leafEvaluations);
         substitutionAnnotations.push(substitutionResult.annotation);
       }
       annotation2 = aggregateChildren(substitutionAnnotations);
     }
     return { annotation: annotation2, envOut: envOut2 };
   }
-  const childrenResult = walkChildren(node, env, call, logger, registry);
+  const childrenResult = walkChildren(node, env, call, logger, registry, leafEvaluations);
   const childrenIAnnotation = aggregateChildren(childrenResult.childIAnnotations);
   if (childrenIAnnotation.decision.action === "deny") {
     const denyReason = childrenIAnnotation.decision.reason;
@@ -10045,7 +10071,8 @@ function decide(call, logger, registry, descriptors) {
     cwdResolved: true,
     env: {}
   };
-  const result = interpret(root, env0, call, logger, registry);
+  const leafEvaluations = [];
+  const result = interpret(root, env0, call, logger, registry, leafEvaluations);
   let decision = result.annotation.decision;
   if (decision.action === "abstain") {
     decision = ASK;
@@ -10059,8 +10086,16 @@ function decide(call, logger, registry, descriptors) {
     decision: decision.action,
     reason: finalReason
   });
-  return decision;
+  return { decision, root, leafEvaluations };
 }
+
+// src/pending-prompt-log.ts
+import { createHash } from "crypto";
+import { access as access2, mkdir as mkdir2, readdir as readdir2, stat as stat2, unlink, writeFile as writeFile2 } from "fs/promises";
+import { join as join3 } from "path";
+
+// src/rules/builtin/cd.ts
+import { resolve } from "path";
 
 // src/types.ts
 var ABSTAIN = { decision: { action: "abstain" } };
@@ -10072,6 +10107,509 @@ var RANK = {
 };
 function rank(decision) {
   return RANK[decision.action] ?? 0;
+}
+
+// src/rules/builtin/cd.ts
+function getCdTarget(cmd) {
+  if (typeof cmd === "string") {
+    return cmd;
+  }
+  if (cmd.length === 0) {
+    return "";
+  }
+  return cmd[0];
+}
+function isUnresolvable(target) {
+  if (target === "" || target === "-") {
+    return true;
+  }
+  if (target.includes("$")) {
+    return true;
+  }
+  return false;
+}
+var cdRule = function cdRule2(node, env, _call) {
+  if (node.type !== "command" || node.binary !== "cd") {
+    return ABSTAIN;
+  }
+  const target = getCdTarget(node.cmd);
+  if (isUnresolvable(target)) {
+    return {
+      decision: { action: "abstain" },
+      env: { ...env, cwdResolved: false }
+    };
+  }
+  const newCwd = resolve(env.cwd, target);
+  return {
+    decision: { action: "abstain" },
+    env: { ...env, cwd: newCwd, cwdResolved: true }
+  };
+};
+
+// src/rules/builtin/env-prefix.ts
+var envPrefixRule = function envPrefixRule2(node, env, _call) {
+  if (node.type !== "command") {
+    return ABSTAIN;
+  }
+  if (node.binary === "") {
+    return ABSTAIN;
+  }
+  if (Object.keys(node.envPrefix).length === 0) {
+    return ABSTAIN;
+  }
+  const scopedEnv = {
+    ...env,
+    env: { ...env.env, ...node.envPrefix }
+  };
+  return {
+    decision: { action: "abstain" },
+    scopedEnv
+  };
+};
+
+// src/rules/builtin/env-set.ts
+var envSetRule = function envSetRule2(node, env, _call) {
+  if (node.type !== "command") {
+    return ABSTAIN;
+  }
+  if (node.binary !== "") {
+    return ABSTAIN;
+  }
+  if (Object.keys(node.envPrefix).length === 0) {
+    return ABSTAIN;
+  }
+  const updatedEnv = {
+    ...env,
+    env: { ...env.env, ...node.envPrefix }
+  };
+  return {
+    decision: { action: "allow", reason: "set environment variable" },
+    env: updatedEnv
+  };
+};
+
+// src/rules/builtin/export.ts
+var exportRule = function exportRule2(node, env, _call) {
+  if (node.type !== "command" || node.binary !== "export") {
+    return ABSTAIN;
+  }
+  const positionals = Array.isArray(node.cmd) ? node.cmd : node.cmd ? [node.cmd] : [];
+  const updates = {};
+  for (const token of positionals) {
+    const eqIndex = token.indexOf("=");
+    if (eqIndex > 0) {
+      updates[token.slice(0, eqIndex)] = token.slice(eqIndex + 1);
+    }
+  }
+  if (Object.keys(updates).length === 0) {
+    return ABSTAIN;
+  }
+  return {
+    decision: { action: "allow", reason: "set environment variable" },
+    env: { ...env, env: { ...env.env, ...updates } }
+  };
+};
+
+// src/pending-prompt-log.ts
+var EMPTY_TOOL_CALL = {
+  tool_name: "Bash",
+  tool_input: { command: "" },
+  cwd: "/"
+};
+function resolvePendingDir(projectDir) {
+  return join3(projectDir, ".claude", "permissions-log", "pending");
+}
+function computePendingPromptKey(call) {
+  const payload = JSON.stringify({
+    tool_name: call.tool_name,
+    tool_input: call.tool_input,
+    cwd: call.cwd
+  });
+  return createHash("sha256").update(payload).digest("hex").slice(0, 16);
+}
+function summarizeToolInput(call) {
+  if (typeof call.tool_input["command"] === "string") {
+    return call.tool_input["command"];
+  }
+  if (typeof call.tool_input["file_path"] === "string") {
+    return call.tool_input["file_path"];
+  }
+  return JSON.stringify(call.tool_input);
+}
+function formatLocalTimestamp(date) {
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const absOffset = Math.abs(offsetMinutes);
+  const offsetHours = String(Math.floor(absOffset / 60)).padStart(2, "0");
+  const offsetMins = String(absOffset % 60).padStart(2, "0");
+  const year = date.getFullYear().toString();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+  const millis = String(date.getMilliseconds()).padStart(3, "0");
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${millis}${sign}${offsetHours}:${offsetMins}`;
+}
+function buildLeafOutcomeMap(evaluations) {
+  const outcomeMap = new Map;
+  for (const evaluation of evaluations) {
+    outcomeMap.set(evaluation.cmd, {
+      decision: evaluation.decision,
+      ruleFile: evaluation.ruleFile,
+      ruleLine: evaluation.ruleLine,
+      reason: evaluation.reason,
+      source: evaluation.source
+    });
+  }
+  return outcomeMap;
+}
+function applyLeafEnvEffects(node, env) {
+  let runningEnv = env;
+  const prefixOutcome = envPrefixRule(node, env, EMPTY_TOOL_CALL);
+  if (prefixOutcome.scopedEnv !== undefined) {
+    runningEnv = prefixOutcome.scopedEnv;
+  }
+  const leafContext = {
+    cwd: runningEnv.cwd,
+    env: { ...runningEnv.env }
+  };
+  let envOut = runningEnv;
+  const cdOutcome = cdRule(node, runningEnv, EMPTY_TOOL_CALL);
+  if (cdOutcome.env !== undefined) {
+    envOut = cdOutcome.env;
+  }
+  const setOutcome = envSetRule(node, runningEnv, EMPTY_TOOL_CALL);
+  if (setOutcome.env !== undefined) {
+    envOut = setOutcome.env;
+  }
+  const exportOutcome = exportRule(node, runningEnv, EMPTY_TOOL_CALL);
+  if (exportOutcome.env !== undefined) {
+    envOut = exportOutcome.env;
+  }
+  return { leafContext, envOut };
+}
+function simWalkEnv(node, env, leafContextMap) {
+  if (isLeaf(node)) {
+    const { leafContext, envOut } = applyLeafEnvEffects(node, env);
+    leafContextMap.set(describeNode(node), leafContext);
+    return envOut;
+  }
+  if (node.type === "bash") {
+    return simWalkEnv(node.ast, env, leafContextMap);
+  }
+  if (node.type === "xargs") {
+    return simWalkEnv(node.child, env, leafContextMap);
+  }
+  if (node.type === "for_loop") {
+    let lastEnv = env;
+    for (const item of node.items) {
+      const iterEnv = {
+        ...env,
+        env: { ...env.env, [node.variable]: item }
+      };
+      lastEnv = simWalkEnv(node.body, iterEnv, leafContextMap);
+    }
+    return env;
+  }
+  if (node.type === "while_loop") {
+    const conditionEnv = simWalkEnv(node.condition, env, leafContextMap);
+    simWalkEnv(node.body, conditionEnv, leafContextMap);
+    return conditionEnv;
+  }
+  if (node.type === "group") {
+    const bodyEnv = simWalkEnv(node.body, env, leafContextMap);
+    if (node.style === "brace") {
+      return bodyEnv;
+    }
+    return env;
+  }
+  if (node.type === "case_statement") {
+    for (const clause of node.clauses) {
+      simWalkEnv(clause.body, env, leafContextMap);
+    }
+    return env;
+  }
+  if (node.type === "if_statement") {
+    const conditionEnv = simWalkEnv(node.condition, env, leafContextMap);
+    simWalkEnv(node.thenBranch, conditionEnv, leafContextMap);
+    if (node.elseBranch !== undefined) {
+      simWalkEnv(node.elseBranch, conditionEnv, leafContextMap);
+    }
+    return conditionEnv;
+  }
+  const binop = node;
+  if (binop.op === ";" || binop.op === "&&") {
+    const leftEnv = simWalkEnv(binop.left, env, leafContextMap);
+    return simWalkEnv(binop.right, leftEnv, leafContextMap);
+  }
+  simWalkEnv(binop.left, env, leafContextMap);
+  simWalkEnv(binop.right, env, leafContextMap);
+  return env;
+}
+function simulateLeafEnvironments(root, env0) {
+  const leafContextMap = new Map;
+  simWalkEnv(root, env0, leafContextMap);
+  return leafContextMap;
+}
+function simulateFinalEnvironment(root, env0) {
+  const leafContextMap = new Map;
+  return simWalkEnv(root, env0, leafContextMap);
+}
+function flattenSequential(node) {
+  if (node.type === "binop" && (node.op === "&&" || node.op === ";")) {
+    return [...flattenSequential(node.left), ...flattenSequential(node.right)];
+  }
+  if (node.type === "bash") {
+    return flattenSequential(node.ast);
+  }
+  if (isLeaf(node)) {
+    return [node];
+  }
+  return [node];
+}
+function truncateLabel(label, maxLength) {
+  if (label.length <= maxLength) {
+    return label;
+  }
+  return label.slice(0, maxLength - 1) + "…";
+}
+function formatRuleRef(outcome) {
+  if (outcome.ruleFile === undefined) {
+    return "";
+  }
+  if (outcome.ruleLine !== undefined) {
+    return `  ${outcome.ruleFile}:${outcome.ruleLine}`;
+  }
+  return `  ${outcome.ruleFile}`;
+}
+function formatOutcomeLines(outcome, leafContext, hookCwd, indent) {
+  const lines = [];
+  if (leafContext !== undefined && leafContext.cwd !== hookCwd) {
+    lines.push(`${indent}cwd: ${leafContext.cwd}`);
+  }
+  if (outcome === undefined) {
+    return lines;
+  }
+  let decisionLine = `${indent}${outcome.decision}${formatRuleRef(outcome)}`;
+  if (outcome.reason !== undefined && outcome.reason !== "") {
+    decisionLine += `  "${outcome.reason}"`;
+  }
+  lines.push(decisionLine);
+  return lines;
+}
+function appendTreeLines(node, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines) {
+  const connector = isLast ? "└── " : "├── ";
+  const childPrefix = isLast ? "    " : "│   ";
+  if (node.type === "bash") {
+    appendTreeLines(node.ast, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
+    return;
+  }
+  if (node.type === "xargs") {
+    appendTreeLines(node.child, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
+    return;
+  }
+  if (node.type === "binop" && node.op !== "&&" && node.op !== ";") {
+    renderCompoundTree(node, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
+    return;
+  }
+  if (node.type === "binop" && (node.op === "&&" || node.op === ";")) {
+    const parts = flattenSequential(node);
+    if (parts.length > 1) {
+      lines.push(`${prefix}${connector}${truncateLabel(describeNode(node), 80)}`);
+      for (let index = 0;index < parts.length; index++) {
+        appendTreeLines(parts[index], `${prefix}${childPrefix}`, index === parts.length - 1, leafOutcomeMap, leafContextMap, hookCwd, lines);
+      }
+      return;
+    }
+  }
+  if (isLeaf(node)) {
+    lines.push(`${prefix}${connector}${describeNode(node)}`);
+    const cmd = describeNode(node);
+    const outcomeLines = formatOutcomeLines(leafOutcomeMap.get(cmd), leafContextMap.get(cmd), hookCwd, `${prefix}${childPrefix}  `);
+    for (const outcomeLine of outcomeLines) {
+      lines.push(outcomeLine);
+    }
+    return;
+  }
+  renderCompoundTree(node, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
+}
+function renderCompoundTree(node, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines) {
+  const connector = isLast ? "└── " : "├── ";
+  const childPrefix = isLast ? "    " : "│   ";
+  lines.push(`${prefix}${connector}${truncateLabel(describeNode(node), 80)}`);
+  if (node.type === "binop") {
+    appendTreeLines(node.left, `${prefix}${childPrefix}`, false, leafOutcomeMap, leafContextMap, hookCwd, lines);
+    appendTreeLines(node.right, `${prefix}${childPrefix}`, true, leafOutcomeMap, leafContextMap, hookCwd, lines);
+    return;
+  }
+  if (node.type === "bash") {
+    appendTreeLines(node.ast, `${prefix}${childPrefix}`, true, leafOutcomeMap, leafContextMap, hookCwd, lines);
+  }
+}
+function formatPendingPromptTree(root, leafOutcomeMap, leafContextMap, hookCwd) {
+  const lines = [];
+  lines.push(truncateLabel(describeNode(root), 80));
+  if (root.type === "binop" && (root.op === "&&" || root.op === ";")) {
+    const parts = flattenSequential(root);
+    for (let index = 0;index < parts.length; index++) {
+      appendTreeLines(parts[index], "", index === parts.length - 1, leafOutcomeMap, leafContextMap, hookCwd, lines);
+    }
+  } else if (root.type === "binop") {
+    renderCompoundTree(root, "", true, leafOutcomeMap, leafContextMap, hookCwd, lines);
+  } else {
+    appendTreeLines(root, "", true, leafOutcomeMap, leafContextMap, hookCwd, lines);
+  }
+  return lines.join(`
+`);
+}
+function decisionPriority(decision) {
+  if (decision === "DENY") {
+    return 3;
+  }
+  if (decision === "ASK" || decision === "NOMATCH") {
+    return 2;
+  }
+  return 1;
+}
+function sourceLabelForOutcome(outcome) {
+  if (outcome.source === "no-rule-match") {
+    return "no rule matched";
+  }
+  if (outcome.source === "deny-rule") {
+    return "deny rule";
+  }
+  return "matched rule";
+}
+function resolveVerdictTrigger(leafOutcomeMap, leafContextMap, root, hookCwd, decisionReason) {
+  let bestCmd = describeNode(root);
+  let bestOutcome = leafOutcomeMap.get(bestCmd);
+  let bestPriority = bestOutcome !== undefined ? decisionPriority(bestOutcome.decision) : 0;
+  for (const [cmd, outcome] of leafOutcomeMap.entries()) {
+    const priority = decisionPriority(outcome.decision);
+    if (priority > bestPriority) {
+      bestPriority = priority;
+      bestCmd = cmd;
+      bestOutcome = outcome;
+    }
+  }
+  let reason = decisionReason;
+  if (bestOutcome !== undefined && bestOutcome.reason !== undefined) {
+    reason = bestOutcome.reason;
+  }
+  const leafContext = leafContextMap.get(bestCmd);
+  let cwd;
+  if (leafContext !== undefined && leafContext.cwd !== hookCwd) {
+    cwd = leafContext.cwd;
+  }
+  const sourceLabel = bestOutcome !== undefined ? sourceLabelForOutcome(bestOutcome) : "no rule matched";
+  return {
+    cmd: bestCmd,
+    sourceLabel,
+    reason,
+    cwd
+  };
+}
+function formatContextBlock(call, root, env0) {
+  const finalEnv = simulateFinalEnvironment(root, env0);
+  const envKeys = Object.keys(finalEnv.env).sort();
+  const hasEnvVars = envKeys.length > 0;
+  if (!hasEnvVars) {
+    return;
+  }
+  const lines = [`CWD: ${call.cwd}`];
+  for (const key of envKeys) {
+    lines.push(`${key}=${finalEnv.env[key]}`);
+  }
+  return lines.join(`
+`);
+}
+function formatVerdictBlock(trigger, decision) {
+  const upperDecision = decision.toUpperCase();
+  let firstLine = `${upperDecision} (${trigger.sourceLabel})`;
+  if (trigger.reason !== undefined && trigger.reason !== "") {
+    firstLine += ` — ${trigger.reason}`;
+  }
+  let secondLine = `→ ${trigger.cmd}`;
+  if (trigger.cwd !== undefined) {
+    secondLine += `  (cwd: ${trigger.cwd})`;
+  }
+  return `${firstLine}
+${secondLine}`;
+}
+function formatPendingPromptMarkdown(call, root, leafEvaluations, decision, reason, pendingSince) {
+  const env0 = {
+    cwd: call.cwd,
+    cwdResolved: true,
+    env: {}
+  };
+  const leafOutcomeMap = buildLeafOutcomeMap(leafEvaluations);
+  const leafContextMap = simulateLeafEnvironments(root, env0);
+  const treeBlock = formatPendingPromptTree(root, leafOutcomeMap, leafContextMap, call.cwd);
+  const trigger = resolveVerdictTrigger(leafOutcomeMap, leafContextMap, root, call.cwd, reason);
+  const contextBlock = formatContextBlock(call, root, env0);
+  const sections = [];
+  sections.push(`# ${call.tool_name} — ${decision.toUpperCase()}`);
+  sections.push("");
+  sections.push(`Pending since ${formatLocalTimestamp(pendingSince)}`);
+  sections.push("");
+  sections.push("## Command");
+  sections.push("");
+  sections.push("```");
+  sections.push(summarizeToolInput(call));
+  sections.push("```");
+  if (contextBlock !== undefined) {
+    sections.push("");
+    sections.push("## Context");
+    sections.push("");
+    sections.push("```");
+    sections.push(contextBlock);
+    sections.push("```");
+  }
+  sections.push("");
+  sections.push("## Sub-commands");
+  sections.push("");
+  sections.push("```");
+  sections.push(treeBlock);
+  sections.push("```");
+  sections.push("");
+  sections.push("## Verdict");
+  sections.push("");
+  sections.push("```");
+  sections.push(formatVerdictBlock(trigger, decision));
+  sections.push("```");
+  sections.push("");
+  return sections.join(`
+`);
+}
+async function writePendingPrompt(projectDir, call, root, leafEvaluations, decision, reason, pendingSince) {
+  const pendingDir = resolvePendingDir(projectDir);
+  await mkdir2(pendingDir, { recursive: true });
+  const key = computePendingPromptKey(call);
+  const filePath = join3(pendingDir, `${key}.md`);
+  const content = formatPendingPromptMarkdown(call, root, leafEvaluations, decision, reason, pendingSince);
+  await writeFile2(filePath, content, "utf-8");
+}
+async function cleanupStalePendingPrompts(projectDir, now, maxAgeDays) {
+  const pendingDir = resolvePendingDir(projectDir);
+  let fileNames;
+  try {
+    fileNames = await readdir2(pendingDir);
+  } catch {
+    return;
+  }
+  const maxAgeMs = maxAgeDays * 24 * 60 * 60 * 1000;
+  for (const fileName of fileNames) {
+    if (!fileName.endsWith(".md")) {
+      continue;
+    }
+    const filePath = join3(pendingDir, fileName);
+    const fileStat = await stat2(filePath);
+    const ageMs = now.getTime() - fileStat.mtimeMs;
+    if (ageMs > maxAgeMs) {
+      await unlink(filePath);
+    }
+  }
 }
 
 // src/rule-registry.ts
@@ -10188,108 +10726,6 @@ class RuleRegistry {
   }
 }
 
-// src/rules/builtin/cd.ts
-import { resolve } from "path";
-function getCdTarget(cmd) {
-  if (typeof cmd === "string") {
-    return cmd;
-  }
-  if (cmd.length === 0) {
-    return "";
-  }
-  return cmd[0];
-}
-function isUnresolvable(target) {
-  if (target === "" || target === "-") {
-    return true;
-  }
-  if (target.includes("$")) {
-    return true;
-  }
-  return false;
-}
-var cdRule = function cdRule2(node, env, _call) {
-  if (node.type !== "command" || node.binary !== "cd") {
-    return ABSTAIN;
-  }
-  const target = getCdTarget(node.cmd);
-  if (isUnresolvable(target)) {
-    return {
-      decision: { action: "abstain" },
-      env: { ...env, cwdResolved: false }
-    };
-  }
-  const newCwd = resolve(env.cwd, target);
-  return {
-    decision: { action: "abstain" },
-    env: { ...env, cwd: newCwd, cwdResolved: true }
-  };
-};
-
-// src/rules/builtin/env-prefix.ts
-var envPrefixRule = function envPrefixRule2(node, env, _call) {
-  if (node.type !== "command") {
-    return ABSTAIN;
-  }
-  if (node.binary === "") {
-    return ABSTAIN;
-  }
-  if (Object.keys(node.envPrefix).length === 0) {
-    return ABSTAIN;
-  }
-  const scopedEnv = {
-    ...env,
-    env: { ...env.env, ...node.envPrefix }
-  };
-  return {
-    decision: { action: "abstain" },
-    scopedEnv
-  };
-};
-
-// src/rules/builtin/env-set.ts
-var envSetRule = function envSetRule2(node, env, _call) {
-  if (node.type !== "command") {
-    return ABSTAIN;
-  }
-  if (node.binary !== "") {
-    return ABSTAIN;
-  }
-  if (Object.keys(node.envPrefix).length === 0) {
-    return ABSTAIN;
-  }
-  const updatedEnv = {
-    ...env,
-    env: { ...env.env, ...node.envPrefix }
-  };
-  return {
-    decision: { action: "allow", reason: "set environment variable" },
-    env: updatedEnv
-  };
-};
-
-// src/rules/builtin/export.ts
-var exportRule = function exportRule2(node, env, _call) {
-  if (node.type !== "command" || node.binary !== "export") {
-    return ABSTAIN;
-  }
-  const positionals = Array.isArray(node.cmd) ? node.cmd : node.cmd ? [node.cmd] : [];
-  const updates = {};
-  for (const token of positionals) {
-    const eqIndex = token.indexOf("=");
-    if (eqIndex > 0) {
-      updates[token.slice(0, eqIndex)] = token.slice(eqIndex + 1);
-    }
-  }
-  if (Object.keys(updates).length === 0) {
-    return ABSTAIN;
-  }
-  return {
-    decision: { action: "allow", reason: "set environment variable" },
-    env: { ...env, env: { ...env.env, ...updates } }
-  };
-};
-
 // src/rules/builtin/xargs.ts
 var xargsRule = function xargsRule2(node, _env, _call) {
   if (node.type !== "xargs") {
@@ -10303,7 +10739,7 @@ var builtinRules = [cdRule, envPrefixRule, envSetRule, exportRule, xargsRule];
 
 // src/load-config.ts
 import { readFileSync, existsSync as existsSync2, readdirSync as readdirSync2, statSync } from "fs";
-import { join as join3, resolve as resolve2 } from "path";
+import { join as join4, resolve as resolve2 } from "path";
 import { homedir } from "os";
 var import_picomatch = __toESM(require_picomatch2(), 1);
 var KNOWN_FIELDS = new Set(["decide", "reason", "rules", "not", "file", "cmd", "cmd-in", "options", "options-in", "cwd", "cwd-in", "cwd_resolved", "env", "path", "path-in", "host", "host-in", "tool", "tool-in", "sourceLine", "sourceFile"]);
@@ -10366,7 +10802,7 @@ function homePath(rawPath) {
   }
   if (!rawPath.startsWith("/")) {
     const projectDir = process.env["CLAUDE_PROJECT_DIR"] ?? process.cwd();
-    return join3(projectDir, rawPath);
+    return join4(projectDir, rawPath);
   }
   return rawPath;
 }
@@ -11439,21 +11875,21 @@ function loadHomeConfigRules() {
   if (homeDir === undefined) {
     return [];
   }
-  return loadConfigRulesFromFile(join3(homeDir, ".claude", "permissions.yaml"), "~/.claude/permissions.yaml", homeDir);
+  return loadConfigRulesFromFile(join4(homeDir, ".claude", "permissions.yaml"), "~/.claude/permissions.yaml", homeDir);
 }
 function loadProjectConfigRules() {
   const projectDir = process.env["CLAUDE_PROJECT_DIR"];
   if (projectDir === undefined) {
     return [];
   }
-  return loadConfigRulesFromFile(join3(projectDir, ".claude", "permissions.yaml"), ".claude/permissions.yaml", projectDir);
+  return loadConfigRulesFromFile(join4(projectDir, ".claude", "permissions.yaml"), ".claude/permissions.yaml", projectDir);
 }
 function isDropInFileCandidate(dirPath, entryName) {
   if (entryName.startsWith(".")) {
     return false;
   }
-  const stat2 = statSync(join3(dirPath, entryName));
-  return stat2.isFile();
+  const stat3 = statSync(join4(dirPath, entryName));
+  return stat3.isFile();
 }
 function discoverConfigDirFiles(dirPath, displayPrefix, baseDir) {
   if (!existsSync2(dirPath)) {
@@ -11478,7 +11914,7 @@ function discoverConfigDirFiles(dirPath, displayPrefix, baseDir) {
   const sources = [];
   for (const name of matchingNames) {
     sources.push({
-      filePath: join3(dirPath, name),
+      filePath: join4(dirPath, name),
       displayPath: displayPrefix + "/" + name,
       baseDir
     });
@@ -11490,14 +11926,14 @@ function discoverHomeConfigDirFiles() {
   if (homeDir === undefined) {
     return [];
   }
-  return discoverConfigDirFiles(join3(homeDir, ".claude", "permissions.d"), "~/.claude/permissions.d", homeDir);
+  return discoverConfigDirFiles(join4(homeDir, ".claude", "permissions.d"), "~/.claude/permissions.d", homeDir);
 }
 function discoverProjectConfigDirFiles() {
   const projectDir = process.env["CLAUDE_PROJECT_DIR"];
   if (projectDir === undefined) {
     return [];
   }
-  return discoverConfigDirFiles(join3(projectDir, ".claude", "permissions.d"), ".claude/permissions.d", projectDir);
+  return discoverConfigDirFiles(join4(projectDir, ".claude", "permissions.d"), ".claude/permissions.d", projectDir);
 }
 function makeConfigFileLoader(source) {
   return function configFileLoader() {
@@ -11526,6 +11962,7 @@ async function runHook() {
     }
     const logger = createLogger(projectDir, new Date);
     await ensureLogDirIgnored(resolveLogBaseDir(projectDir));
+    await cleanupStalePendingPrompts(projectDir, new Date, 7);
     const layers = [
       new RuleLayer(builtinRules),
       new FileLayer(loadHomeConfigRules, "~/.claude/permissions.yaml", logger)
@@ -11539,9 +11976,12 @@ async function runHook() {
     }
     const registry = new RuleRegistry(layers);
     const descriptors = await loadCommandDescriptors(homeDir, projectDir);
-    const decision = decide(call, logger, registry, descriptors);
-    const permissionDecision = decision.action;
-    const permissionDecisionReason = "reason" in decision ? decision.reason : undefined;
+    const decideResult = decide(call, logger, registry, descriptors);
+    const permissionDecision = decideResult.decision.action;
+    const permissionDecisionReason = "reason" in decideResult.decision ? decideResult.decision.reason : undefined;
+    if (decideResult.decision.action === "ask") {
+      await writePendingPrompt(projectDir, call, decideResult.root, decideResult.leafEvaluations, decideResult.decision.action, permissionDecisionReason, new Date);
+    }
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName, permissionDecision, permissionDecisionReason } }) + `
 `);
     process.exit(0);

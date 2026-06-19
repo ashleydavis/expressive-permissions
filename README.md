@@ -40,7 +40,7 @@ You have fine-grained control over what Claude is allowed to do and an expressiv
 
 It's all about allowing Claude the freedom to do what it needs to do, without constantly interupting you for permissions, but at the same time protecting you from the most damaging things it can do. Rules can also be scoped by environment, so you can allow full read/write access in a sandbox AWS account or dev cluster while locking down production to read-only - or blocking writes entirely. See [docs/PROTECTING-PRODUCTION.md](docs/PROTECTING-PRODUCTION.md) for recipes covering AWS CLI and kubectl.
 
-All decisions are fully auditable. Every permission decision (allow, deny, or ask) and every tool execution result is written to a machine-readable JSON Lines file and a human-readable plain-text log, both under `.claude/permissions-log/`. See [docs/AUDIT-LOG.md](docs/AUDIT-LOG.md) for the format and retention policy.
+All decisions are fully auditable. Every permission decision (allow, deny, or ask) and every tool execution result is written to a machine-readable JSON Lines file and a human-readable plain-text log, both under `.claude/permissions-log/`. When a tool call returns `ask`, a separate Markdown file is also written under `.claude/permissions-log/pending/` so you can inspect the decision while the approval prompt is on screen. See [docs/AUDIT-LOG.md](docs/AUDIT-LOG.md) for the audit log format and [docs/PENDING-APPROVALS.md](docs/PENDING-APPROVALS.md) for pending approval files.
 
 > **Safe by default:** if you add no rules, or if a tool call matches no rule, the plugin always falls back to `ask`. Claude will never run an unmatched command silently.
 
@@ -216,6 +216,7 @@ For the full rule syntax (matchers, AND/OR logic, file-path rules, WebFetch rule
 
 Three tools help when a rule is not behaving as expected:
 
+- **Pending approval files** — when Claude asks you to approve a tool call, open the Markdown file in `.claude/permissions-log/pending/` for the full command, parsed sub-commands, matched rules, and verdict. List outstanding prompts with `ls -t .claude/permissions-log/pending/`, then `cat` the newest file. See [docs/PENDING-APPROVALS.md](docs/PENDING-APPROVALS.md).
 - **Audit log** -- every permission decision and tool result is written to `.claude/permissions-log/`. Check it first when you want to understand what just happened.
 - **Permission REPL** -- interactive terminal session; type a command and see the full rule trace in colour (`bun run repl`). Requires the repo to be cloned locally.
 - **Permission Analyzer MCP server** -- ask Claude to analyze a command: "Use analyze_permission to check why `git push --force` is denied."
@@ -228,9 +229,10 @@ See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for the full guide.
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md) - Full rule syntax: matchers, AND/OR logic, file-path rules, WebFetch rules, and cwd scoping.
 - [docs/PROTECTING-PRODUCTION.md](docs/PROTECTING-PRODUCTION.md) - Recipes for locking down production environments covering AWS CLI and kubectl.
 - [docs/AUDIT-LOG.md](docs/AUDIT-LOG.md) - Audit log format and retention policy for the machine-readable and human-readable logs.
+- [docs/PENDING-APPROVALS.md](docs/PENDING-APPROVALS.md) - Pending approval Markdown files written when Claude asks you to approve a tool call.
 - [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) - Architecture deep-dive with AST diagrams, env-threading details, and a guide to writing non-trivial rules.
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) - Instructions on cloning, building, and running the plugin locally.
-- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) - Troubleshooting rules: audit log, interactive REPL, and MCP server.
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) - Troubleshooting rules: pending approval files, audit log, interactive REPL, and MCP server.
 - [docs/REPL.md](docs/REPL.md) - Interactive REPL for testing commands against your `permissions.yaml`.
 - [docs/MCP-SERVER.md](docs/MCP-SERVER.md) - MCP server that lets Claude explain permission decisions in natural language.
 

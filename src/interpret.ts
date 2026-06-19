@@ -84,15 +84,68 @@ export interface IWalkChildrenResult {
     envOut: IEnvironment;
 }
 
+// ILeafEvaluationSource identifies why a leaf received its decision label.
+export type ILeafEvaluationSource = "matched-rule" | "no-rule-match" | "deny-rule";
+
+// ILeafEvaluation records one leaf sub-command outcome from the permission walk.
+export interface ILeafEvaluation {
+    // Reconstructed sub-command string for this leaf.
+    cmd: string;
+    // Uppercase decision label: ALLOW, DENY, ASK, or NOMATCH.
+    decision: string;
+    // Source file of the matched rule, when present.
+    ruleFile?: string;
+    // 1-based line number in ruleFile, when present.
+    ruleLine?: number;
+    // Human-readable reason from the rule evaluation.
+    reason?: string;
+    // Why this outcome was assigned.
+    source: ILeafEvaluationSource;
+}
+
+// recordLeafEvaluation appends one leaf outcome for pending prompt formatting.
+function recordLeafEvaluation(
+    leafEvaluations: ILeafEvaluation[],
+    node: AstNode,
+    annotation: IAnnotation,
+    allRulesAbstained: boolean
+): void {
+    const cmd = describeNode(node);
+    if (allRulesAbstained) {
+        leafEvaluations.push({
+            cmd,
+            decision: "NOMATCH",
+            source: "no-rule-match",
+        });
+        return;
+    }
+
+    const action = annotation.decision.action;
+    let source: ILeafEvaluationSource = "matched-rule";
+    if (action === "deny") {
+        source = "deny-rule";
+    }
+
+    leafEvaluations.push({
+        cmd,
+        decision: action.toUpperCase(),
+        ruleFile: annotation.ruleFile,
+        ruleLine: annotation.ruleLine,
+        reason: annotation.decision.reason,
+        source,
+    });
+}
+
 export function walkChildren(
     node: AstNode,
     env: IEnvironment,
     call: IToolCall,
     logger: IAuditLogger,
-    registry: IRuleRegistry
+    registry: IRuleRegistry,
+    leafEvaluations: ILeafEvaluation[]
 ): IWalkChildrenResult {
     if (node.type === "bash") {
-        const childResult = interpret(node.ast, env, call, logger, registry);
+        const childResult = interpret(node.ast, env, call, logger, registry, leafEvaluations);
         return {
             childIAnnotations: [childResult.annotation],
             envOut: childResult.envOut,
@@ -100,7 +153,7 @@ export function walkChildren(
     }
 
     if (node.type === "xargs") {
-        const childResult = interpret(node.child, env, call, logger, registry);
+        const childResult = interpret(node.child, env, call, logger, registry, leafEvaluations);
         return {
             childIAnnotations: [childResult.annotation],
             envOut: childResult.envOut,
@@ -114,7 +167,7 @@ export function walkChildren(
                 ...env,
                 env: { ...env.env, [node.variable]: item },
             };
-            const bodyResult = interpret(node.body, iterEnv, call, logger, registry);
+            const bodyResult = interpret(node.body, iterEnv, call, logger, registry, leafEvaluations);
             childIAnnotations.push(bodyResult.annotation);
         }
 
@@ -133,8 +186,8 @@ export function walkChildren(
         // The condition always runs; its env changes flow into the body. The body is walked once
         // for analysis (it may run any number of times). Only the condition's env propagates
         // upward, since the number of iterations is indeterminate.
-        const conditionResult = interpret(node.condition, env, call, logger, registry);
-        const bodyResult = interpret(node.body, conditionResult.envOut, call, logger, registry);
+        const conditionResult = interpret(node.condition, env, call, logger, registry, leafEvaluations);
+        const bodyResult = interpret(node.body, conditionResult.envOut, call, logger, registry, leafEvaluations);
         return {
             childIAnnotations: [conditionResult.annotation, bodyResult.annotation],
             envOut: conditionResult.envOut,
@@ -143,7 +196,7 @@ export function walkChildren(
 
     if (node.type === "group") {
         // A subshell `( ... )` isolates env changes; a brace group `{ ...; }` propagates them.
-        const bodyResult = interpret(node.body, env, call, logger, registry);
+        const bodyResult = interpret(node.body, env, call, logger, registry, leafEvaluations);
         return {
             childIAnnotations: [bodyResult.annotation],
             envOut: node.style === "brace" ? bodyResult.envOut : env,
@@ -155,7 +208,7 @@ export function walkChildren(
         // body sees the parent env (clauses are alternatives), and parent env propagates upward.
         const childIAnnotations: IAnnotation[] = [];
         for (const clause of node.clauses) {
-            const clauseResult = interpret(clause.body, env, call, logger, registry);
+            const clauseResult = interpret(clause.body, env, call, logger, registry, leafEvaluations);
             childIAnnotations.push(clauseResult.annotation);
         }
         if (childIAnnotations.length === 0) {
@@ -172,14 +225,14 @@ export function walkChildren(
         // branches, matching Bash. then/else are mutually exclusive at runtime but both are
         // walked for permission analysis since the taken branch is not known statically. Only
         // the condition's env propagates upward, as the branch outcome is indeterminate.
-        const conditionResult = interpret(node.condition, env, call, logger, registry);
+        const conditionResult = interpret(node.condition, env, call, logger, registry, leafEvaluations);
         const childIAnnotations: IAnnotation[] = [conditionResult.annotation];
 
-        const thenResult = interpret(node.thenBranch, conditionResult.envOut, call, logger, registry);
+        const thenResult = interpret(node.thenBranch, conditionResult.envOut, call, logger, registry, leafEvaluations);
         childIAnnotations.push(thenResult.annotation);
 
         if (node.elseBranch !== undefined) {
-            const elseResult = interpret(node.elseBranch, conditionResult.envOut, call, logger, registry);
+            const elseResult = interpret(node.elseBranch, conditionResult.envOut, call, logger, registry, leafEvaluations);
             childIAnnotations.push(elseResult.annotation);
         }
 
@@ -192,8 +245,8 @@ export function walkChildren(
     const binop = node as IBinOp;
 
     if (binop.op === ";" || binop.op === "&&") {
-        const leftResult = interpret(binop.left, env, call, logger, registry);
-        const rightResult = interpret(binop.right, leftResult.envOut, call, logger, registry);
+        const leftResult = interpret(binop.left, env, call, logger, registry, leafEvaluations);
+        const rightResult = interpret(binop.right, leftResult.envOut, call, logger, registry, leafEvaluations);
         return {
             childIAnnotations: [leftResult.annotation, rightResult.annotation],
             envOut: rightResult.envOut,
@@ -201,8 +254,8 @@ export function walkChildren(
     }
 
     // || and |: both sides see parent env; parent env is returned (no propagation)
-    const leftResult = interpret(binop.left, env, call, logger, registry);
-    const rightResult = interpret(binop.right, env, call, logger, registry);
+    const leftResult = interpret(binop.left, env, call, logger, registry, leafEvaluations);
+    const rightResult = interpret(binop.right, env, call, logger, registry, leafEvaluations);
     return {
         childIAnnotations: [leftResult.annotation, rightResult.annotation],
         envOut: env,
@@ -212,13 +265,22 @@ export function walkChildren(
 // interpret recursively walks an AST node, runs rules, and returns an IInterpretResult.
 // Leaf nodes default to ask when all rules abstain. Intermediate nodes aggregate child
 // results first (deny short-circuits) then layer their own rule result on top.
-function interpret(node: AstNode, env: IEnvironment, call: IToolCall, logger: IAuditLogger, registry: IRuleRegistry): IInterpretResult {
+function interpret(
+    node: AstNode,
+    env: IEnvironment,
+    call: IToolCall,
+    logger: IAuditLogger,
+    registry: IRuleRegistry,
+    leafEvaluations: ILeafEvaluation[]
+): IInterpretResult {
     if (isLeaf(node)) {
         const rulesResult = registry.runRules(node, env, call, logger);
         const envOut = rulesResult.envUpdate(env);
 
         let annotation = rulesResult.annotation;
-        if (annotation.decision.action === "abstain") {
+        const allRulesAbstained = annotation.decision.action === "abstain";
+        recordLeafEvaluation(leafEvaluations, node, annotation, allRulesAbstained);
+        if (allRulesAbstained) {
             logger.log({
                 type: "no_rule_match",
                 timestamp: toLocalISOString(new Date()),
@@ -233,7 +295,7 @@ function interpret(node: AstNode, env: IEnvironment, call: IToolCall, logger: IA
         if (node.type === "command" && node.substitutions !== undefined && node.substitutions.length > 0) {
             const substitutionAnnotations: IAnnotation[] = [annotation];
             for (const substitution of node.substitutions) {
-                const substitutionResult = interpret(substitution, env, call, logger, registry);
+                const substitutionResult = interpret(substitution, env, call, logger, registry, leafEvaluations);
                 substitutionAnnotations.push(substitutionResult.annotation);
             }
             annotation = aggregateChildren(substitutionAnnotations);
@@ -241,7 +303,7 @@ function interpret(node: AstNode, env: IEnvironment, call: IToolCall, logger: IA
         return { annotation, envOut };
     }
 
-    const childrenResult = walkChildren(node, env, call, logger, registry);
+    const childrenResult = walkChildren(node, env, call, logger, registry, leafEvaluations);
     const childrenIAnnotation = aggregateChildren(childrenResult.childIAnnotations);
 
     if (childrenIAnnotation.decision.action === "deny") {
@@ -272,11 +334,21 @@ function interpret(node: AstNode, env: IEnvironment, call: IToolCall, logger: IA
     return { annotation, envOut };
 }
 
+// IDecideResult is the return value of decide(): the final decision, AST root, and leaf outcomes.
+export interface IDecideResult {
+    // The final permission decision for the tool call.
+    decision: Decision;
+    // The AST root built from the tool call.
+    root: AstNode;
+    // Per-leaf evaluation outcomes collected during the interpret walk.
+    leafEvaluations: ILeafEvaluation[];
+}
+
 // decide is the public entry point called by pre-hook.ts. It builds the root AST from the
 // IToolCall, initialises env0 from the call's cwd, runs the full interpreter pass, and
-// returns the root decision. A root abstain (which should not occur in practice) is
+// returns the root decision and AST. A root abstain (which should not occur in practice) is
 // promoted to ask as a safe default.
-export function decide(call: IToolCall, logger: IAuditLogger, registry: IRuleRegistry, descriptors: Map<string, ICommandDescriptor>): Decision {
+export function decide(call: IToolCall, logger: IAuditLogger, registry: IRuleRegistry, descriptors: Map<string, ICommandDescriptor>): IDecideResult {
     const timestamp = toLocalISOString(new Date());
 
     logger.log({
@@ -294,7 +366,8 @@ export function decide(call: IToolCall, logger: IAuditLogger, registry: IRuleReg
         env: {},
     };
 
-    const result = interpret(root, env0, call, logger, registry);
+    const leafEvaluations: ILeafEvaluation[] = [];
+    const result = interpret(root, env0, call, logger, registry, leafEvaluations);
     let decision = result.annotation.decision;
 
     if (decision.action === "abstain") {
@@ -311,5 +384,5 @@ export function decide(call: IToolCall, logger: IAuditLogger, registry: IRuleReg
         reason: finalReason,
     });
 
-    return decision;
+    return { decision, root, leafEvaluations };
 }

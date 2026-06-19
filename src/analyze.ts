@@ -93,7 +93,7 @@ export async function analyzePermission(input: string, cwd: string, projectDir: 
     const registry = buildAnalysisRegistry(projectDir, logger);
     const toolCall = parseToolCallInput(input, cwd);
     const descriptors = await loadCommandDescriptors(homeDir, projectDir);
-    const decision = decide(toolCall, logger, registry, descriptors);
+    const { decision } = decide(toolCall, logger, registry, descriptors);
 
     return {
         decision: decision.action,

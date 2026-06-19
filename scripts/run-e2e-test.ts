@@ -1,7 +1,8 @@
-import { readFileSync, mkdirSync, writeFileSync, rmSync, readdirSync, statSync, cpSync, lstatSync } from "fs";
+import { readFileSync, mkdirSync, writeFileSync, rmSync, readdirSync, statSync, cpSync, lstatSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { spawnSync } from "child_process";
 import { parse, stringify } from "yaml";
+import { computePendingPromptKey, resolvePendingDir } from "../src/pending-prompt-log";
 
 // ITestCaseInput describes the tool call input fields in a test case YAML file.
 interface ITestCaseInput {
@@ -31,6 +32,8 @@ interface IPostToolUseInput {
 interface IPostToolUseExpected {
     // When present, the newest log file must contain matching entries for each item.
     audit_log?: IAuditLogExpectedEntry[];
+    // When true, the pending prompt detail file must be removed after post-hook.
+    pending_prompt_removed?: boolean;
 }
 
 // IAuditLogExpectedEntry describes one expected audit log entry to assert against.
@@ -50,6 +53,8 @@ interface ITestCaseExpected {
     reason?: string;
     // When present, the newest log file must contain matching entries for each item.
     audit_log?: IAuditLogExpectedEntry[];
+    // When true, a pending prompt detail file must exist after pre-hook.
+    pending_prompt?: boolean;
 }
 
 // ITestCase describes the full structure of a test case YAML file.
@@ -246,6 +251,21 @@ function runTest(testFilePath: string): boolean {
             }
         }
 
+        if (testCase.expected.pending_prompt === true) {
+            const pendingCall = {
+                tool_name: substituted.tool_name,
+                tool_input: substituted.tool_input,
+                cwd: substituted.cwd ?? projectDir,
+            };
+            const pendingKey = computePendingPromptKey(pendingCall);
+            const pendingPath = join(resolvePendingDir(projectDir), `${pendingKey}.md`);
+            if (!existsSync(pendingPath)) {
+                process.stdout.write(`FAIL: ${testCase.description}\n`);
+                process.stdout.write(`  pending_prompt: expected file ${pendingPath}\n`);
+                return false;
+            }
+        }
+
         if (testCase.post_input !== undefined) {
             const postInputJson = JSON.stringify(testCase.post_input);
             const postHookPath = join(__dirname, "..", "src", "post-hook.ts");
@@ -287,6 +307,21 @@ function runTest(testFilePath: string): boolean {
                         process.stdout.write(`  post audit_log: no entry matching ${JSON.stringify(expectedEntry)}\n`);
                         return false;
                     }
+                }
+            }
+
+            if (testCase.post_expected?.pending_prompt_removed === true) {
+                const pendingCall = {
+                    tool_name: testCase.post_input.tool_name,
+                    tool_input: testCase.post_input.tool_input,
+                    cwd: testCase.post_input.cwd,
+                };
+                const pendingKey = computePendingPromptKey(pendingCall);
+                const pendingPath = join(resolvePendingDir(projectDir), `${pendingKey}.md`);
+                if (existsSync(pendingPath)) {
+                    process.stdout.write(`FAIL: ${testCase.description}\n`);
+                    process.stdout.write(`  pending_prompt_removed: file still exists at ${pendingPath}\n`);
+                    return false;
                 }
             }
         }

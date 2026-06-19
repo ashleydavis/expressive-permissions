@@ -1,14 +1,30 @@
 # Troubleshooting rules
 
-Three tools help you understand why the permissions engine makes a particular decision.
+Four tools help you understand why the permissions engine makes a particular decision.
 
 ---
 
+- [Pending approval files](#pending-approval-files)
 - [Audit log](#audit-log)
 - [Permission REPL](#permission-repl)
 - [Permission Analyzer MCP server](#permission-analyzer-mcp-server)
 
 ---
+
+## Pending approval files
+
+When Claude Code shows an approval prompt, the pre-hook writes a Markdown debug file for that tool call. Open it to see the full command, parsed sub-commands with rule outcomes, effective cwd and env vars, and the verdict that triggered the ask.
+
+List outstanding prompts (newest first):
+
+```sh
+ls -t .claude/permissions-log/pending/
+cat .claude/permissions-log/pending/<key>.md
+```
+
+The file is removed automatically after you approve and the tool executes. If you deny the prompt, the file stays until stale cleanup (7 days) or you delete it manually.
+
+See [docs/PENDING-APPROVALS.md](PENDING-APPROVALS.md) for the file format and lifecycle.
 
 ## Audit log
 
