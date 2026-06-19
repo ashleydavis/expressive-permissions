@@ -1,0 +1,17 @@
+description: "bash: a trailing comment is stripped by the lexer, so its contents (even a command substitution) are never evaluated"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: 'echo ok # $(rm -rf /)'
+  cwd: /home/user/project
+
+rules:
+  bash:
+    echo:
+      decide: allow
+      reason: echo is allowed
+
+expected:
+  decision: allow
+  reason: echo is allowed

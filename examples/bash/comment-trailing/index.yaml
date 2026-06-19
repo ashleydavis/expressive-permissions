@@ -1,0 +1,11 @@
+command: "ls -la # list the directory"
+ast:
+  type: command
+  binary: ls
+  options:
+    l: true
+    a: true
+  cmd: []
+  envPrefix: {}
+  redirects: []
+  raw: ls -la

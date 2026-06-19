@@ -46,6 +46,8 @@ flowchart LR
 
 `parseBash` runs a hand-written recursive descent parser: a flat lexer produces a token stream, then grammar functions (`parseSequence` / `parseAnd` / `parseOr` / `parsePipe` / `parseStatement` / `parseCommand`) call each other recursively to build a left-associative sub-AST of `Command` leaves connected by `BinOp` nodes (`pipe`, `and`, `or`, `seq`). The lexer also normalises **newlines** and a bare **`&`** to a `;` separator, so a command after a newline or backgrounded with `&` is parsed as its own statement rather than swallowed as an argument.
 
+**Comments** are stripped by the lexer. A `#` at a token boundary (start of input, or just after whitespace, a newline, or an operator) begins a comment that is discarded to the end of the line, exactly as Bash treats it; a `#` in the middle of a word (e.g. `foo#bar`) is kept literally. This applies wherever the comment appears, not just at the start of a line, so a trailing comment like `echo hi # note` parses as just `echo hi`, and anything inside the comment (including what looks like a `$(...)` substitution) never reaches the AST or gets evaluated. Because comment-only lines and blank lines collapse with the surrounding separators, the only way to reach a completely empty `Command` (empty `binary`, no args/env/redirects) is an input that is *nothing but* a comment or whitespace; that degenerate case falls through to the default **ask** (see [§4](#4-per-node-rule-evaluation)).
+
 `parseStatement` recognises the block constructs:
 
 | Leading token | Node | Shape |

@@ -41,6 +41,8 @@ const BASH_SPECS: IBashSpec[] = [
     { name: "newline-separator", command: "echo a\necho b" },
     { name: "background", command: "server & client" },
     { name: "xargs", command: "find . | xargs rm" },
+    { name: "comment-trailing", command: "ls -la # list the directory" },
+    { name: "comment-line", command: "echo a # note\necho b" },
 ];
 
 // A minimal node shape covering every AST node field the diagram renderer reads.

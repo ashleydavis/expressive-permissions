@@ -8799,6 +8799,13 @@ function lex(input) {
       pos++;
       continue;
     }
+    if (input[pos] === "#") {
+      while (pos < input.length && input[pos] !== `
+` && input[pos] !== "\r") {
+        pos++;
+      }
+      continue;
+    }
     let opMatched = false;
     for (const op of OPERATORS) {
       if (input.startsWith(op, pos)) {
@@ -10256,7 +10263,7 @@ var envSetRule = function envSetRule2(node, env, _call) {
     env: { ...env.env, ...node.envPrefix }
   };
   return {
-    decision: { action: "abstain" },
+    decision: { action: "allow", reason: "set environment variable" },
     env: updatedEnv
   };
 };
@@ -10278,7 +10285,7 @@ var exportRule = function exportRule2(node, env, _call) {
     return ABSTAIN;
   }
   return {
-    decision: { action: "abstain" },
+    decision: { action: "allow", reason: "set environment variable" },
     env: { ...env, env: { ...env.env, ...updates } }
   };
 };

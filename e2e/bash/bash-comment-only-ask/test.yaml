@@ -1,0 +1,12 @@
+description: "bash: a comment-only command strips to an empty command and falls through to the default ask"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "# Parse the Changes to Outputs block"
+  cwd: /home/user/project
+
+rules: {}
+
+expected:
+  decision: ask

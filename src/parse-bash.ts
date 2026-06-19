@@ -83,6 +83,20 @@ export function lex(input: string): IToken[] {
             continue;
         }
 
+        // A "#" at the start of a token begins a comment that runs to the end of the line.
+        // Bash only treats "#" as a comment opener at a word boundary, and we are exactly at
+        // such a boundary here (a newline, whitespace, or operator was just consumed), so the
+        // rest of the line is discarded and never reaches the token stream or the AST. The
+        // terminating newline is left in place so it still becomes a ";" separator next iteration.
+        // A "#" in the middle of a word (e.g. "foo#bar") is handled by the word loop below and
+        // is kept literally, matching Bash.
+        if (input[pos] === "#") {
+            while (pos < input.length && input[pos] !== "\n" && input[pos] !== "\r") {
+                pos++;
+            }
+            continue;
+        }
+
         // Try operator tokens before words; check longer alternatives first. A bare "&"
         // backgrounds the preceding command but, for permission analysis, behaves like a
         // statement separator, so it is normalised to ";".

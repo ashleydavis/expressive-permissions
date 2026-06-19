@@ -553,6 +553,53 @@ describe("parseBash", () => {
         });
     });
 
+    describe("comments", () => {
+        test("a comment-only line strips to an empty command", () => {
+            const node = parseBash("# set up the project", new Map());
+            const cmd = expectCommand(node, "");
+            expect(cmd.cmd).toEqual([]);
+            expect(cmd.envPrefix).toEqual({});
+            expect(cmd.redirects).toEqual([]);
+        });
+
+        test("an indented comment also strips to an empty command", () => {
+            const node = parseBash("   # indented note", new Map());
+            expectCommand(node, "");
+        });
+
+        test("a trailing comment is stripped, leaving the command", () => {
+            const node = parseBash("echo hi # trailing comment", new Map());
+            const cmd = expectCommand(node, "echo");
+            expect(cmd.cmd).toBe("hi");
+        });
+
+        test("a trailing comment's contents are not parsed as a substitution", () => {
+            const node = parseBash("echo ok # $(rm -rf /)", new Map());
+            const cmd = expectCommand(node, "echo");
+            expect(cmd.cmd).toBe("ok");
+            expect(cmd.substitutions ?? []).toEqual([]);
+        });
+
+        test("a # in the middle of a word is kept literally", () => {
+            const node = parseBash("echo foo#bar", new Map());
+            const cmd = expectCommand(node, "echo");
+            expect(cmd.cmd).toBe("foo#bar");
+        });
+
+        test("a comment line between commands collapses with the separators", () => {
+            const node = parseBash("echo a\n# note\necho b", new Map());
+            const binop = expectBinOp(node, ";");
+            expect((binop.left as ICommand).cmd).toBe("a");
+            expect((binop.right as ICommand).cmd).toBe("b");
+        });
+
+        test("a comment after a command and separator does not add a trailing empty command", () => {
+            const node = parseBash("echo a # done", new Map());
+            const cmd = expectCommand(node, "echo");
+            expect(cmd.cmd).toBe("a");
+        });
+    });
+
     describe("while/until-loop", () => {
         test("while loop captures condition and body", () => {
             const node = parseBash("while read line; do rm $line; done", new Map());
