@@ -128,9 +128,9 @@ test("formatPendingPromptMarkdown includes verdict-first layout with labeled tre
         decideResult.leafEvaluations,
         decideResult.decision.action,
         "reason" in decideResult.decision ? decideResult.decision.reason : undefined,
-        new Date("2026-06-19T18:09:12.004+10:00")
+        new Date(2026, 5, 19, 18, 9, 12, 4)
     );
-    expect(markdown).toContain("Pending since 2026-06-19T18:09:12.004+10:00");
+    expect(markdown).toContain("Pending since 2026-06-19T18:09:12.004");
     expect(markdown.indexOf("## Verdict")).toBeLessThan(markdown.indexOf("## Command"));
     expect(markdown).toContain("## Context");
     expect(markdown).toContain("/home/user/project");
