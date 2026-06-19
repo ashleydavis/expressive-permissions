@@ -60,12 +60,22 @@ test("simulateLeafEnvironments does not thread cwd through a pipe", () => {
     expect(curlContext?.cwd).toBe("/home/user/project");
 });
 
-test("formatContextBlock lists hook CWD and env vars after export", () => {
+test("formatContextBlock returns hook cwd only when there are no hook-time env vars", () => {
     const call = makeBashCall("export AWS_PROFILE=prod && curl https://example.com", "/home/user/project");
-    const root = buildAst(call, new Map());
     const env0: IEnvironment = { cwd: call.cwd, cwdResolved: true, env: {} };
-    const block = formatContextBlock(call, root, env0);
-    expect(block).toContain("CWD: /home/user/project");
+    const block = formatContextBlock(call, env0);
+    expect(block).toBe("/home/user/project");
+});
+
+test("formatContextBlock includes hook-time env vars without command assignments", () => {
+    const call = makeBashCall("curl https://example.com", "/home/user/project");
+    const env0: IEnvironment = {
+        cwd: call.cwd,
+        cwdResolved: true,
+        env: { AWS_PROFILE: "prod" },
+    };
+    const block = formatContextBlock(call, env0);
+    expect(block).toContain("/home/user/project");
     expect(block).toContain("AWS_PROFILE=prod");
 });
 
@@ -93,7 +103,7 @@ test("decide returns leafEvaluations for pending prompt formatting", () => {
     expect(curlEvaluation?.reason).toBe("network access requires approval");
 });
 
-test("formatPendingPromptMarkdown includes pending-since, Context, and leaf cwd lines", () => {
+test("formatPendingPromptMarkdown includes verdict-first layout with labeled tree outcomes", () => {
     const call = makeBashCall(
         "export AWS_PROFILE=prod && cd /tmp && curl https://example.com",
         "/home/user/project"
@@ -121,9 +131,12 @@ test("formatPendingPromptMarkdown includes pending-since, Context, and leaf cwd 
         new Date("2026-06-19T18:09:12.004+10:00")
     );
     expect(markdown).toContain("Pending since 2026-06-19T18:09:12.004+10:00");
+    expect(markdown.indexOf("## Verdict")).toBeLessThan(markdown.indexOf("## Command"));
     expect(markdown).toContain("## Context");
-    expect(markdown).toContain("AWS_PROFILE=prod");
+    expect(markdown).toContain("/home/user/project");
+    expect(markdown).toContain("env: AWS_PROFILE=prod");
     expect(markdown).toContain("cwd: /tmp");
+    expect(markdown).toContain("decision: ASK");
 });
 
 test("formatPendingPromptMarkdown shows no rule matched for default ask", () => {
@@ -138,8 +151,9 @@ test("formatPendingPromptMarkdown shows no rule matched for default ask", () => 
         undefined,
         new Date("2026-06-19T18:09:12.004+10:00")
     );
-    expect(markdown).toContain("NOMATCH");
-    expect(markdown).toContain("ASK (no rule matched)");
+    expect(markdown).toContain("decision: NOMATCH");
+    expect(markdown).toContain("source: no rule matched");
+    expect(markdown).toContain("cmd: unknown-cmd-xyz");
 });
 
 test("formatPendingPromptMarkdown includes sections for an ask decision", () => {
@@ -167,10 +181,11 @@ test("formatPendingPromptMarkdown includes sections for an ask decision", () => 
         new Date("2026-06-19T18:09:12.004+10:00")
     );
     expect(markdown).toContain("# Bash — ASK");
-    expect(markdown).toContain("## Command");
-    expect(markdown).toContain("## Sub-commands");
     expect(markdown).toContain("## Verdict");
-    expect(markdown).toContain("ASK (matched rule)");
+    expect(markdown).toContain("## Command");
+    expect(markdown).toContain("## Parsed command tree");
+    expect(markdown).toContain("source: matched rule");
+    expect(markdown).toContain("cmd: curl https://example.com");
     expect(markdown).toContain("network access requires approval");
 });
 

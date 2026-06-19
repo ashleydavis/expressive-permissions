@@ -2,6 +2,23 @@
 
 Pending since 2026-06-19T18:17:43+10:00
 
+## Verdict
+
+```
+decision: ASK
+source: matched rule
+rule: .claude/permissions.yaml:12
+reason: "network access requires approval"
+project directory: /home/ash/claude-permissions
+
+cmd: curl https://api.internal.corp/v1/deploy
+command directory: /tmp
+env: AWS_PROFILE=prod
+decision: ASK
+rule: .claude/permissions.yaml:12
+reason: "network access requires approval"
+```
+
 ## Command
 
 ```
@@ -10,27 +27,28 @@ export AWS_PROFILE=prod && cd /tmp && curl https://api.internal.corp/v1/deploy
 
 ## Context
 
-```
-CWD: /home/ash/claude-permissions
-AWS_PROFILE=prod
-```
+/home/ash/claude-permissions
 
-## Sub-commands
+## Parsed command tree
 
 ```
 export AWS_PROFILE=prod && cd /tmp && curl ...
 ├── export AWS_PROFILE=prod
-│     ALLOW  .claude/permissions.yaml:5
+│
+│     decision: ALLOW
+│     rule: .claude/permissions.yaml:5
+│
 ├── cd /tmp
-│     ALLOW  .claude/permissions.yaml:8
+│
+│     cwd: /tmp
+│     decision: ALLOW
+│     rule: .claude/permissions.yaml:8
+│
 └── curl https://api.internal.corp/v1/deploy
+│
       cwd: /tmp
-      ASK  .claude/permissions.yaml:12  "network access requires approval"
-```
-
-## Verdict
-
-```
-ASK (matched rule) — network access requires approval
-→ curl https://api.internal.corp/v1/deploy  (cwd: /tmp)
+      env: AWS_PROFILE=prod
+      decision: ASK
+      rule: .claude/permissions.yaml:12
+      reason: "network access requires approval"
 ```

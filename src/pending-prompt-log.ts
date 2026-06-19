@@ -50,6 +50,10 @@ export interface IVerdictTrigger {
     reason: string | undefined;
     // Effective cwd of the trigger when it differs from the hook cwd.
     cwd: string | undefined;
+    // Environment variables visible at the trigger leaf, when non-empty.
+    env: Record<string, string> | undefined;
+    // Outcome recorded for the trigger leaf.
+    outcome: ILeafOutcome | undefined;
 }
 
 // EMPTY_TOOL_CALL is a placeholder for builtin rule invocations during env simulation.
@@ -226,12 +230,6 @@ export function simulateLeafEnvironments(root: AstNode, env0: IEnvironment): Map
     return leafContextMap;
 }
 
-// simulateFinalEnvironment returns env state after walking the full AST.
-function simulateFinalEnvironment(root: AstNode, env0: IEnvironment): IEnvironment {
-    const leafContextMap = new Map<string, ILeafContext>();
-    return simWalkEnv(root, env0, leafContextMap);
-}
-
 // flattenSequential expands && and ; chains into an ordered leaf list.
 function flattenSequential(node: AstNode): AstNode[] {
     if (node.type === "binop" && (node.op === "&&" || node.op === ";")) {
@@ -254,41 +252,73 @@ function truncateLabel(label: string, maxLength: number): string {
     return label.slice(0, maxLength - 1) + "…";
 }
 
-// formatRuleRef renders ruleFile:line or an empty string when absent.
-function formatRuleRef(outcome: ILeafOutcome): string {
-    if (outcome.ruleFile === undefined) {
-        return "";
+// formatEnvSummary renders sorted env key=value pairs joined for display.
+function formatEnvSummary(env: Record<string, string>): string {
+    const envKeys = Object.keys(env).sort();
+    const parts: string[] = [];
+    for (const key of envKeys) {
+        parts.push(`${key}=${env[key]}`);
     }
-    if (outcome.ruleLine !== undefined) {
-        return `  ${outcome.ruleFile}:${outcome.ruleLine}`;
-    }
-    return `  ${outcome.ruleFile}`;
+    return parts.join(", ");
 }
 
-// formatOutcomeLines renders decision, rule ref, optional reason, and optional cwd for one leaf.
-function formatOutcomeLines(
+// formatRuleLine renders a labeled rule reference line, or undefined when omitted.
+function formatRuleLine(outcome: ILeafOutcome): string | undefined {
+    if (outcome.source === "no-rule-match") {
+        return undefined;
+    }
+    if (outcome.reason === "set environment variable") {
+        return undefined;
+    }
+    if (outcome.ruleFile !== undefined) {
+        if (outcome.ruleLine !== undefined) {
+            return `rule: ${outcome.ruleFile}:${outcome.ruleLine}`;
+        }
+        return `rule: ${outcome.ruleFile}`;
+    }
+    return "rule: (builtin)";
+}
+
+// outcomeIndent returns the prefix for labeled outcome lines under a tree node.
+function outcomeIndent(prefix: string, isLast: boolean): string {
+    if (isLast) {
+        return `${prefix}      `;
+    }
+    return `${prefix}│     `;
+}
+
+// appendOutcomeLines renders cwd/env/decision/rule/reason lines for one tree node.
+function appendOutcomeLines(
     outcome: ILeafOutcome | undefined,
     leafContext: ILeafContext | undefined,
     hookCwd: string,
-    indent: string
-): string[] {
-    const lines: string[] = [];
+    prefix: string,
+    isLast: boolean,
+    lines: string[]
+): void {
+    lines.push(`${prefix}│`);
+    const indent = outcomeIndent(prefix, isLast);
 
     if (leafContext !== undefined && leafContext.cwd !== hookCwd) {
         lines.push(`${indent}cwd: ${leafContext.cwd}`);
     }
 
+    if (leafContext !== undefined && Object.keys(leafContext.env).length > 0) {
+        lines.push(`${indent}env: ${formatEnvSummary(leafContext.env)}`);
+    }
+
     if (outcome === undefined) {
-        return lines;
+        return;
     }
 
-    let decisionLine = `${indent}${outcome.decision}${formatRuleRef(outcome)}`;
+    lines.push(`${indent}decision: ${outcome.decision}`);
+    const ruleLine = formatRuleLine(outcome);
+    if (ruleLine !== undefined) {
+        lines.push(`${indent}${ruleLine}`);
+    }
     if (outcome.reason !== undefined && outcome.reason !== "") {
-        decisionLine += `  "${outcome.reason}"`;
+        lines.push(`${indent}reason: "${outcome.reason}"`);
     }
-    lines.push(decisionLine);
-
-    return lines;
 }
 
 // appendTreeLines renders one AST node and its children into tree lines.
@@ -314,6 +344,38 @@ function appendTreeLines(
         return;
     }
 
+    if (node.type === "while_loop") {
+        lines.push(`${prefix}${connector}${truncateLabel(describeNode(node), 80)}`);
+        appendTreeLines(node.body, `${prefix}${childPrefix}`, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
+        if (!isLast) {
+            lines.push(`${prefix}│`);
+        }
+        return;
+    }
+
+    if (node.type === "if_statement") {
+        lines.push(`${prefix}${connector}${truncateLabel(describeNode(node), 80)}`);
+        const hasElseBranch = node.elseBranch !== undefined;
+        appendTreeLines(node.thenBranch, `${prefix}${childPrefix}`, !hasElseBranch && isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
+        const elseBranch = node.elseBranch;
+        if (elseBranch !== undefined) {
+            appendTreeLines(elseBranch, `${prefix}${childPrefix}`, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
+        }
+        if (!isLast) {
+            lines.push(`${prefix}│`);
+        }
+        return;
+    }
+
+    if (node.type === "group") {
+        lines.push(`${prefix}${connector}${truncateLabel(describeNode(node), 80)}`);
+        appendTreeLines(node.body, `${prefix}${childPrefix}`, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
+        if (!isLast) {
+            lines.push(`${prefix}│`);
+        }
+        return;
+    }
+
     if (node.type === "binop" && node.op !== "&&" && node.op !== ";") {
         renderCompoundTree(node, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
         return;
@@ -326,21 +388,26 @@ function appendTreeLines(
             for (let index = 0; index < parts.length; index++) {
                 appendTreeLines(parts[index], `${prefix}${childPrefix}`, index === parts.length - 1, leafOutcomeMap, leafContextMap, hookCwd, lines);
             }
+            if (!isLast) {
+                lines.push(`${prefix}│`);
+            }
             return;
         }
     }
 
     if (isLeaf(node)) {
-        lines.push(`${prefix}${connector}${describeNode(node)}`);
+        lines.push(`${prefix}${connector}${truncateLabel(describeNode(node), 80)}`);
         const cmd = describeNode(node);
-        const outcomeLines = formatOutcomeLines(
+        appendOutcomeLines(
             leafOutcomeMap.get(cmd),
             leafContextMap.get(cmd),
             hookCwd,
-            `${prefix}${childPrefix}  `
+            prefix,
+            isLast,
+            lines
         );
-        for (const outcomeLine of outcomeLines) {
-            lines.push(outcomeLine);
+        if (!isLast) {
+            lines.push(`${prefix}│`);
         }
         return;
     }
@@ -365,6 +432,29 @@ function renderCompoundTree(
     if (node.type === "binop") {
         appendTreeLines(node.left, `${prefix}${childPrefix}`, false, leafOutcomeMap, leafContextMap, hookCwd, lines);
         appendTreeLines(node.right, `${prefix}${childPrefix}`, true, leafOutcomeMap, leafContextMap, hookCwd, lines);
+        if (!isLast) {
+            lines.push(`${prefix}│`);
+        }
+        return;
+    }
+
+    if (node.type === "while_loop") {
+        appendTreeLines(node.body, `${prefix}${childPrefix}`, true, leafOutcomeMap, leafContextMap, hookCwd, lines);
+        return;
+    }
+
+    if (node.type === "if_statement") {
+        const hasElseBranch = node.elseBranch !== undefined;
+        appendTreeLines(node.thenBranch, `${prefix}${childPrefix}`, !hasElseBranch, leafOutcomeMap, leafContextMap, hookCwd, lines);
+        const elseBranch = node.elseBranch;
+        if (elseBranch !== undefined) {
+            appendTreeLines(elseBranch, `${prefix}${childPrefix}`, true, leafOutcomeMap, leafContextMap, hookCwd, lines);
+        }
+        return;
+    }
+
+    if (node.type === "group") {
+        appendTreeLines(node.body, `${prefix}${childPrefix}`, true, leafOutcomeMap, leafContextMap, hookCwd, lines);
         return;
     }
 
@@ -453,6 +543,11 @@ export function resolveVerdictTrigger(
         cwd = leafContext.cwd;
     }
 
+    let env: Record<string, string> | undefined;
+    if (leafContext !== undefined && Object.keys(leafContext.env).length > 0) {
+        env = leafContext.env;
+    }
+
     const sourceLabel = bestOutcome !== undefined ? sourceLabelForOutcome(bestOutcome) : "no rule matched";
 
     return {
@@ -460,38 +555,72 @@ export function resolveVerdictTrigger(
         sourceLabel,
         reason,
         cwd,
+        env,
+        outcome: bestOutcome,
     };
 }
 
-// formatContextBlock renders the Context section body, or undefined when only hook cwd applies.
-export function formatContextBlock(call: IToolCall, root: AstNode, env0: IEnvironment): string | undefined {
-    const finalEnv = simulateFinalEnvironment(root, env0);
-    const envKeys = Object.keys(finalEnv.env).sort();
-    const hasEnvVars = envKeys.length > 0;
-
-    if (!hasEnvVars) {
-        return undefined;
+// formatContextBlock renders the Context section body with hook cwd and hook-time env vars.
+export function formatContextBlock(call: IToolCall, env0: IEnvironment): string {
+    const envKeys = Object.keys(env0.env).sort();
+    if (envKeys.length === 0) {
+        return call.cwd;
     }
 
-    const lines = [`CWD: ${call.cwd}`];
+    const lines = [call.cwd, ""];
     for (const key of envKeys) {
-        lines.push(`${key}=${finalEnv.env[key]}`);
+        lines.push(`${key}=${env0.env[key]}`);
     }
     return lines.join("\n");
 }
 
+// appendVerdictOutcomeLines appends labeled decision/rule/reason lines for one outcome.
+function appendVerdictOutcomeLines(lines: string[], outcome: ILeafOutcome | undefined): void {
+    if (outcome === undefined) {
+        return;
+    }
+
+    lines.push(`decision: ${outcome.decision}`);
+    const ruleLine = formatRuleLine(outcome);
+    if (ruleLine !== undefined) {
+        lines.push(ruleLine);
+    }
+    if (outcome.reason !== undefined && outcome.reason !== "") {
+        lines.push(`reason: "${outcome.reason}"`);
+    }
+}
+
 // formatVerdictBlock renders the Verdict fenced block content.
-function formatVerdictBlock(trigger: IVerdictTrigger, decision: string): string {
-    const upperDecision = decision.toUpperCase();
-    let firstLine = `${upperDecision} (${trigger.sourceLabel})`;
+function formatVerdictBlock(trigger: IVerdictTrigger, decision: string, hookCwd: string): string {
+    const lines: string[] = [];
+    lines.push(`decision: ${decision.toUpperCase()}`);
+    lines.push(`source: ${trigger.sourceLabel}`);
+
+    if (trigger.outcome !== undefined && trigger.outcome.source !== "no-rule-match") {
+        const ruleLine = formatRuleLine(trigger.outcome);
+        if (ruleLine !== undefined) {
+            lines.push(ruleLine);
+        }
+    }
+
     if (trigger.reason !== undefined && trigger.reason !== "") {
-        firstLine += ` — ${trigger.reason}`;
+        lines.push(`reason: "${trigger.reason}"`);
     }
-    let secondLine = `→ ${trigger.cmd}`;
+
+    lines.push(`project directory: ${hookCwd}`);
+    lines.push("");
+    lines.push(`cmd: ${trigger.cmd}`);
+
     if (trigger.cwd !== undefined) {
-        secondLine += `  (cwd: ${trigger.cwd})`;
+        lines.push(`command directory: ${trigger.cwd}`);
     }
-    return `${firstLine}\n${secondLine}`;
+
+    if (trigger.env !== undefined) {
+        lines.push(`env: ${formatEnvSummary(trigger.env)}`);
+    }
+
+    appendVerdictOutcomeLines(lines, trigger.outcome);
+    return lines.join("\n");
 }
 
 // formatPendingPromptMarkdown builds the full pending approval detail file.
@@ -512,39 +641,33 @@ export function formatPendingPromptMarkdown(
     const leafContextMap = simulateLeafEnvironments(root, env0);
     const treeBlock = formatPendingPromptTree(root, leafOutcomeMap, leafContextMap, call.cwd);
     const trigger = resolveVerdictTrigger(leafOutcomeMap, leafContextMap, root, call.cwd, reason);
-    const contextBlock = formatContextBlock(call, root, env0);
+    const contextBlock = formatContextBlock(call, env0);
 
     const sections: string[] = [];
     sections.push(`# ${call.tool_name} — ${decision.toUpperCase()}`);
     sections.push("");
     sections.push(`Pending since ${formatLocalTimestamp(pendingSince)}`);
     sections.push("");
+    sections.push("## Verdict");
+    sections.push("");
+    sections.push("```");
+    sections.push(formatVerdictBlock(trigger, decision, call.cwd));
+    sections.push("```");
+    sections.push("");
     sections.push("## Command");
     sections.push("");
     sections.push("```");
     sections.push(summarizeToolInput(call));
     sections.push("```");
-
-    if (contextBlock !== undefined) {
-        sections.push("");
-        sections.push("## Context");
-        sections.push("");
-        sections.push("```");
-        sections.push(contextBlock);
-        sections.push("```");
-    }
-
     sections.push("");
-    sections.push("## Sub-commands");
+    sections.push("## Context");
+    sections.push("");
+    sections.push(contextBlock);
+    sections.push("");
+    sections.push("## Parsed command tree");
     sections.push("");
     sections.push("```");
     sections.push(treeBlock);
-    sections.push("```");
-    sections.push("");
-    sections.push("## Verdict");
-    sections.push("");
-    sections.push("```");
-    sections.push(formatVerdictBlock(trigger, decision));
     sections.push("```");
     sections.push("");
 

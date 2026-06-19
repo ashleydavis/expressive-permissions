@@ -10352,10 +10352,6 @@ function simulateLeafEnvironments(root, env0) {
   simWalkEnv(root, env0, leafContextMap);
   return leafContextMap;
 }
-function simulateFinalEnvironment(root, env0) {
-  const leafContextMap = new Map;
-  return simWalkEnv(root, env0, leafContextMap);
-}
 function flattenSequential(node) {
   if (node.type === "binop" && (node.op === "&&" || node.op === ";")) {
     return [...flattenSequential(node.left), ...flattenSequential(node.right)];
@@ -10374,29 +10370,55 @@ function truncateLabel(label, maxLength) {
   }
   return label.slice(0, maxLength - 1) + "…";
 }
-function formatRuleRef(outcome) {
-  if (outcome.ruleFile === undefined) {
-    return "";
+function formatEnvSummary(env) {
+  const envKeys = Object.keys(env).sort();
+  const parts = [];
+  for (const key of envKeys) {
+    parts.push(`${key}=${env[key]}`);
   }
-  if (outcome.ruleLine !== undefined) {
-    return `  ${outcome.ruleFile}:${outcome.ruleLine}`;
-  }
-  return `  ${outcome.ruleFile}`;
+  return parts.join(", ");
 }
-function formatOutcomeLines(outcome, leafContext, hookCwd, indent) {
-  const lines = [];
+function formatRuleLine(outcome) {
+  if (outcome.source === "no-rule-match") {
+    return;
+  }
+  if (outcome.reason === "set environment variable") {
+    return;
+  }
+  if (outcome.ruleFile !== undefined) {
+    if (outcome.ruleLine !== undefined) {
+      return `rule: ${outcome.ruleFile}:${outcome.ruleLine}`;
+    }
+    return `rule: ${outcome.ruleFile}`;
+  }
+  return "rule: (builtin)";
+}
+function outcomeIndent(prefix, isLast) {
+  if (isLast) {
+    return `${prefix}      `;
+  }
+  return `${prefix}│     `;
+}
+function appendOutcomeLines(outcome, leafContext, hookCwd, prefix, isLast, lines) {
+  lines.push(`${prefix}│`);
+  const indent = outcomeIndent(prefix, isLast);
   if (leafContext !== undefined && leafContext.cwd !== hookCwd) {
     lines.push(`${indent}cwd: ${leafContext.cwd}`);
   }
+  if (leafContext !== undefined && Object.keys(leafContext.env).length > 0) {
+    lines.push(`${indent}env: ${formatEnvSummary(leafContext.env)}`);
+  }
   if (outcome === undefined) {
-    return lines;
+    return;
   }
-  let decisionLine = `${indent}${outcome.decision}${formatRuleRef(outcome)}`;
+  lines.push(`${indent}decision: ${outcome.decision}`);
+  const ruleLine = formatRuleLine(outcome);
+  if (ruleLine !== undefined) {
+    lines.push(`${indent}${ruleLine}`);
+  }
   if (outcome.reason !== undefined && outcome.reason !== "") {
-    decisionLine += `  "${outcome.reason}"`;
+    lines.push(`${indent}reason: "${outcome.reason}"`);
   }
-  lines.push(decisionLine);
-  return lines;
 }
 function appendTreeLines(node, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines) {
   const connector = isLast ? "└── " : "├── ";
@@ -10407,6 +10429,35 @@ function appendTreeLines(node, prefix, isLast, leafOutcomeMap, leafContextMap, h
   }
   if (node.type === "xargs") {
     appendTreeLines(node.child, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
+    return;
+  }
+  if (node.type === "while_loop") {
+    lines.push(`${prefix}${connector}${truncateLabel(describeNode(node), 80)}`);
+    appendTreeLines(node.body, `${prefix}${childPrefix}`, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
+    if (!isLast) {
+      lines.push(`${prefix}│`);
+    }
+    return;
+  }
+  if (node.type === "if_statement") {
+    lines.push(`${prefix}${connector}${truncateLabel(describeNode(node), 80)}`);
+    const hasElseBranch = node.elseBranch !== undefined;
+    appendTreeLines(node.thenBranch, `${prefix}${childPrefix}`, !hasElseBranch && isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
+    const elseBranch = node.elseBranch;
+    if (elseBranch !== undefined) {
+      appendTreeLines(elseBranch, `${prefix}${childPrefix}`, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
+    }
+    if (!isLast) {
+      lines.push(`${prefix}│`);
+    }
+    return;
+  }
+  if (node.type === "group") {
+    lines.push(`${prefix}${connector}${truncateLabel(describeNode(node), 80)}`);
+    appendTreeLines(node.body, `${prefix}${childPrefix}`, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
+    if (!isLast) {
+      lines.push(`${prefix}│`);
+    }
     return;
   }
   if (node.type === "binop" && node.op !== "&&" && node.op !== ";") {
@@ -10420,15 +10471,18 @@ function appendTreeLines(node, prefix, isLast, leafOutcomeMap, leafContextMap, h
       for (let index = 0;index < parts.length; index++) {
         appendTreeLines(parts[index], `${prefix}${childPrefix}`, index === parts.length - 1, leafOutcomeMap, leafContextMap, hookCwd, lines);
       }
+      if (!isLast) {
+        lines.push(`${prefix}│`);
+      }
       return;
     }
   }
   if (isLeaf(node)) {
-    lines.push(`${prefix}${connector}${describeNode(node)}`);
+    lines.push(`${prefix}${connector}${truncateLabel(describeNode(node), 80)}`);
     const cmd = describeNode(node);
-    const outcomeLines = formatOutcomeLines(leafOutcomeMap.get(cmd), leafContextMap.get(cmd), hookCwd, `${prefix}${childPrefix}  `);
-    for (const outcomeLine of outcomeLines) {
-      lines.push(outcomeLine);
+    appendOutcomeLines(leafOutcomeMap.get(cmd), leafContextMap.get(cmd), hookCwd, prefix, isLast, lines);
+    if (!isLast) {
+      lines.push(`${prefix}│`);
     }
     return;
   }
@@ -10441,6 +10495,26 @@ function renderCompoundTree(node, prefix, isLast, leafOutcomeMap, leafContextMap
   if (node.type === "binop") {
     appendTreeLines(node.left, `${prefix}${childPrefix}`, false, leafOutcomeMap, leafContextMap, hookCwd, lines);
     appendTreeLines(node.right, `${prefix}${childPrefix}`, true, leafOutcomeMap, leafContextMap, hookCwd, lines);
+    if (!isLast) {
+      lines.push(`${prefix}│`);
+    }
+    return;
+  }
+  if (node.type === "while_loop") {
+    appendTreeLines(node.body, `${prefix}${childPrefix}`, true, leafOutcomeMap, leafContextMap, hookCwd, lines);
+    return;
+  }
+  if (node.type === "if_statement") {
+    const hasElseBranch = node.elseBranch !== undefined;
+    appendTreeLines(node.thenBranch, `${prefix}${childPrefix}`, !hasElseBranch, leafOutcomeMap, leafContextMap, hookCwd, lines);
+    const elseBranch = node.elseBranch;
+    if (elseBranch !== undefined) {
+      appendTreeLines(elseBranch, `${prefix}${childPrefix}`, true, leafOutcomeMap, leafContextMap, hookCwd, lines);
+    }
+    return;
+  }
+  if (node.type === "group") {
+    appendTreeLines(node.body, `${prefix}${childPrefix}`, true, leafOutcomeMap, leafContextMap, hookCwd, lines);
     return;
   }
   if (node.type === "bash") {
@@ -10502,40 +10576,70 @@ function resolveVerdictTrigger(leafOutcomeMap, leafContextMap, root, hookCwd, de
   if (leafContext !== undefined && leafContext.cwd !== hookCwd) {
     cwd = leafContext.cwd;
   }
+  let env;
+  if (leafContext !== undefined && Object.keys(leafContext.env).length > 0) {
+    env = leafContext.env;
+  }
   const sourceLabel = bestOutcome !== undefined ? sourceLabelForOutcome(bestOutcome) : "no rule matched";
   return {
     cmd: bestCmd,
     sourceLabel,
     reason,
-    cwd
+    cwd,
+    env,
+    outcome: bestOutcome
   };
 }
-function formatContextBlock(call, root, env0) {
-  const finalEnv = simulateFinalEnvironment(root, env0);
-  const envKeys = Object.keys(finalEnv.env).sort();
-  const hasEnvVars = envKeys.length > 0;
-  if (!hasEnvVars) {
-    return;
+function formatContextBlock(call, env0) {
+  const envKeys = Object.keys(env0.env).sort();
+  if (envKeys.length === 0) {
+    return call.cwd;
   }
-  const lines = [`CWD: ${call.cwd}`];
+  const lines = [call.cwd, ""];
   for (const key of envKeys) {
-    lines.push(`${key}=${finalEnv.env[key]}`);
+    lines.push(`${key}=${env0.env[key]}`);
   }
   return lines.join(`
 `);
 }
-function formatVerdictBlock(trigger, decision) {
-  const upperDecision = decision.toUpperCase();
-  let firstLine = `${upperDecision} (${trigger.sourceLabel})`;
+function appendVerdictOutcomeLines(lines, outcome) {
+  if (outcome === undefined) {
+    return;
+  }
+  lines.push(`decision: ${outcome.decision}`);
+  const ruleLine = formatRuleLine(outcome);
+  if (ruleLine !== undefined) {
+    lines.push(ruleLine);
+  }
+  if (outcome.reason !== undefined && outcome.reason !== "") {
+    lines.push(`reason: "${outcome.reason}"`);
+  }
+}
+function formatVerdictBlock(trigger, decision, hookCwd) {
+  const lines = [];
+  lines.push(`decision: ${decision.toUpperCase()}`);
+  lines.push(`source: ${trigger.sourceLabel}`);
+  if (trigger.outcome !== undefined && trigger.outcome.source !== "no-rule-match") {
+    const ruleLine = formatRuleLine(trigger.outcome);
+    if (ruleLine !== undefined) {
+      lines.push(ruleLine);
+    }
+  }
   if (trigger.reason !== undefined && trigger.reason !== "") {
-    firstLine += ` — ${trigger.reason}`;
+    lines.push(`reason: "${trigger.reason}"`);
   }
-  let secondLine = `→ ${trigger.cmd}`;
+  lines.push(`project directory: ${hookCwd}`);
+  lines.push("");
+  lines.push(`cmd: ${trigger.cmd}`);
   if (trigger.cwd !== undefined) {
-    secondLine += `  (cwd: ${trigger.cwd})`;
+    lines.push(`command directory: ${trigger.cwd}`);
   }
-  return `${firstLine}
-${secondLine}`;
+  if (trigger.env !== undefined) {
+    lines.push(`env: ${formatEnvSummary(trigger.env)}`);
+  }
+  appendVerdictOutcomeLines(lines, trigger.outcome);
+  return lines.join(`
+`);
 }
 function formatPendingPromptMarkdown(call, root, leafEvaluations, decision, reason, pendingSince) {
   const env0 = {
@@ -10547,36 +10651,32 @@ function formatPendingPromptMarkdown(call, root, leafEvaluations, decision, reas
   const leafContextMap = simulateLeafEnvironments(root, env0);
   const treeBlock = formatPendingPromptTree(root, leafOutcomeMap, leafContextMap, call.cwd);
   const trigger = resolveVerdictTrigger(leafOutcomeMap, leafContextMap, root, call.cwd, reason);
-  const contextBlock = formatContextBlock(call, root, env0);
+  const contextBlock = formatContextBlock(call, env0);
   const sections = [];
   sections.push(`# ${call.tool_name} — ${decision.toUpperCase()}`);
   sections.push("");
   sections.push(`Pending since ${formatLocalTimestamp(pendingSince)}`);
+  sections.push("");
+  sections.push("## Verdict");
+  sections.push("");
+  sections.push("```");
+  sections.push(formatVerdictBlock(trigger, decision, call.cwd));
+  sections.push("```");
   sections.push("");
   sections.push("## Command");
   sections.push("");
   sections.push("```");
   sections.push(summarizeToolInput(call));
   sections.push("```");
-  if (contextBlock !== undefined) {
-    sections.push("");
-    sections.push("## Context");
-    sections.push("");
-    sections.push("```");
-    sections.push(contextBlock);
-    sections.push("```");
-  }
   sections.push("");
-  sections.push("## Sub-commands");
+  sections.push("## Context");
+  sections.push("");
+  sections.push(contextBlock);
+  sections.push("");
+  sections.push("## Parsed command tree");
   sections.push("");
   sections.push("```");
   sections.push(treeBlock);
-  sections.push("```");
-  sections.push("");
-  sections.push("## Verdict");
-  sections.push("");
-  sections.push("```");
-  sections.push(formatVerdictBlock(trigger, decision));
   sections.push("```");
   sections.push("");
   return sections.join(`

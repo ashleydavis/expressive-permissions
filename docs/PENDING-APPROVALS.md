@@ -29,15 +29,15 @@ ls -t .claude/permissions-log/pending/
 
 ## File format
 
-Each file has four sections:
+Each file has five sections:
 
 1. **Title** — `# <Tool> — ASK` plus a pending-since timestamp
-2. **Command** — full verbatim tool input (command string or file path)
-3. **Context** — hook CWD and env vars in effect after simulating assignments/`export` (omitted when there are no env vars)
-4. **Sub-commands** — ASCII tree of parsed sub-commands with `ALLOW`, `DENY`, `ASK`, or `NOMATCH`, matched rule paths, effective `cwd` after `cd`, and rule reasons
-5. **Verdict** — final decision source, reason, and the sub-command that triggered it
+2. **Verdict** — self-contained summary: plugin decision, source, matched rule, reason, hook cwd, and the sub-command that drove the ask with its cwd, env, and outcome
+3. **Command** — full verbatim tool input (command string or file path)
+4. **Context** — hook cwd as plain text, plus hook-time env vars when present (not command-local assignments)
+5. **Parsed command tree** — ASCII tree of parsed sub-commands with labeled `cwd`, `env`, `decision`, `rule`, and `reason` lines per leaf
 
-See [example-pending-prompt-detail.md](../plans/new/example-pending-prompt-detail.md) in the repo for a sample file.
+See [example-pending-prompt-detail.md](plans/new/example-pending-prompt-detail.md) in the repo for a sample file.
 
 ## When to use this vs other tools
 
