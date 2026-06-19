@@ -1,0 +1,9 @@
+command: export FOO=bar
+ast:
+  type: command
+  binary: export
+  options: {}
+  cmd: FOO=bar
+  envPrefix: {}
+  redirects: []
+  raw: export FOO=bar

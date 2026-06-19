@@ -24,6 +24,8 @@ const BASH_SPECS: IBashSpec[] = [
     { name: "redirect-stderr", command: "cmd 2> err.log" },
     { name: "env-prefix", command: "FOO=bar cmd" },
     { name: "multi-env-prefix", command: "A=1 B=2 cmd" },
+    { name: "env-assignment", command: "FOO=bar" },
+    { name: "export", command: "export FOO=bar" },
     { name: "quoted-arg", command: "echo \"hello world\"" },
     { name: "ls-flags", command: "ls -la /tmp" },
     { name: "empty", command: "" },
