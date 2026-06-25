@@ -1,0 +1,26 @@
+description: "pending prompt: two identical asks get distinct dated filenames"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "curl https://example.com"
+  cwd: /home/user/project
+
+additional_inputs:
+  - tool_name: Bash
+    tool_input:
+      command: "curl https://example.com"
+    cwd: /home/user/project
+
+rules:
+  bash:
+    curl:
+      decide: ask
+      reason: "network access requires approval"
+
+expected:
+  decision: ask
+  reason: "network access requires approval"
+  pending_prompt:
+    count: 2
+    filename_contains: curl-https-example-com

@@ -33,6 +33,19 @@ describe("buildAst", () => {
         expect(node.ast.type).toBe("command");
     });
 
+    test("Shell call produces bash root with raw and child sub-AST", () => {
+        const call: IToolCall = {
+            tool_name: "Shell",
+            tool_input: { command: "ls -la /tmp" },
+            cwd: "/tmp",
+        };
+        const result = buildAst(call, new Map());
+        expect(result.type).toBe("bash");
+        const node = result as IBash;
+        expect(node.raw).toBe("ls -la /tmp");
+        expect(node.ast.type).toBe("command");
+    });
+
     test("Read call produces read node with file_path", () => {
         const call: IToolCall = {
             tool_name: "Read",

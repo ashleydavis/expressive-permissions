@@ -270,7 +270,8 @@ export function describeNode(node: AstNode): string {
 // Unknown tools fall through to an OtherTool node that preserves the raw input.
 export function buildAst(call: IToolCall, descriptors: Map<string, ICommandDescriptor>): ToolRoot {
     switch (call.tool_name) {
-        case "Bash": {
+        case "Bash":
+        case "Shell": {
             const command = call.tool_input.command as string;
             return {
                 type: "bash",

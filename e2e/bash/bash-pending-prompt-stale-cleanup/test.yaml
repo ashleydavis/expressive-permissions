@@ -1,0 +1,21 @@
+description: "pending prompt: stale files older than one day are removed on pre-hook"
+
+setup:
+  stale_pending_files:
+    - file_name: 2020-01-01-00-00-00-stale-command.md
+      age_days: 2
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: ls
+  cwd: ${PROJECT_DIR}
+
+rules:
+  bash:
+    ls:
+      decide: allow
+
+expected:
+  decision: allow
+  stale_pending_removed: true

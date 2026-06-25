@@ -1,7 +1,7 @@
 import { decide } from "./interpret";
 import { createLogger, ensureLogDirIgnored, resolveLogBaseDir } from "./audit-log";
 import { IToolCall } from "./types";
-import { cleanupStalePendingPrompts, writePendingPrompt } from "./pending-prompt-log";
+import { cleanupStalePendingPrompts, STALE_PENDING_PROMPT_MAX_AGE_DAYS, writePendingPrompt } from "./pending-prompt-log";
 // Debug log file production disabled. Restore to re-enable the debug log.
 // import { resolveDebugLogPath, appendDebugBlock, logDebugError, IDebugField } from "./debug-log";
 import { RuleLayer, FileLayer, IRuleLayer, RuleRegistry } from "./rule-registry";
@@ -46,7 +46,7 @@ export async function runHook(): Promise<void> {
         // ]);
         const logger = createLogger(projectDir, new Date());
         await ensureLogDirIgnored(resolveLogBaseDir(projectDir));
-        await cleanupStalePendingPrompts(projectDir, new Date(), 7);
+        await cleanupStalePendingPrompts(projectDir, new Date(), STALE_PENDING_PROMPT_MAX_AGE_DAYS);
         const layers: IRuleLayer[] = [
             new RuleLayer(builtinRules),
             new FileLayer(loadHomeConfigRules, "~/.claude/permissions.yaml", logger),

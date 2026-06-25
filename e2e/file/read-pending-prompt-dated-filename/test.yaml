@@ -1,0 +1,17 @@
+description: "pending prompt: Read ask writes dated filename from file path"
+
+input:
+  tool_name: Read
+  tool_input:
+    file_path: ${PROJECT_DIR}/fixtures/sandbox.txt
+  cwd: ${PROJECT_DIR}
+
+rules: {}
+
+expected:
+  decision: ask
+  pending_prompt:
+    count: 1
+    content_contains:
+      - "# Read — ASK"
+      - "fixtures/sandbox.txt"

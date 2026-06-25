@@ -1,5 +1,4 @@
-import { createHash } from "crypto";
-import { access, mkdir, readdir, stat, unlink, writeFile } from "fs/promises";
+import { mkdir, readdir, stat, unlink, writeFile } from "fs/promises";
 import { join } from "path";
 import { describeNode } from "./build-ast";
 import { ILeafEvaluation, isLeaf } from "./interpret";
@@ -11,9 +10,14 @@ import {
     AstNode,
     IBinOp,
     IEnvironment,
-    IPostToolUseCall,
     IToolCall,
 } from "./types";
+
+// STALE_PENDING_PROMPT_MAX_AGE_DAYS is how long denied or ignored pending files are kept.
+export const STALE_PENDING_PROMPT_MAX_AGE_DAYS = 1;
+
+// PENDING_PROMPT_DESCRIPTION_MAX_LENGTH caps the command summary segment in pending filenames.
+const PENDING_PROMPT_DESCRIPTION_MAX_LENGTH = 60;
 
 // ILeafOutcomeSource identifies why a leaf received its decision label.
 export type ILeafOutcomeSource = "matched-rule" | "no-rule-match" | "deny-rule";
@@ -68,18 +72,63 @@ export function resolvePendingDir(projectDir: string): string {
     return join(projectDir, ".claude", "permissions-log", "pending");
 }
 
-// computePendingPromptKey returns a stable filename key for a tool call.
-export function computePendingPromptKey(call: IToolCall | IPostToolUseCall): string {
-    const payload = JSON.stringify({
-        tool_name: call.tool_name,
-        tool_input: call.tool_input,
-        cwd: call.cwd,
-    });
-    return createHash("sha256").update(payload).digest("hex").slice(0, 16);
+// formatPendingPromptFileTimestamp renders yyyy-mm-dd-hh-ss for pending detail filenames.
+export function formatPendingPromptFileTimestamp(date: Date): string {
+    const year = date.getFullYear().toString();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hours = String(date.getHours()).padStart(2, "0");
+    const seconds = String(date.getSeconds()).padStart(2, "0");
+    return `${year}-${month}-${day}-${hours}-${seconds}`;
+}
+
+// sanitizePendingPromptDescription converts command text into a filesystem-safe slug segment.
+export function sanitizePendingPromptDescription(text: string): string {
+    let sanitized = text.toLowerCase();
+    sanitized = sanitized.replace(/[^a-z0-9]+/g, "-");
+    sanitized = sanitized.replace(/-+/g, "-");
+    sanitized = sanitized.replace(/^-|-$/g, "");
+    if (sanitized.length > PENDING_PROMPT_DESCRIPTION_MAX_LENGTH) {
+        sanitized = sanitized.slice(0, PENDING_PROMPT_DESCRIPTION_MAX_LENGTH);
+        sanitized = sanitized.replace(/-$/, "");
+    }
+    return sanitized;
+}
+
+// buildPendingPromptFileName returns a dated, human-readable pending detail filename.
+export function buildPendingPromptFileName(call: IToolCall, pendingSince: Date): string {
+    const timestampPart = formatPendingPromptFileTimestamp(pendingSince);
+    const commandSummary = summarizeToolInput(call);
+    let descriptionPart = sanitizePendingPromptDescription(commandSummary);
+    if (descriptionPart.length === 0) {
+        descriptionPart = sanitizePendingPromptDescription(call.tool_name);
+    }
+    if (descriptionPart.length === 0) {
+        descriptionPart = "tool";
+    }
+    return `${timestampPart}-${descriptionPart}.md`;
+}
+
+// resolvePendingPromptFilePath picks a non-colliding path under pending/ for a new detail file.
+export async function resolvePendingPromptFilePath(pendingDir: string, baseFileName: string): Promise<string> {
+    const extensionIndex = baseFileName.lastIndexOf(".md");
+    const baseName = baseFileName.slice(0, extensionIndex);
+    let suffix = 0;
+    while (true) {
+        const fileName = suffix === 0 ? baseFileName : `${baseName}-${suffix}.md`;
+        const filePath = join(pendingDir, fileName);
+        try {
+            await stat(filePath);
+            suffix = suffix + 1;
+        }
+        catch {
+            return filePath;
+        }
+    }
 }
 
 // summarizeToolInput extracts a single-line summary from a tool call input.
-function summarizeToolInput(call: IToolCall | IPostToolUseCall): string {
+function summarizeToolInput(call: IToolCall): string {
     if (typeof call.tool_input["command"] === "string") {
         return call.tool_input["command"];
     }
@@ -674,7 +723,7 @@ export function formatPendingPromptMarkdown(
     return sections.join("\n");
 }
 
-// writePendingPrompt writes pending/<key>.md for an ask decision.
+// writePendingPrompt writes a dated pending detail file for an ask decision.
 export async function writePendingPrompt(
     projectDir: string,
     call: IToolCall,
@@ -686,24 +735,10 @@ export async function writePendingPrompt(
 ): Promise<void> {
     const pendingDir = resolvePendingDir(projectDir);
     await mkdir(pendingDir, { recursive: true });
-    const key = computePendingPromptKey(call);
-    const filePath = join(pendingDir, `${key}.md`);
+    const baseFileName = buildPendingPromptFileName(call, pendingSince);
+    const filePath = await resolvePendingPromptFilePath(pendingDir, baseFileName);
     const content = formatPendingPromptMarkdown(call, root, leafEvaluations, decision, reason, pendingSince);
     await writeFile(filePath, content, "utf-8");
-}
-
-// removePendingPrompt deletes pending/<key>.md when the tool executes.
-export async function removePendingPrompt(projectDir: string, call: IPostToolUseCall): Promise<void> {
-    const pendingDir = resolvePendingDir(projectDir);
-    const key = computePendingPromptKey(call);
-    const filePath = join(pendingDir, `${key}.md`);
-    try {
-        await access(filePath);
-    }
-    catch {
-        return;
-    }
-    await unlink(filePath);
 }
 
 // cleanupStalePendingPrompts removes pending detail files older than maxAgeDays.

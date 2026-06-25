@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat, utimes } from "fs/promises";
+import { mkdtemp, mkdir, readdir, readFile, rm, stat, utimes, writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { buildAst } from "../build-ast";
@@ -7,14 +7,17 @@ import { decide } from "../interpret";
 import { RuleLayer, RuleRegistry } from "../rule-registry";
 import { builtinRules } from "../rules";
 import {
+    buildPendingPromptFileName,
     buildLeafOutcomeMap,
     cleanupStalePendingPrompts,
-    computePendingPromptKey,
     formatContextBlock,
+    formatPendingPromptFileTimestamp,
     formatPendingPromptMarkdown,
-    removePendingPrompt,
     resolvePendingDir,
+    resolvePendingPromptFilePath,
+    sanitizePendingPromptDescription,
     simulateLeafEnvironments,
+    STALE_PENDING_PROMPT_MAX_AGE_DAYS,
     writePendingPrompt,
 } from "../pending-prompt-log";
 import { IToolCall, IEnvironment, ABSTAIN } from "../types";
@@ -33,11 +36,94 @@ function makeBashCall(command: string, cwd: string): IToolCall {
     return { tool_name: "Bash", tool_input: { command }, cwd };
 }
 
-test("computePendingPromptKey is stable for the same call and differs when tool_input changes", () => {
+// makeReadCall builds a minimal Read IToolCall.
+function makeReadCall(filePath: string, cwd: string): IToolCall {
+    return { tool_name: "Read", tool_input: { file_path: filePath }, cwd };
+}
+
+test("STALE_PENDING_PROMPT_MAX_AGE_DAYS is one day", () => {
+    expect(STALE_PENDING_PROMPT_MAX_AGE_DAYS).toBe(1);
+});
+
+test("formatPendingPromptFileTimestamp renders yyyy-mm-dd-hh-ss", () => {
+    const timestamp = formatPendingPromptFileTimestamp(new Date(2026, 0, 5, 9, 30, 7));
+    expect(timestamp).toBe("2026-01-05-09-07");
+});
+
+test("sanitizePendingPromptDescription lowercases and replaces non-alphanumeric characters", () => {
+    expect(sanitizePendingPromptDescription("curl https://example.com")).toBe("curl-https-example-com");
+    expect(sanitizePendingPromptDescription("./cloudfront/variant-1a/locals.tf")).toBe("cloudfront-variant-1a-locals-tf");
+});
+
+test("sanitizePendingPromptDescription collapses repeated hyphens and trims edges", () => {
+    expect(sanitizePendingPromptDescription("---hello---world---")).toBe("hello-world");
+});
+
+test("sanitizePendingPromptDescription truncates long text", () => {
+    const longText = "a".repeat(100);
+    const sanitized = sanitizePendingPromptDescription(longText);
+    expect(sanitized.length).toBeLessThanOrEqual(60);
+    expect(sanitized).toBe("a".repeat(60));
+});
+
+test("resolvePendingPromptFilePath returns the base path when no file exists", async () => {
+    const { dir, cleanup } = await tempDir();
+    try {
+        const pendingDir = resolvePendingDir(dir);
+        await mkdir(pendingDir, { recursive: true });
+        const filePath = await resolvePendingPromptFilePath(pendingDir, "2026-06-25-10-08-curl.md");
+        expect(filePath).toBe(join(pendingDir, "2026-06-25-10-08-curl.md"));
+    }
+    finally {
+        await cleanup();
+    }
+});
+
+test("resolvePendingPromptFilePath increments the suffix until a free path is found", async () => {
+    const { dir, cleanup } = await tempDir();
+    try {
+        const pendingDir = resolvePendingDir(dir);
+        await mkdir(pendingDir, { recursive: true });
+        const baseFileName = "2026-06-25-10-08-curl.md";
+        await writeFile(join(pendingDir, baseFileName), "first", "utf-8");
+        await writeFile(join(pendingDir, "2026-06-25-10-08-curl-1.md"), "second", "utf-8");
+        const filePath = await resolvePendingPromptFilePath(pendingDir, baseFileName);
+        expect(filePath).toBe(join(pendingDir, "2026-06-25-10-08-curl-2.md"));
+    }
+    finally {
+        await cleanup();
+    }
+});
+
+test("buildPendingPromptFileName includes timestamp and sanitized command summary", () => {
+    const call = makeBashCall("curl https://example.com", "/project");
+    const fileName = buildPendingPromptFileName(call, new Date(2026, 5, 25, 10, 19, 8));
+    expect(fileName).toBe("2026-06-25-10-08-curl-https-example-com.md");
+});
+
+test("buildPendingPromptFileName differs when tool_input changes", () => {
     const callA = makeBashCall("curl https://example.com", "/project");
     const callB = makeBashCall("curl https://other.example.com", "/project");
-    expect(computePendingPromptKey(callA)).toBe(computePendingPromptKey(callA));
-    expect(computePendingPromptKey(callA)).not.toBe(computePendingPromptKey(callB));
+    const pendingSince = new Date(2026, 5, 25, 10, 19, 8);
+    expect(buildPendingPromptFileName(callA, pendingSince)).not.toBe(buildPendingPromptFileName(callB, pendingSince));
+});
+
+test("buildPendingPromptFileName uses file_path for Read tool calls", () => {
+    const call = makeReadCall("./docs/plans/done/colocation-prototype-plan.md", "/project");
+    const fileName = buildPendingPromptFileName(call, new Date(2026, 5, 25, 10, 19, 8));
+    expect(fileName).toBe("2026-06-25-10-08-docs-plans-done-colocation-prototype-plan-md.md");
+});
+
+test("buildPendingPromptFileName falls back to tool name when command summary is empty", () => {
+    const call: IToolCall = { tool_name: "Shell", tool_input: { command: "!!!" }, cwd: "/project" };
+    const fileName = buildPendingPromptFileName(call, new Date(2026, 5, 25, 10, 19, 8));
+    expect(fileName).toBe("2026-06-25-10-08-shell.md");
+});
+
+test("buildPendingPromptFileName falls back to tool when input has no command or file_path", () => {
+    const call: IToolCall = { tool_name: "TaskList", tool_input: {}, cwd: "/project" };
+    const fileName = buildPendingPromptFileName(call, new Date(2026, 5, 25, 10, 19, 8));
+    expect(fileName).toBe("2026-06-25-10-08-tasklist.md");
 });
 
 test("simulateLeafEnvironments threads cwd through cd in a && chain", () => {
@@ -189,7 +275,7 @@ test("formatPendingPromptMarkdown includes sections for an ask decision", () => 
     expect(markdown).toContain("network access requires approval");
 });
 
-test("writePendingPrompt creates pending/<key>.md", async () => {
+test("writePendingPrompt creates a dated pending detail file", async () => {
     const { dir, cleanup } = await tempDir();
     try {
         const call = makeBashCall("curl https://example.com", dir);
@@ -204,10 +290,11 @@ test("writePendingPrompt creates pending/<key>.md", async () => {
                 source: "matched-rule" as const,
             },
         ];
-        await writePendingPrompt(dir, call, root, leafEvaluations, "ask", "network access requires approval", new Date());
-        const key = computePendingPromptKey(call);
-        const filePath = join(resolvePendingDir(dir), `${key}.md`);
-        const content = await readFile(filePath, "utf-8");
+        const pendingSince = new Date(2026, 5, 25, 10, 19, 8);
+        await writePendingPrompt(dir, call, root, leafEvaluations, "ask", "network access requires approval", pendingSince);
+        const pendingFiles = await readdir(resolvePendingDir(dir));
+        expect(pendingFiles).toContain("2026-06-25-10-08-curl-https-example-com.md");
+        const content = await readFile(join(resolvePendingDir(dir), "2026-06-25-10-08-curl-https-example-com.md"), "utf-8");
         expect(content).toContain("curl https://example.com");
     }
     finally {
@@ -215,28 +302,17 @@ test("writePendingPrompt creates pending/<key>.md", async () => {
     }
 });
 
-test("removePendingPrompt deletes the pending detail file", async () => {
+test("writePendingPrompt avoids filename collisions within the same second", async () => {
     const { dir, cleanup } = await tempDir();
     try {
         const call = makeBashCall("curl https://example.com", dir);
         const root = buildAst(call, new Map());
-        await writePendingPrompt(dir, call, root, [], "ask", undefined, new Date());
-        const key = computePendingPromptKey(call);
-        const filePath = join(resolvePendingDir(dir), `${key}.md`);
-        await removePendingPrompt(dir, {
-            tool_name: call.tool_name,
-            tool_input: call.tool_input,
-            tool_response: { output: "ok", isError: false },
-            cwd: call.cwd,
-        });
-        let fileExists = true;
-        try {
-            await stat(filePath);
-        }
-        catch {
-            fileExists = false;
-        }
-        expect(fileExists).toBe(false);
+        const pendingSince = new Date(2026, 5, 25, 10, 19, 8);
+        await writePendingPrompt(dir, call, root, [], "ask", undefined, pendingSince);
+        await writePendingPrompt(dir, call, root, [], "ask", undefined, pendingSince);
+        const pendingFiles = await readdir(resolvePendingDir(dir));
+        expect(pendingFiles).toContain("2026-06-25-10-08-curl-https-example-com.md");
+        expect(pendingFiles).toContain("2026-06-25-10-08-curl-https-example-com-1.md");
     }
     finally {
         await cleanup();
@@ -249,11 +325,12 @@ test("cleanupStalePendingPrompts removes files older than the threshold", async 
         const call = makeBashCall("curl https://example.com", dir);
         const root = buildAst(call, new Map());
         await writePendingPrompt(dir, call, root, [], "ask", undefined, new Date());
-        const key = computePendingPromptKey(call);
-        const filePath = join(resolvePendingDir(dir), `${key}.md`);
+        const pendingFiles = await readdir(resolvePendingDir(dir));
+        expect(pendingFiles.length).toBe(1);
+        const filePath = join(resolvePendingDir(dir), pendingFiles[0]);
         const oldTime = new Date("2020-01-01T00:00:00.000Z");
         await utimes(filePath, oldTime, oldTime);
-        await cleanupStalePendingPrompts(dir, new Date(), 7);
+        await cleanupStalePendingPrompts(dir, new Date(), STALE_PENDING_PROMPT_MAX_AGE_DAYS);
         let fileExists = true;
         try {
             await stat(filePath);
@@ -262,6 +339,24 @@ test("cleanupStalePendingPrompts removes files older than the threshold", async 
             fileExists = false;
         }
         expect(fileExists).toBe(false);
+    }
+    finally {
+        await cleanup();
+    }
+});
+
+test("cleanupStalePendingPrompts keeps files newer than the threshold", async () => {
+    const { dir, cleanup } = await tempDir();
+    try {
+        const call = makeBashCall("curl https://example.com", dir);
+        const root = buildAst(call, new Map());
+        await writePendingPrompt(dir, call, root, [], "ask", undefined, new Date());
+        const pendingFiles = await readdir(resolvePendingDir(dir));
+        expect(pendingFiles.length).toBe(1);
+        const filePath = join(resolvePendingDir(dir), pendingFiles[0]);
+        await cleanupStalePendingPrompts(dir, new Date(), STALE_PENDING_PROMPT_MAX_AGE_DAYS);
+        const remainingFiles = await readdir(resolvePendingDir(dir));
+        expect(remainingFiles).toEqual(pendingFiles);
     }
     finally {
         await cleanup();

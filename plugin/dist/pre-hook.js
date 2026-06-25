@@ -9645,7 +9645,8 @@ function describeNode(node) {
 }
 function buildAst(call, descriptors) {
   switch (call.tool_name) {
-    case "Bash": {
+    case "Bash":
+    case "Shell": {
       const command = call.tool_input.command;
       return {
         type: "bash",
@@ -10090,8 +10091,7 @@ function decide(call, logger, registry, descriptors) {
 }
 
 // src/pending-prompt-log.ts
-import { createHash } from "crypto";
-import { access as access2, mkdir as mkdir2, readdir as readdir2, stat as stat2, unlink, writeFile as writeFile2 } from "fs/promises";
+import { mkdir as mkdir2, readdir as readdir2, stat as stat2, unlink, writeFile as writeFile2 } from "fs/promises";
 import { join as join3 } from "path";
 
 // src/rules/builtin/cd.ts
@@ -10211,6 +10211,8 @@ var exportRule = function exportRule2(node, env, _call) {
 };
 
 // src/pending-prompt-log.ts
+var STALE_PENDING_PROMPT_MAX_AGE_DAYS = 1;
+var PENDING_PROMPT_DESCRIPTION_MAX_LENGTH = 60;
 var EMPTY_TOOL_CALL = {
   tool_name: "Bash",
   tool_input: { command: "" },
@@ -10219,13 +10221,51 @@ var EMPTY_TOOL_CALL = {
 function resolvePendingDir(projectDir) {
   return join3(projectDir, ".claude", "permissions-log", "pending");
 }
-function computePendingPromptKey(call) {
-  const payload = JSON.stringify({
-    tool_name: call.tool_name,
-    tool_input: call.tool_input,
-    cwd: call.cwd
-  });
-  return createHash("sha256").update(payload).digest("hex").slice(0, 16);
+function formatPendingPromptFileTimestamp(date) {
+  const year = date.getFullYear().toString();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+  return `${year}-${month}-${day}-${hours}-${seconds}`;
+}
+function sanitizePendingPromptDescription(text) {
+  let sanitized = text.toLowerCase();
+  sanitized = sanitized.replace(/[^a-z0-9]+/g, "-");
+  sanitized = sanitized.replace(/-+/g, "-");
+  sanitized = sanitized.replace(/^-|-$/g, "");
+  if (sanitized.length > PENDING_PROMPT_DESCRIPTION_MAX_LENGTH) {
+    sanitized = sanitized.slice(0, PENDING_PROMPT_DESCRIPTION_MAX_LENGTH);
+    sanitized = sanitized.replace(/-$/, "");
+  }
+  return sanitized;
+}
+function buildPendingPromptFileName(call, pendingSince) {
+  const timestampPart = formatPendingPromptFileTimestamp(pendingSince);
+  const commandSummary = summarizeToolInput(call);
+  let descriptionPart = sanitizePendingPromptDescription(commandSummary);
+  if (descriptionPart.length === 0) {
+    descriptionPart = sanitizePendingPromptDescription(call.tool_name);
+  }
+  if (descriptionPart.length === 0) {
+    descriptionPart = "tool";
+  }
+  return `${timestampPart}-${descriptionPart}.md`;
+}
+async function resolvePendingPromptFilePath(pendingDir, baseFileName) {
+  const extensionIndex = baseFileName.lastIndexOf(".md");
+  const baseName = baseFileName.slice(0, extensionIndex);
+  let suffix = 0;
+  while (true) {
+    const fileName = suffix === 0 ? baseFileName : `${baseName}-${suffix}.md`;
+    const filePath = join3(pendingDir, fileName);
+    try {
+      await stat2(filePath);
+      suffix = suffix + 1;
+    } catch {
+      return filePath;
+    }
+  }
 }
 function summarizeToolInput(call) {
   if (typeof call.tool_input["command"] === "string") {
@@ -10685,8 +10725,8 @@ function formatPendingPromptMarkdown(call, root, leafEvaluations, decision, reas
 async function writePendingPrompt(projectDir, call, root, leafEvaluations, decision, reason, pendingSince) {
   const pendingDir = resolvePendingDir(projectDir);
   await mkdir2(pendingDir, { recursive: true });
-  const key = computePendingPromptKey(call);
-  const filePath = join3(pendingDir, `${key}.md`);
+  const baseFileName = buildPendingPromptFileName(call, pendingSince);
+  const filePath = await resolvePendingPromptFilePath(pendingDir, baseFileName);
   const content = formatPendingPromptMarkdown(call, root, leafEvaluations, decision, reason, pendingSince);
   await writeFile2(filePath, content, "utf-8");
 }
@@ -12062,7 +12102,7 @@ async function runHook() {
     }
     const logger = createLogger(projectDir, new Date);
     await ensureLogDirIgnored(resolveLogBaseDir(projectDir));
-    await cleanupStalePendingPrompts(projectDir, new Date, 7);
+    await cleanupStalePendingPrompts(projectDir, new Date, STALE_PENDING_PROMPT_MAX_AGE_DAYS);
     const layers = [
       new RuleLayer(builtinRules),
       new FileLayer(loadHomeConfigRules, "~/.claude/permissions.yaml", logger)

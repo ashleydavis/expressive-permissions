@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync, existsSync } from "fs";
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync, existsSync, readdirSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { readStdin, runHook } from "../pre-hook";
-import { computePendingPromptKey, resolvePendingDir } from "../pending-prompt-log";
+import { resolvePendingDir } from "../pending-prompt-log";
 
 // An async iterable that yields a single Buffer chunk, used to mock process.stdin.
 interface IMockStdin {
@@ -171,14 +171,9 @@ describe("runHook", () => {
             });
             setStdin(createMockStdin(toolCall));
             await runHook();
-            const call = {
-                tool_name: "Bash",
-                tool_input: { command: "curl https://example.com" },
-                cwd: projectDir,
-            };
-            const key = computePendingPromptKey(call);
-            const pendingPath = join(resolvePendingDir(projectDir), `${key}.md`);
-            expect(existsSync(pendingPath)).toBe(true);
+            const pendingFiles = readdirSync(resolvePendingDir(projectDir)).filter(fileName => fileName.endsWith(".md"));
+            expect(pendingFiles.length).toBe(1);
+            expect(pendingFiles[0]).toMatch(/^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-.+\.md$/);
         }
         finally {
             if (savedHome !== undefined) {

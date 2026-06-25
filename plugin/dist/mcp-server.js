@@ -24993,7 +24993,8 @@ function describeNode(node) {
 }
 function buildAst(call, descriptors) {
   switch (call.tool_name) {
-    case "Bash": {
+    case "Bash":
+    case "Shell": {
       const command = call.tool_input.command;
       return {
         type: "bash",

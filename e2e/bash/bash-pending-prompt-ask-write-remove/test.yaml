@@ -1,4 +1,4 @@
-description: "pending prompt: pre-hook writes detail file on ask, post-hook removes it"
+description: "pending prompt: dated detail file on ask survives post-hook execution"
 
 input:
   tool_name: Bash
@@ -15,7 +15,13 @@ rules:
 expected:
   decision: ask
   reason: "network access requires approval"
-  pending_prompt: true
+  pending_prompt:
+    count: 1
+    filename_contains: curl-https-example-com
+    content_contains:
+      - "# Bash — ASK"
+      - "curl https://example.com"
+      - "## Verdict"
 
 post_input:
   tool_name: Bash
@@ -27,4 +33,4 @@ post_input:
   cwd: /home/user/project
 
 post_expected:
-  pending_prompt_removed: true
+  pending_prompt_count: 1

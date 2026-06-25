@@ -1,8 +1,11 @@
-import { readFileSync, mkdirSync, writeFileSync, rmSync, readdirSync, statSync, cpSync, lstatSync, existsSync } from "fs";
+import { readFileSync, mkdirSync, writeFileSync, rmSync, readdirSync, statSync, cpSync, lstatSync, existsSync, utimesSync } from "fs";
 import { join, dirname } from "path";
 import { spawnSync } from "child_process";
 import { parse, stringify } from "yaml";
-import { computePendingPromptKey, resolvePendingDir } from "../src/pending-prompt-log";
+import { resolvePendingDir } from "../src/pending-prompt-log";
+
+// PENDING_PROMPT_FILENAME_PATTERN matches yyyy-mm-dd-hh-ss-description.md pending detail files.
+const PENDING_PROMPT_FILENAME_PATTERN = /^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-.+\.md$/;
 
 // ITestCaseInput describes the tool call input fields in a test case YAML file.
 interface ITestCaseInput {
@@ -32,8 +35,8 @@ interface IPostToolUseInput {
 interface IPostToolUseExpected {
     // When present, the newest log file must contain matching entries for each item.
     audit_log?: IAuditLogExpectedEntry[];
-    // When true, the pending prompt detail file must be removed after post-hook.
-    pending_prompt_removed?: boolean;
+    // When present, the pending detail file count must match after post-hook.
+    pending_prompt_count?: number;
 }
 
 // IAuditLogExpectedEntry describes one expected audit log entry to assert against.
@@ -45,6 +48,32 @@ interface IAuditLogExpectedEntry {
     [key: string]: string;
 }
 
+// IPendingPromptExpected describes assertions against pending detail files after pre-hook.
+interface IPendingPromptExpected {
+    // Exact number of pending detail files required.
+    count?: number;
+    // Every pending file name must match this regular expression.
+    filename_pattern?: string;
+    // Every pending file name must contain this substring.
+    filename_contains?: string;
+    // Every listed string must appear in every pending detail file body.
+    content_contains?: string | string[];
+}
+
+// IStalePendingFileSetup seeds a pending detail file with an artificially old mtime.
+interface IStalePendingFileSetup {
+    // File name under pending/, including the .md extension.
+    file_name: string;
+    // How many days before now the file mtime should be set.
+    age_days: number;
+}
+
+// ITestCaseSetup describes filesystem state to create before hooks run.
+interface ITestCaseSetup {
+    // Pending detail files to create with backdated mtimes before the pre-hook.
+    stale_pending_files?: IStalePendingFileSetup[];
+}
+
 // ITestCaseExpected describes the expected outcome fields in a test case YAML file.
 interface ITestCaseExpected {
     // The expected permissionDecision value (allow, deny, or ask)
@@ -53,8 +82,140 @@ interface ITestCaseExpected {
     reason?: string;
     // When present, the newest log file must contain matching entries for each item.
     audit_log?: IAuditLogExpectedEntry[];
-    // When true, a pending prompt detail file must exist after pre-hook.
-    pending_prompt?: boolean;
+    // When true or an object, pending detail files must match the described expectations.
+    pending_prompt?: boolean | IPendingPromptExpected;
+    // When true, stale pending files from setup must be gone after pre-hook cleanup.
+    stale_pending_removed?: boolean;
+}
+
+// listPendingPromptFileNames returns pending detail file names sorted newest first.
+function listPendingPromptFileNames(projectDir: string): string[] {
+    const pendingDir = resolvePendingDir(projectDir);
+    if (!existsSync(pendingDir)) {
+        return [];
+    }
+    return readdirSync(pendingDir)
+        .filter(fileName => fileName.endsWith(".md"))
+        .sort((leftName, rightName) => {
+            const leftPath = join(pendingDir, leftName);
+            const rightPath = join(pendingDir, rightName);
+            return statSync(rightPath).mtimeMs - statSync(leftPath).mtimeMs;
+        });
+}
+
+// substituteProjectDir replaces ${PROJECT_DIR} tokens in a JSON-serializable value.
+function substituteProjectDir<T>(value: T, projectDir: string): T {
+    const substitutedJson = JSON.stringify(value).split("${PROJECT_DIR}").join(projectDir);
+    return JSON.parse(substitutedJson) as T;
+}
+
+// setupStalePendingFiles writes backdated pending detail files before a test run.
+function setupStalePendingFiles(projectDir: string, staleFiles: IStalePendingFileSetup[]): void {
+    const pendingDir = resolvePendingDir(projectDir);
+    mkdirSync(pendingDir, { recursive: true });
+    for (const staleFile of staleFiles) {
+        const filePath = join(pendingDir, staleFile.file_name);
+        writeFileSync(filePath, "# stale pending file for smoke test\n", "utf-8");
+        const oldTime = new Date(Date.now() - staleFile.age_days * 24 * 60 * 60 * 1000);
+        utimesSync(filePath, oldTime, oldTime);
+    }
+}
+
+// checkPendingPromptExpected validates pending detail files against expected constraints.
+function checkPendingPromptExpected(
+    testDescription: string,
+    projectDir: string,
+    pendingPromptExpected: boolean | IPendingPromptExpected
+): boolean {
+    const fileNames = listPendingPromptFileNames(projectDir);
+    const pendingDir = resolvePendingDir(projectDir);
+
+    if (pendingPromptExpected === true) {
+        if (fileNames.length === 0) {
+            process.stdout.write(`FAIL: ${testDescription}\n`);
+            process.stdout.write(`  pending_prompt: expected at least one file under ${pendingDir}\n`);
+            return false;
+        }
+        return true;
+    }
+
+    const expectedCount = pendingPromptExpected.count ?? 1;
+    if (fileNames.length !== expectedCount) {
+        process.stdout.write(`FAIL: ${testDescription}\n`);
+        process.stdout.write(`  pending_prompt: expected ${expectedCount} file(s), got ${fileNames.length}\n`);
+        return false;
+    }
+
+    const filenamePattern = pendingPromptExpected.filename_pattern !== undefined
+        ? new RegExp(pendingPromptExpected.filename_pattern)
+        : PENDING_PROMPT_FILENAME_PATTERN;
+
+    for (const fileName of fileNames) {
+        if (!filenamePattern.test(fileName)) {
+            process.stdout.write(`FAIL: ${testDescription}\n`);
+            process.stdout.write(`  pending_prompt: filename "${fileName}" does not match ${filenamePattern}\n`);
+            return false;
+        }
+        if (pendingPromptExpected.filename_contains !== undefined) {
+            if (!fileName.includes(pendingPromptExpected.filename_contains)) {
+                process.stdout.write(`FAIL: ${testDescription}\n`);
+                process.stdout.write(`  pending_prompt: filename "${fileName}" does not contain "${pendingPromptExpected.filename_contains}"\n`);
+                return false;
+            }
+        }
+    }
+
+    if (pendingPromptExpected.content_contains !== undefined) {
+        const requiredSnippets = Array.isArray(pendingPromptExpected.content_contains)
+            ? pendingPromptExpected.content_contains
+            : [pendingPromptExpected.content_contains];
+        for (const fileName of fileNames) {
+            const fileContent = readFileSync(join(pendingDir, fileName), "utf-8");
+            for (const requiredSnippet of requiredSnippets) {
+                if (!fileContent.includes(requiredSnippet)) {
+                    process.stdout.write(`FAIL: ${testDescription}\n`);
+                    process.stdout.write(`  pending_prompt: ${fileName} missing content snippet ${JSON.stringify(requiredSnippet)}\n`);
+                    return false;
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
+// IPreHookRunResult holds the outcome of one pre-hook invocation.
+interface IPreHookRunResult {
+    // Whether pre-hook exited successfully.
+    ok: boolean;
+    // Parsed stdout JSON when pre-hook succeeded.
+    output?: IHookOutput;
+}
+
+// runPreHook invokes pre-hook.ts with one tool call input.
+function runPreHook(
+    testDescription: string,
+    hookInput: Record<string, unknown>,
+    testEnv: Record<string, string>
+): IPreHookRunResult {
+    const hookPath = join(__dirname, "..", "src", "pre-hook.ts");
+    const result = spawnSync("bun", [hookPath], {
+        input: JSON.stringify(hookInput),
+        env: testEnv,
+        encoding: "utf-8",
+    });
+
+    if (result.status !== 0) {
+        process.stdout.write(`FAIL: ${testDescription}\n`);
+        process.stdout.write(`  pre-hook.ts exited with status ${result.status}\n`);
+        if (result.stderr) {
+            process.stdout.write(`  stderr: ${result.stderr}\n`);
+        }
+        return { ok: false };
+    }
+
+    const output = JSON.parse(result.stdout) as IHookOutput;
+    return { ok: true, output };
 }
 
 // ITestCase describes the full structure of a test case YAML file.
@@ -63,6 +224,10 @@ interface ITestCase {
     description: string;
     // The tool call input fed to hook.ts via stdin
     input: ITestCaseInput;
+    // Optional extra pre-hook inputs run after the primary input.
+    additional_inputs?: ITestCaseInput[];
+    // Optional filesystem setup applied before hooks run.
+    setup?: ITestCaseSetup;
     // Written verbatim as project/.claude/permissions.yaml for the test run
     rules: Record<string, unknown>;
     // Optional: written verbatim as home/.claude/permissions.yaml for the test run
@@ -174,15 +339,9 @@ function runTest(testFilePath: string): boolean {
         }
     }
 
-        const substituted = JSON.parse(
-            JSON.stringify(testCase.input).split("${PROJECT_DIR}").join(projectDir)
-        ) as ITestCaseInput;
-        const hookInput: Record<string, unknown> = {
-            tool_name: substituted.tool_name,
-            tool_input: substituted.tool_input,
-            cwd: substituted.cwd ?? projectDir,
-        };
-        const inputJson = JSON.stringify(hookInput);
+        if (testCase.setup?.stale_pending_files !== undefined) {
+            setupStalePendingFiles(projectDir, testCase.setup.stale_pending_files);
+        }
 
         const testEnv: Record<string, string> = {};
         for (const [key, value] of Object.entries(process.env)) {
@@ -193,23 +352,34 @@ function runTest(testFilePath: string): boolean {
         testEnv["HOME"] = homeDir;
         testEnv["CLAUDE_PROJECT_DIR"] = projectDir;
 
-        const hookPath = join(__dirname, "..", "src", "pre-hook.ts");
-        const result = spawnSync("bun", [hookPath], {
-            input: inputJson,
-            env: testEnv,
-            encoding: "utf-8",
-        });
-
-        if (result.status !== 0) {
-            process.stdout.write(`FAIL: ${testCase.description}\n`);
-            process.stdout.write(`  pre-hook.ts exited with status ${result.status}\n`);
-            if (result.stderr) {
-                process.stdout.write(`  stderr: ${result.stderr}\n`);
+        const allInputs: ITestCaseInput[] = [testCase.input];
+        if (testCase.additional_inputs !== undefined) {
+            for (const additionalInput of testCase.additional_inputs) {
+                allInputs.push(additionalInput);
             }
+        }
+
+        let output: IHookOutput | undefined;
+        for (const toolInput of allInputs) {
+            const substituted = substituteProjectDir(toolInput, projectDir);
+            const hookInput: Record<string, unknown> = {
+                tool_name: substituted.tool_name,
+                tool_input: substituted.tool_input,
+                cwd: substituted.cwd ?? projectDir,
+            };
+            const preHookResult = runPreHook(testCase.description, hookInput, testEnv);
+            if (!preHookResult.ok || preHookResult.output === undefined) {
+                return false;
+            }
+            output = preHookResult.output;
+        }
+
+        if (output === undefined) {
+            process.stdout.write(`FAIL: ${testCase.description}\n`);
+            process.stdout.write(`  pre-hook: no tool input was executed\n`);
             return false;
         }
 
-        const output = JSON.parse(result.stdout) as IHookOutput;
         const actualDecision = output.hookSpecificOutput.permissionDecision;
         const actualReason = output.hookSpecificOutput.permissionDecisionReason;
 
@@ -251,18 +421,20 @@ function runTest(testFilePath: string): boolean {
             }
         }
 
-        if (testCase.expected.pending_prompt === true) {
-            const pendingCall = {
-                tool_name: substituted.tool_name,
-                tool_input: substituted.tool_input,
-                cwd: substituted.cwd ?? projectDir,
-            };
-            const pendingKey = computePendingPromptKey(pendingCall);
-            const pendingPath = join(resolvePendingDir(projectDir), `${pendingKey}.md`);
-            if (!existsSync(pendingPath)) {
-                process.stdout.write(`FAIL: ${testCase.description}\n`);
-                process.stdout.write(`  pending_prompt: expected file ${pendingPath}\n`);
+        if (testCase.expected.pending_prompt !== undefined) {
+            if (!checkPendingPromptExpected(testCase.description, projectDir, testCase.expected.pending_prompt)) {
                 return false;
+            }
+        }
+
+        if (testCase.expected.stale_pending_removed === true) {
+            for (const staleFile of testCase.setup?.stale_pending_files ?? []) {
+                const stalePath = join(resolvePendingDir(projectDir), staleFile.file_name);
+                if (existsSync(stalePath)) {
+                    process.stdout.write(`FAIL: ${testCase.description}\n`);
+                    process.stdout.write(`  stale_pending_removed: file still exists at ${stalePath}\n`);
+                    return false;
+                }
             }
         }
 
@@ -310,17 +482,11 @@ function runTest(testFilePath: string): boolean {
                 }
             }
 
-            if (testCase.post_expected?.pending_prompt_removed === true) {
-                const pendingCall = {
-                    tool_name: testCase.post_input.tool_name,
-                    tool_input: testCase.post_input.tool_input,
-                    cwd: testCase.post_input.cwd,
-                };
-                const pendingKey = computePendingPromptKey(pendingCall);
-                const pendingPath = join(resolvePendingDir(projectDir), `${pendingKey}.md`);
-                if (existsSync(pendingPath)) {
+            if (testCase.post_expected?.pending_prompt_count !== undefined) {
+                const pendingCount = listPendingPromptFileNames(projectDir).length;
+                if (pendingCount !== testCase.post_expected.pending_prompt_count) {
                     process.stdout.write(`FAIL: ${testCase.description}\n`);
-                    process.stdout.write(`  pending_prompt_removed: file still exists at ${pendingPath}\n`);
+                    process.stdout.write(`  pending_prompt_count: expected ${testCase.post_expected.pending_prompt_count}, got ${pendingCount}\n`);
                     return false;
                 }
             }

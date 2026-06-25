@@ -7070,8 +7070,7 @@ function createLogger(projectDir, now) {
 }
 
 // src/pending-prompt-log.ts
-import { createHash } from "crypto";
-import { access as access2, mkdir as mkdir2, readdir, stat, unlink, writeFile as writeFile2 } from "fs/promises";
+import { mkdir as mkdir2, readdir, stat, unlink, writeFile as writeFile2 } from "fs/promises";
 import { join as join2 } from "path";
 
 // node_modules/yaml/dist/index.js
@@ -7146,27 +7145,9 @@ var XARGS_VALUE_LONG_FLAGS = new Set([
 ]);
 
 // src/pending-prompt-log.ts
+var STALE_PENDING_PROMPT_MAX_AGE_DAYS = 1;
 function resolvePendingDir(projectDir) {
   return join2(projectDir, ".claude", "permissions-log", "pending");
-}
-function computePendingPromptKey(call) {
-  const payload = JSON.stringify({
-    tool_name: call.tool_name,
-    tool_input: call.tool_input,
-    cwd: call.cwd
-  });
-  return createHash("sha256").update(payload).digest("hex").slice(0, 16);
-}
-async function removePendingPrompt(projectDir, call) {
-  const pendingDir = resolvePendingDir(projectDir);
-  const key = computePendingPromptKey(call);
-  const filePath = join2(pendingDir, `${key}.md`);
-  try {
-    await access2(filePath);
-  } catch {
-    return;
-  }
-  await unlink(filePath);
 }
 async function cleanupStalePendingPrompts(projectDir, now, maxAgeDays) {
   const pendingDir = resolvePendingDir(projectDir);
@@ -7217,8 +7198,7 @@ async function runPostHook() {
       response: call.tool_response,
       isError
     });
-    await removePendingPrompt(projectDir, call);
-    await cleanupStalePendingPrompts(projectDir, new Date, 7);
+    await cleanupStalePendingPrompts(projectDir, new Date, STALE_PENDING_PROMPT_MAX_AGE_DAYS);
     process.exit(0);
   } catch (hookError) {
     process.stderr.write(String(hookError) + `

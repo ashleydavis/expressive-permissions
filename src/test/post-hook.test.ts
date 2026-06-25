@@ -1,10 +1,10 @@
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { spawnSync, SpawnSyncReturns } from "child_process";
 import { resolveJsonLogPath, resolveLogBaseDir } from "../audit-log";
 import { IToolExecutionEntry } from "../audit-log";
-import { computePendingPromptKey, resolvePendingDir } from "../pending-prompt-log";
+import { resolvePendingDir } from "../pending-prompt-log";
 
 // makeTmpDir creates a temporary directory and returns its path.
 function makeTmpDir(): string {
@@ -108,7 +108,7 @@ test("runPostHook exits 1 when CLAUDE_PROJECT_DIR is absent", () => {
     expect(result.stderr).toContain("CLAUDE_PROJECT_DIR is not set");
 });
 
-test("runPostHook removes the pending prompt file written by pre-hook", () => {
+test("runPostHook leaves the pending prompt file in place", () => {
     const tmpDir = mkdtempSync(join(tmpdir(), "post-hook-pending-"));
     mkdirSync(join(tmpDir, ".claude"), { recursive: true });
     writeFileSync(
@@ -126,21 +126,16 @@ test("runPostHook removes the pending prompt file written by pre-hook", () => {
     try {
         const preResult = spawnPreHook(preInput, env);
         expect(preResult.status).toBe(0);
-        const call = {
-            tool_name: "Bash",
-            tool_input: { command },
-            cwd: tmpDir,
-        };
-        const key = computePendingPromptKey(call);
-        const pendingPath = join(resolvePendingDir(tmpDir), `${key}.md`);
-        expect(existsSync(pendingPath)).toBe(true);
+        const pendingFiles = readdirSync(resolvePendingDir(tmpDir)).filter(fileName => fileName.endsWith(".md"));
+        expect(pendingFiles.length).toBe(1);
+        const pendingPath = join(resolvePendingDir(tmpDir), pendingFiles[0]);
         const postInput = makePostStdin({
             tool_input: { command },
             cwd: tmpDir,
         });
         const postResult = spawnPostHook(postInput, env);
         expect(postResult.status).toBe(0);
-        expect(existsSync(pendingPath)).toBe(false);
+        expect(existsSync(pendingPath)).toBe(true);
     }
     finally {
         rmSync(tmpDir, { recursive: true, force: true });
