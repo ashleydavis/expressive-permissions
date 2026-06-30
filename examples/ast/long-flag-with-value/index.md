@@ -1,4 +1,4 @@
-# bash-long-flag-with-value
+# long-flag-with-value
 
 Command:
 

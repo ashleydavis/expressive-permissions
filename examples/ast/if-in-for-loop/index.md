@@ -1,4 +1,4 @@
-# bash-if-in-for-loop
+# if-in-for-loop
 
 Command:
 

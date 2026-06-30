@@ -1,4 +1,4 @@
-# bash-env-in-pipeline
+# env-in-pipeline
 
 Command:
 

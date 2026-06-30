@@ -1,4 +1,4 @@
-# bash-long-flag-with-hyphen
+# long-flag-with-hyphen
 
 Command:
 

@@ -1,4 +1,4 @@
-# bash-multiple-cmd
+# multiple-cmd
 
 Command:
 

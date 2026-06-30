@@ -1,4 +1,4 @@
-# bash-long-flag-space-value
+# long-flag-space-value
 
 Command:
 

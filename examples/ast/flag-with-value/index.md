@@ -1,4 +1,4 @@
-# bash-flag-with-value
+# flag-with-value
 
 Command:
 

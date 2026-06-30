@@ -1,4 +1,4 @@
-# bash-nested-and-pipe
+# nested-and-pipe
 
 Command:
 

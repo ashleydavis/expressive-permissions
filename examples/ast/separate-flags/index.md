@@ -1,9 +1,9 @@
-# bash-long-flags
+# separate-flags
 
 Command:
 
 ```sh
-rm --recursive --force /tmp
+rm -r -f /tmp
 ```
 
 AST:
