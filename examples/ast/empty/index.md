@@ -14,9 +14,3 @@ graph TD
   n1["command<br/>binary: "]
   n0 --> n1
 ```
-
-## Duplicates
-
-Same Bash command as:
-
-- [bash-empty](../bash-empty/index.md)

@@ -18,9 +18,3 @@ graph TD
   n1 -->|body| n3
   n0 --> n1
 ```
-
-## Duplicates
-
-Same Bash command as:
-
-- [bash-while-loop](../bash-while-loop/index.md)

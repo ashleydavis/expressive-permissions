@@ -16,9 +16,3 @@ graph TD
   n1 -->|body| n2
   n0 --> n1
 ```
-
-## Duplicates
-
-Same construct as:
-
-- [bash-for-loop-kubectl](../bash-for-loop-kubectl/index.md)

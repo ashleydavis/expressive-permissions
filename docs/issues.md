@@ -14,4 +14,3 @@ Backtick and `$(...)` substitutions are not represented as proper intermediate n
 
 - `examples/ast/backtick-substitution/`
 - `examples/ast/command-substitution/`
-- `examples/ast/bash-command-substitution/`

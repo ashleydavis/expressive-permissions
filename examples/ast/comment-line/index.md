@@ -19,9 +19,3 @@ graph TD
   n1 --> n3
   n0 --> n1
 ```
-
-## Duplicates
-
-Same Bash command as:
-
-- [bash-comment-line](../bash-comment-line/index.md)

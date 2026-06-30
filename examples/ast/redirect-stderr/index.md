@@ -16,9 +16,3 @@ graph TD
   n1 -->|command| n2
   n0 --> n1
 ```
-
-## Duplicates
-
-Same Bash command as:
-
-- [bash-redirect-stderr](../bash-redirect-stderr/index.md)

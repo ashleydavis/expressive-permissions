@@ -18,9 +18,3 @@ graph TD
   n1 -->|body| n3
   n0 --> n1
 ```
-
-## Duplicates
-
-Same construct as:
-
-- [bash-until-loop](../bash-until-loop/index.md)
