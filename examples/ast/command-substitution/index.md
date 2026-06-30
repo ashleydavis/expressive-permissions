@@ -16,3 +16,9 @@ graph TD
   n1 -->|subst| n2
   n0 --> n1
 ```
+
+## Duplicates
+
+Same Bash command as:
+
+- [bash-command-substitution](../bash-command-substitution/index.md)

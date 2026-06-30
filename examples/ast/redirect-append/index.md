@@ -16,3 +16,9 @@ graph TD
   n1 -->|command| n2
   n0 --> n1
 ```
+
+## Duplicates
+
+Same Bash command as:
+
+- [bash-redirect-append](../bash-redirect-append/index.md)

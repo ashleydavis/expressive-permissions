@@ -16,3 +16,9 @@ graph TD
   n1 -->|command| n2
   n0 --> n1
 ```
+
+## Duplicates
+
+Same Bash command as:
+
+- [redirect-stdout-echo](../redirect-stdout-echo/index.md)

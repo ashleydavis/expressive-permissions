@@ -14,3 +14,9 @@ graph TD
   n1["command<br/>binary: echo<br/>cmd: hello world"]
   n0 --> n1
 ```
+
+## Duplicates
+
+Same Bash command as:
+
+- [quoted-arg](../quoted-arg/index.md)

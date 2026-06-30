@@ -14,3 +14,9 @@ graph TD
   n1["command<br/>binary: ls"]
   n0 --> n1
 ```
+
+## Duplicates
+
+Same Bash command as:
+
+- [comment-trailing](../comment-trailing/index.md)

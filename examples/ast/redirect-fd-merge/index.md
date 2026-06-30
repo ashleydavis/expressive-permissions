@@ -18,3 +18,9 @@ graph TD
   n1 -->|command| n2
   n0 --> n1
 ```
+
+## Duplicates
+
+Same Bash command as:
+
+- [bash-redirect-fd-merge](../bash-redirect-fd-merge/index.md)
