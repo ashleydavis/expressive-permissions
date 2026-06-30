@@ -14,7 +14,6 @@ export function makeCommand(binary: string, options: Record<string, string | boo
         options,
         cmd,
         envPrefix,
-        redirects: [],
         raw: `${binary} ${cmdArray.join(" ")}`.trim(),
     };
 }

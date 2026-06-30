@@ -1,10 +1,10 @@
 tool_call:
   tool_name: Bash
   tool_input:
-    command: "cd /tmp && rm -rf *"
+    command: cd /tmp && rm -rf *
 ast:
   type: bash
-  raw: "cd /tmp && rm -rf *"
+  raw: cd /tmp && rm -rf *
   ast:
     type: binop
     op: "&&"
@@ -14,8 +14,7 @@ ast:
       options: {}
       cmd: /tmp
       envPrefix: {}
-      redirects: []
-      raw: "cd /tmp"
+      raw: cd /tmp
     right:
       type: command
       binary: rm
@@ -24,5 +23,4 @@ ast:
         f: true
       cmd: "*"
       envPrefix: {}
-      redirects: []
-      raw: "rm -rf *"
+      raw: rm -rf *

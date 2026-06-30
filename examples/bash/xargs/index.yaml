@@ -8,7 +8,6 @@ ast:
     options: {}
     cmd: .
     envPrefix: {}
-    redirects: []
     raw: find .
   right:
     type: xargs
@@ -19,6 +18,5 @@ ast:
       options: {}
       cmd: []
       envPrefix: {}
-      redirects: []
       raw: rm
     raw: xargs rm

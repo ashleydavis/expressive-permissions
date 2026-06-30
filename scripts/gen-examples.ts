@@ -2,7 +2,61 @@ import { mkdir, readdir, readFile, writeFile } from "fs/promises";
 import { join } from "path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { buildAst } from "../src/build-ast";
-import { IToolCall } from "../src/types";
+import { ICommandDescriptor, IFlagDescriptor, IPositionalDescriptor, IToolCall, ToolRoot } from "../src/types";
+
+// A command descriptor as it appears in an AST example YAML file
+interface IYamlDescriptor {
+    // Optional human-readable summary of the command
+    description?: string;
+    // Positional slot definitions in order
+    positionals?: Array<{ kind: "path" | "string"; description?: string; variadic?: boolean }>;
+    // Flag definitions keyed by pipe-separated alias group
+    flags?: Record<string, { arity: 0 | 1; kind?: "path" | "string"; description?: string }>;
+}
+
+// An AST example YAML document under examples/ast
+interface IAstExampleDoc {
+    // The tool call input passed to buildAst
+    tool_call: IToolCall;
+    // Optional inline command descriptors keyed by command name
+    descriptors?: Record<string, IYamlDescriptor>;
+}
+
+// Converts inline YAML descriptors into the Map buildAst expects
+function buildDescriptorMap(yamlDescriptors: Record<string, IYamlDescriptor> | undefined): Map<string, ICommandDescriptor> {
+    if (yamlDescriptors === undefined) {
+        return new Map();
+    }
+
+    const result = new Map<string, ICommandDescriptor>();
+
+    for (const [commandName, yamlDescriptor] of Object.entries(yamlDescriptors)) {
+        const positionals: IPositionalDescriptor[] = (yamlDescriptor.positionals ?? []).map(
+            (yamlPositional) => ({
+                kind: yamlPositional.kind,
+                description: yamlPositional.description ?? "",
+                variadic: yamlPositional.variadic ?? false,
+            })
+        );
+
+        const flags: { [aliasGroup: string]: IFlagDescriptor } = {};
+        for (const [aliasGroup, yamlFlag] of Object.entries(yamlDescriptor.flags ?? {})) {
+            flags[aliasGroup] = {
+                arity: yamlFlag.arity,
+                kind: yamlFlag.kind ?? "string",
+                description: yamlFlag.description ?? "",
+            };
+        }
+
+        result.set(commandName, {
+            description: yamlDescriptor.description ?? "",
+            positionals,
+            flags,
+        });
+    }
+
+    return result;
+}
 
 // One bash example: a name and the raw command it parses. The expected AST is generated from the
 // live parser, so these fixtures double as regression snapshots.
@@ -22,6 +76,11 @@ const BASH_SPECS: IBashSpec[] = [
     { name: "sequence", command: "echo a; echo b" },
     { name: "redirect-stdout", command: "cmd > out.log" },
     { name: "redirect-stderr", command: "cmd 2> err.log" },
+    { name: "redirect-stdout-echo", command: "echo foo > bar.txt" },
+    { name: "redirect-append", command: "echo foo >> bar.txt" },
+    { name: "redirect-stdin", command: "cat < in.txt" },
+    { name: "redirect-fd-merge", command: "cmd > out.log 2>&1" },
+    { name: "redirect-and-binop", command: "cd /tmp && echo hi > out.txt" },
     { name: "env-prefix", command: "FOO=bar cmd" },
     { name: "multi-env-prefix", command: "A=1 B=2 cmd" },
     { name: "env-assignment", command: "FOO=bar" },
@@ -106,6 +165,8 @@ function nodeLabel(node: IDiagramNode): string {
             return `case<br/>word: ${escapeLabel(node.word)}`;
         case "xargs":
             return "xargs";
+        case "redirect":
+            return `redirect<br/>op: ${escapeLabel(node.op)}<br/>target: ${escapeLabel(node.target)}`;
         case "bash":
             return "bash";
         case "read":
@@ -157,6 +218,8 @@ function childRefs(node: IDiagramNode): IChildRef[] {
         }
         case "xargs":
             return [{ node: node.child as IDiagramNode, label: "child" }];
+        case "redirect":
+            return [{ node: node.command as IDiagramNode, label: "command" }];
         case "bash":
             return [{ node: node.ast as IDiagramNode }];
         default:
@@ -204,6 +267,37 @@ async function writeDiagram(parentDirectory: string, exampleName: string): Promi
     await writeFile(join(exampleDirectory, "index.md"), markdown);
 }
 
+// generateAstExamples refreshes the expected ToolRoot ast field in every examples/ast fixture.
+async function generateAstExamples(): Promise<void> {
+    const astDirectory = "examples/ast";
+    const entries = await readdir(astDirectory, { withFileTypes: true });
+    for (const entry of entries) {
+        if (!entry.isDirectory()) {
+            continue;
+        }
+        const yamlPath = join(astDirectory, entry.name, "index.yaml");
+        const content = await readFile(yamlPath, "utf-8");
+        const doc = parseYaml(content) as IAstExampleDoc;
+        const descriptors = buildDescriptorMap(doc.descriptors);
+        const call: IToolCall = {
+            tool_name: doc.tool_call.tool_name,
+            tool_input: doc.tool_call.tool_input,
+            cwd: doc.tool_call.cwd ?? "/work",
+        };
+        const ast: ToolRoot = buildAst(call, descriptors);
+        const output: IAstExampleDoc & { ast: ToolRoot } = {
+            tool_call: doc.tool_call,
+            ast,
+        };
+        if (doc.descriptors !== undefined) {
+            output.descriptors = doc.descriptors;
+        }
+        const yaml = stringifyYaml(output, { lineWidth: 0 });
+        await writeFile(yamlPath, yaml);
+        process.stdout.write(`wrote ${astDirectory}/${entry.name}/index.yaml\n`);
+    }
+}
+
 // generateBashExamples writes one fixture per entry in BASH_SPECS to its own subdirectory
 // (examples/bash/<name>/index.yaml), with the expected AST produced by the live parser.
 async function generateBashExamples(): Promise<void> {
@@ -233,5 +327,6 @@ async function generateDiagrams(): Promise<void> {
     }
 }
 
+await generateAstExamples();
 await generateBashExamples();
 await generateDiagrams();

@@ -5,5 +5,4 @@ ast:
   options: {}
   cmd: FOO=bar
   envPrefix: {}
-  redirects: []
   raw: export FOO=bar

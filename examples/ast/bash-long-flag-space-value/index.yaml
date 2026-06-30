@@ -1,18 +1,10 @@
 tool_call:
   tool_name: Bash
   tool_input:
-    command: "kubectl delete --context prod-cluster"
-descriptors:
-  kubectl:
-    description: "Kubernetes CLI"
-    flags:
-      context:
-        arity: 1
-        kind: string
-        description: "Kubernetes context name"
+    command: kubectl delete --context prod-cluster
 ast:
   type: bash
-  raw: "kubectl delete --context prod-cluster"
+  raw: kubectl delete --context prod-cluster
   ast:
     type: command
     binary: kubectl
@@ -20,5 +12,12 @@ ast:
       context: prod-cluster
     cmd: delete
     envPrefix: {}
-    redirects: []
-    raw: "kubectl delete --context prod-cluster"
+    raw: kubectl delete --context prod-cluster
+descriptors:
+  kubectl:
+    description: Kubernetes CLI
+    flags:
+      context:
+        arity: 1
+        kind: string
+        description: Kubernetes context name

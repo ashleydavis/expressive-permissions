@@ -6,5 +6,4 @@ ast:
   cmd: []
   envPrefix:
     FOO: bar
-  redirects: []
   raw: FOO=bar cmd

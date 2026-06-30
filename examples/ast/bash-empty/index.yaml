@@ -11,5 +11,4 @@ ast:
     options: {}
     cmd: []
     envPrefix: {}
-    redirects: []
     raw: ""

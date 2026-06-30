@@ -9025,6 +9025,19 @@ function peek(state) {
 function consume(state) {
   return state.tokens[state.pos++];
 }
+function wrapRedirectNodes(command, redirects) {
+  let node = command;
+  for (const redirect of redirects) {
+    const redirectNode = {
+      type: "redirect",
+      op: redirect.op,
+      command: node,
+      target: redirect.target
+    };
+    node = redirectNode;
+  }
+  return node;
+}
 function parseCommand(state, descriptors) {
   const envPrefix = {};
   const redirects = [];
@@ -9085,13 +9098,12 @@ function parseCommand(state, descriptors) {
     options: argv.options,
     cmd: argv.cmd,
     envPrefix,
-    redirects,
     raw
   };
   if (substitutions.length > 0) {
     command.substitutions = substitutions;
   }
-  return command;
+  return wrapRedirectNodes(command, redirects);
 }
 function extractSubstitutions(text) {
   const results = [];
@@ -9177,7 +9189,7 @@ function parseWhileLoop(state, descriptors) {
       type: "while_loop",
       until,
       condition,
-      body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "" },
+      body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, raw: "" },
       raw: state.raw.substring(startPos, peek(state)?.start ?? state.raw.length)
     };
   }
@@ -9288,7 +9300,7 @@ function parseForLoop(state, descriptors) {
       type: "for_loop",
       variable: "",
       items: [],
-      body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "" },
+      body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, raw: "" },
       raw: state.raw.substring(startPos, forToken.end)
     };
   }
@@ -9306,7 +9318,7 @@ function parseForLoop(state, descriptors) {
       type: "for_loop",
       variable,
       items,
-      body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "" },
+      body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, raw: "" },
       raw: state.raw.substring(startPos, peek(state)?.start ?? state.raw.length)
     };
   }
@@ -9427,7 +9439,7 @@ function parseSequence(state, descriptors) {
 function parseBash(raw, descriptors) {
   const trimmed = raw.trim();
   if (trimmed.length === 0) {
-    return { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "" };
+    return { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, raw: "" };
   }
   const tokens = lex(raw);
   const state = { tokens, pos: 0, raw };
@@ -9455,7 +9467,6 @@ function parseXargsCommand(raw, descriptors) {
     options: {},
     cmd: [],
     envPrefix: {},
-    redirects: [],
     raw: ""
   };
   let index = 1;
@@ -9512,11 +9523,8 @@ function parseXargsCommand(raw, descriptors) {
   }
   const subcmdStart = tokens[index].start;
   const subcmdRaw = raw.substring(subcmdStart);
-  const result = parseBash(subcmdRaw, descriptors);
-  if (result.type === "command") {
-    return { options, child: result };
-  }
-  return { options, child: emptyCommand };
+  const child = parseBash(subcmdRaw, descriptors);
+  return { options, child };
 }
 function transformXargsNodes(node, descriptors) {
   if (node.type === "command") {
@@ -9538,6 +9546,12 @@ function transformXargsNodes(node, descriptors) {
       return transformed;
     }
     return node;
+  }
+  if (node.type === "redirect") {
+    return {
+      ...node,
+      command: transformXargsNodes(node.command, descriptors)
+    };
   }
   if (node.type === "binop") {
     return {
@@ -9617,6 +9631,8 @@ function describeNode(node) {
       return node.raw;
     case "xargs":
       return node.raw;
+    case "redirect":
+      return describeNode(node.command);
     case "binop":
       return `${describeNode(node.left)} ${node.op} ${describeNode(node.right)}`;
     case "for_loop":
@@ -9866,7 +9882,7 @@ function logConfigLoad(logger, displayPath, ruleCount) {
 // src/interpret.ts
 var ASK = { action: "ask" };
 function isLeaf(node) {
-  return node.type !== "binop" && node.type !== "bash" && node.type !== "for_loop" && node.type !== "while_loop" && node.type !== "xargs" && node.type !== "if_statement" && node.type !== "group" && node.type !== "case_statement";
+  return node.type !== "binop" && node.type !== "bash" && node.type !== "for_loop" && node.type !== "while_loop" && node.type !== "xargs" && node.type !== "if_statement" && node.type !== "group" && node.type !== "case_statement" && node.type !== "redirect";
 }
 function aggregateChildren(childIAnnotations) {
   for (const annotation of childIAnnotations) {
@@ -9923,6 +9939,13 @@ function walkChildren(node, env, call, logger, registry, leafEvaluations) {
   }
   if (node.type === "xargs") {
     const childResult = interpret(node.child, env, call, logger, registry, leafEvaluations);
+    return {
+      childIAnnotations: [childResult.annotation],
+      envOut: childResult.envOut
+    };
+  }
+  if (node.type === "redirect") {
+    const childResult = interpret(node.command, env, call, logger, registry, leafEvaluations);
     return {
       childIAnnotations: [childResult.annotation],
       envOut: childResult.envOut
@@ -10098,6 +10121,21 @@ import { join as join3 } from "path";
 import { resolve } from "path";
 
 // src/types.ts
+var REDIRECT_OUT_OPS = new Set([">", ">>", "2>", "&>"]);
+var REDIRECT_IN_OPS = new Set(["<"]);
+function isRedirectFdMerge(node) {
+  if (node.op === "2>&") {
+    return true;
+  }
+  return /^\d$/.test(node.target);
+}
+function findInnerCommand(node) {
+  let current = node;
+  while (current.type === "redirect") {
+    current = current.command;
+  }
+  return current;
+}
 var ABSTAIN = { decision: { action: "abstain" } };
 var RANK = {
   abstain: 0,
@@ -10341,6 +10379,9 @@ function simWalkEnv(node, env, leafContextMap) {
   if (node.type === "xargs") {
     return simWalkEnv(node.child, env, leafContextMap);
   }
+  if (node.type === "redirect") {
+    return simWalkEnv(node.command, env, leafContextMap);
+  }
   if (node.type === "for_loop") {
     let lastEnv = env;
     for (const item of node.items) {
@@ -10469,6 +10510,10 @@ function appendTreeLines(node, prefix, isLast, leafOutcomeMap, leafContextMap, h
   }
   if (node.type === "xargs") {
     appendTreeLines(node.child, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
+    return;
+  }
+  if (node.type === "redirect") {
+    appendTreeLines(node.command, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
     return;
   }
   if (node.type === "while_loop") {
@@ -10883,7 +10928,7 @@ import { join as join4, resolve as resolve2 } from "path";
 import { homedir } from "os";
 var import_picomatch = __toESM(require_picomatch2(), 1);
 var KNOWN_FIELDS = new Set(["decide", "reason", "rules", "not", "file", "cmd", "cmd-in", "options", "options-in", "cwd", "cwd-in", "cwd_resolved", "env", "path", "path-in", "host", "host-in", "tool", "tool-in", "sourceLine", "sourceFile"]);
-var KNOWN_SECTIONS = new Set(["bash", "read", "write", "edit", "multi_edit", "webfetch"]);
+var KNOWN_SECTIONS = new Set(["bash", "read", "write", "edit", "multi_edit", "webfetch", "redirect"]);
 var VALID_DECIDE_VALUES = new Set(["allow", "deny", "ask", "abstain"]);
 function normalizeToList(value) {
   if (Array.isArray(value)) {
@@ -11166,6 +11211,15 @@ function runSubRules(subRules, node, env, call) {
   }
   return result;
 }
+function runFirstMatchSubRules(subRules, node, env, call) {
+  for (const subRule of subRules) {
+    const outcome = subRule(node, env, call);
+    if (outcome.decision.action !== "abstain") {
+      return outcome;
+    }
+  }
+  return ABSTAIN;
+}
 function buildBashScopedRule(binary, subcommandPath, entry) {
   const subRules = compileBashBinary(binary, entry.rules, subcommandPath);
   const pathLabel = subcommandPath.length > 0 ? `:${subcommandPath.join(":")}` : "";
@@ -11277,6 +11331,16 @@ function notFieldsAllMatch(not, node, env, cmdOffset) {
       return false;
     }
   }
+  if (node.type === "redirect" && (not.path !== undefined || not["path-in"] !== undefined)) {
+    const redirectNode = node;
+    if (isRedirectFdMerge(redirectNode)) {
+      return false;
+    }
+    const redirectKind = REDIRECT_OUT_OPS.has(redirectNode.op) ? "out" : "in";
+    if (!matchesRedirectPathFields(not, redirectNode, env, redirectKind)) {
+      return false;
+    }
+  }
   return true;
 }
 function matchesFileEntry(nodeType, entry, node, env) {
@@ -11373,6 +11437,285 @@ function buildWebFetchRule(entry) {
   rule.ruleFile = entry.sourceFile;
   rule.ruleLine = entry.sourceLine;
   return rule;
+}
+var EMPTY_DESCRIPTORS = new Map;
+function resolveRedirectTarget(target, env) {
+  let expanded = expandEnvVars(target, env.env);
+  if (expanded.startsWith("~")) {
+    return homedir() + expanded.slice(1);
+  }
+  if (expanded.startsWith("/")) {
+    return expanded;
+  }
+  return resolve2(env.cwd, expanded);
+}
+function matchesRedirectPath(pattern, target, env) {
+  const resolvedTarget = resolveRedirectTarget(target, env);
+  if (!isCmdPathPattern(pattern)) {
+    return matchesPattern(pattern, resolvedTarget);
+  }
+  return matchesPathGlob(pattern, resolvedTarget);
+}
+function matchesRedirectTargets(patterns, targets, env) {
+  for (const target of targets) {
+    const matched = patterns.some((pattern) => matchesRedirectPath(pattern, target, env));
+    if (!matched) {
+      return false;
+    }
+  }
+  return true;
+}
+function collectRedirectsByInnerRaw(root, innerRaw) {
+  const chain = [];
+  function walk(node) {
+    if (node.type === "redirect") {
+      if (findInnerCommand(node).raw === innerRaw) {
+        chain.push(node);
+      }
+      walk(node.command);
+    } else if (node.type === "binop") {
+      walk(node.left);
+      walk(node.right);
+    } else if (node.type === "for_loop" || node.type === "group") {
+      walk(node.body);
+    } else if (node.type === "while_loop") {
+      walk(node.condition);
+      walk(node.body);
+    } else if (node.type === "if_statement") {
+      walk(node.condition);
+      walk(node.thenBranch);
+      if (node.elseBranch !== undefined) {
+        walk(node.elseBranch);
+      }
+    } else if (node.type === "case_statement") {
+      for (const clause of node.clauses) {
+        walk(clause.body);
+      }
+    } else if (node.type === "xargs") {
+      walk(node.child);
+    } else if (node.type === "command" && node.substitutions !== undefined) {
+      for (const substitution of node.substitutions) {
+        walk(substitution);
+      }
+    }
+  }
+  walk(root);
+  return chain;
+}
+function getBashAstFromCall(call) {
+  if (call.tool_name !== "Bash" && call.tool_name !== "Shell") {
+    return null;
+  }
+  const command = call.tool_input.command;
+  if (typeof command !== "string") {
+    return null;
+  }
+  return parseBash(command, EMPTY_DESCRIPTORS);
+}
+function collectRedirectFileTargetsForNode(node, call, ops) {
+  const bashAst = getBashAstFromCall(call);
+  if (bashAst === null) {
+    return [];
+  }
+  const innerRaw = findInnerCommand(node).raw;
+  const chain = collectRedirectsByInnerRaw(bashAst, innerRaw);
+  const targets = [];
+  for (const redirectNode of chain) {
+    if (!ops.has(redirectNode.op)) {
+      continue;
+    }
+    if (isRedirectFdMerge(redirectNode)) {
+      continue;
+    }
+    targets.push(redirectNode.target);
+  }
+  return targets;
+}
+function matchesRedirectPathFields(entry, node, env, kind) {
+  const ops = kind === "out" ? REDIRECT_OUT_OPS : REDIRECT_IN_OPS;
+  if (!ops.has(node.op)) {
+    return false;
+  }
+  if (isRedirectFdMerge(node)) {
+    return false;
+  }
+  if (entry["path-in"] !== undefined) {
+    return matchesRedirectTargets(entry["path-in"], [node.target], env);
+  }
+  if (entry.path !== undefined) {
+    return matchesRedirectPath(entry.path, node.target, env);
+  }
+  return true;
+}
+function matchesRedirectOut(entry, node, env, call) {
+  if (!REDIRECT_OUT_OPS.has(node.op)) {
+    return false;
+  }
+  if (isRedirectFdMerge(node)) {
+    return false;
+  }
+  if (entry["path-in"] !== undefined || entry.path !== undefined) {
+    const targets = collectRedirectFileTargetsForNode(node, call, REDIRECT_OUT_OPS);
+    if (targets.length === 0) {
+      return false;
+    }
+    if (entry["path-in"] !== undefined) {
+      if (!matchesRedirectTargets(entry["path-in"], targets, env)) {
+        return false;
+      }
+    } else if (entry.path !== undefined) {
+      for (const target of targets) {
+        if (!matchesRedirectPath(entry.path, target, env)) {
+          return false;
+        }
+      }
+    }
+  }
+  if (!matchesCwd(entry, env)) {
+    return false;
+  }
+  if (!matchesCwdResolved(entry, env)) {
+    return false;
+  }
+  if (!matchesEnvVars(entry, env)) {
+    return false;
+  }
+  if (!matchesFileField(entry)) {
+    return false;
+  }
+  if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, 0)) {
+    return false;
+  }
+  return true;
+}
+function matchesRedirectIn(entry, node, env, call) {
+  if (!REDIRECT_IN_OPS.has(node.op)) {
+    return false;
+  }
+  if (isRedirectFdMerge(node)) {
+    return false;
+  }
+  if (entry["path-in"] !== undefined || entry.path !== undefined) {
+    const targets = collectRedirectFileTargetsForNode(node, call, REDIRECT_IN_OPS);
+    if (targets.length === 0) {
+      return false;
+    }
+    if (entry["path-in"] !== undefined) {
+      if (!matchesRedirectTargets(entry["path-in"], targets, env)) {
+        return false;
+      }
+    } else if (entry.path !== undefined) {
+      for (const target of targets) {
+        if (!matchesRedirectPath(entry.path, target, env)) {
+          return false;
+        }
+      }
+    }
+  }
+  if (!matchesCwd(entry, env)) {
+    return false;
+  }
+  if (!matchesCwdResolved(entry, env)) {
+    return false;
+  }
+  if (!matchesEnvVars(entry, env)) {
+    return false;
+  }
+  if (!matchesFileField(entry)) {
+    return false;
+  }
+  if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, 0)) {
+    return false;
+  }
+  return true;
+}
+function buildRedirectRule(kind, entry) {
+  const decision = mapDecision(entry.decide, entry.reason);
+  const ruleName = `yaml:redirect:${kind}:${entry.decide}`;
+  const rule = function(node, env, call) {
+    if (node.type !== "redirect") {
+      return ABSTAIN;
+    }
+    const redirectNode = node;
+    const matched = kind === "out" ? matchesRedirectOut(entry, redirectNode, env, call) : matchesRedirectIn(entry, redirectNode, env, call);
+    if (!matched) {
+      return ABSTAIN;
+    }
+    return { decision };
+  };
+  Object.defineProperty(rule, "name", { value: ruleName });
+  rule.ruleFile = entry.sourceFile;
+  rule.ruleLine = entry.sourceLine;
+  return rule;
+}
+function buildRedirectScopedRule(kind, entry) {
+  const subRules = compileRedirectEntries(kind, entry.rules);
+  const ruleName = `yaml:redirect:${kind}:scoped`;
+  const rule = function(node, env, call) {
+    if (node.type !== "redirect") {
+      return ABSTAIN;
+    }
+    const redirectNode = node;
+    const matched = kind === "out" ? matchesRedirectOut(entry, redirectNode, env, call) : matchesRedirectIn(entry, redirectNode, env, call);
+    if (!matched) {
+      return ABSTAIN;
+    }
+    return runFirstMatchSubRules(subRules, node, env, call);
+  };
+  Object.defineProperty(rule, "name", { value: ruleName });
+  rule.ruleFile = entry.sourceFile;
+  rule.ruleLine = entry.sourceLine;
+  return rule;
+}
+function compileRedirectEntries(kind, entries) {
+  return compileEntries(entries, (entry) => buildRedirectRule(kind, entry), (entry) => buildRedirectScopedRule(kind, entry));
+}
+function buildRedirectOrderedRule(kind, entries) {
+  const subRules = compileRedirectEntries(kind, entries);
+  const ruleName = `yaml:redirect:${kind}:ordered`;
+  const rule = function(node, env, call) {
+    if (node.type !== "redirect") {
+      return ABSTAIN;
+    }
+    return runFirstMatchSubRules(subRules, node, env, call);
+  };
+  Object.defineProperty(rule, "name", { value: ruleName });
+  if (entries.length > 0) {
+    rule.ruleFile = entries[0].sourceFile;
+    rule.ruleLine = entries[0].sourceLine;
+  }
+  return rule;
+}
+function compileRedirectSection(redirectSection) {
+  const compiledRules = [];
+  if (redirectSection.out !== undefined) {
+    compiledRules.push(buildRedirectOrderedRule("out", normalizeToList(redirectSection.out)));
+  }
+  if (redirectSection.in !== undefined) {
+    compiledRules.push(buildRedirectOrderedRule("in", normalizeToList(redirectSection.in)));
+  }
+  return compiledRules;
+}
+function resolveEntryRedirectPatterns(entry, projectDir) {
+  if (typeof entry.path === "string") {
+    entry.path = resolveCmdPathPattern(entry.path, projectDir);
+  }
+  if (Array.isArray(entry["path-in"])) {
+    entry["path-in"] = entry["path-in"].map((pattern) => resolveCmdPathPattern(pattern, projectDir));
+  }
+  if (entry.not !== undefined) {
+    if (typeof entry.not.path === "string") {
+      entry.not.path = resolveCmdPathPattern(entry.not.path, projectDir);
+    }
+    if (Array.isArray(entry.not["path-in"])) {
+      entry.not["path-in"] = entry.not["path-in"].map((pattern) => resolveCmdPathPattern(pattern, projectDir));
+    }
+  }
+  if (Array.isArray(entry.rules)) {
+    for (const subEntry of entry.rules) {
+      resolveEntryRedirectPatterns(subEntry, projectDir);
+    }
+  }
 }
 function matchesMcpEntry(entry, node, env) {
   if (node.type !== "other") {
@@ -11610,6 +11953,18 @@ function resolveRelativeCwdPatterns(config, baseDir) {
       }
     }
   }
+  if (config.redirect !== undefined) {
+    if (config.redirect.out !== undefined) {
+      for (const entry of normalizeToList(config.redirect.out)) {
+        resolveEntryCwdPatterns(entry, baseDir);
+      }
+    }
+    if (config.redirect.in !== undefined) {
+      for (const entry of normalizeToList(config.redirect.in)) {
+        resolveEntryCwdPatterns(entry, baseDir);
+      }
+    }
+  }
   const toolNameOptions = { isToolNameEntry: true };
   for (const key of Object.keys(config)) {
     if (KNOWN_SECTIONS.has(key)) {
@@ -11698,6 +12053,18 @@ function resolveRelativeCmdPatterns(config, projectDir) {
     if (sectionValue !== undefined) {
       for (const entry of normalizeToList(sectionValue)) {
         resolveEntryCmdPatterns(entry, projectDir);
+      }
+    }
+  }
+  if (config.redirect !== undefined) {
+    if (config.redirect.out !== undefined) {
+      for (const entry of normalizeToList(config.redirect.out)) {
+        resolveEntryRedirectPatterns(entry, projectDir);
+      }
+    }
+    if (config.redirect.in !== undefined) {
+      for (const entry of normalizeToList(config.redirect.in)) {
+        resolveEntryRedirectPatterns(entry, projectDir);
       }
     }
   }
@@ -11823,6 +12190,18 @@ function expandConfigEnvTokens(config, projectDir, homeDir, displayFile) {
       }
     }
   }
+  if (config.redirect !== undefined) {
+    if (config.redirect.out !== undefined) {
+      for (const entry of normalizeToList(config.redirect.out)) {
+        expandEntryEnvTokens(entry, projectDir, homeDir, displayFile, warnings);
+      }
+    }
+    if (config.redirect.in !== undefined) {
+      for (const entry of normalizeToList(config.redirect.in)) {
+        expandEntryEnvTokens(entry, projectDir, homeDir, displayFile, warnings);
+      }
+    }
+  }
   const toolNameOptions = { isToolNameEntry: true };
   for (const key of Object.keys(config)) {
     if (KNOWN_SECTIONS.has(key)) {
@@ -11896,6 +12275,9 @@ function validateEntry(entry, path, errors2, options) {
     errors2.push({ path, message: `expected a rule entry object but got ${Array.isArray(entry) ? "array" : typeof entry}` });
     return;
   }
+  if (path.startsWith("bash.") && (entry.path !== undefined || entry["path-in"] !== undefined)) {
+    errors2.push({ path, message: "path and path-in are not valid on bash: entries; use redirect.out or redirect.in for redirect path policy" });
+  }
   if (entry.decide !== undefined && !VALID_DECIDE_VALUES.has(entry.decide)) {
     errors2.push({ path: `${path}.decide`, message: `invalid decide value '${entry.decide}': must be one of allow, deny, ask, abstain` });
   }
@@ -11959,6 +12341,20 @@ function validateConfig(config) {
       validateEntry(entries[index], `${section}[${index}]`, errors2);
     }
   }
+  if (config.redirect !== undefined) {
+    if (config.redirect.out !== undefined) {
+      const outEntries = normalizeToList(config.redirect.out);
+      for (let index = 0;index < outEntries.length; index++) {
+        validateEntry(outEntries[index], `redirect.out[${index}]`, errors2);
+      }
+    }
+    if (config.redirect.in !== undefined) {
+      const inEntries = normalizeToList(config.redirect.in);
+      for (let index = 0;index < inEntries.length; index++) {
+        validateEntry(inEntries[index], `redirect.in[${index}]`, errors2);
+      }
+    }
+  }
   const toolNameOptions = { isToolNameEntry: true };
   for (const key of Object.keys(config)) {
     if (KNOWN_SECTIONS.has(key)) {
@@ -11989,6 +12385,9 @@ function compileConfig(config) {
     compiledRules.push(...compileBashSection(config.bash));
   }
   compiledRules.push(...compileNonBashSections(config));
+  if (config.redirect !== undefined) {
+    compiledRules.push(...compileRedirectSection(config.redirect));
+  }
   compiledRules.push(...compileTopLevelToolRules(config));
   return compiledRules;
 }

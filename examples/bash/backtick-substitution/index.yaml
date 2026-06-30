@@ -5,7 +5,6 @@ ast:
   options: {}
   cmd: "`cat list`"
   envPrefix: {}
-  redirects: []
   raw: rm `cat list`
   substitutions:
     - type: command
@@ -13,5 +12,4 @@ ast:
       options: {}
       cmd: list
       envPrefix: {}
-      redirects: []
       raw: cat list

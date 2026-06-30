@@ -51,11 +51,6 @@ test("makeCommand: envPrefix is set correctly", () => {
     expect(cmd.envPrefix).toEqual({ NODE_ENV: "test" });
 });
 
-test("makeCommand: redirects is always an empty array", () => {
-    const cmd = makeCommand("ls", {}, [], {});
-    expect(cmd.redirects).toEqual([]);
-});
-
 test("makeCommand: raw is binary and positionals joined", () => {
     const cmd = makeCommand("cd", {}, ["/etc"], {});
     expect(cmd.raw).toBe("cd /etc");

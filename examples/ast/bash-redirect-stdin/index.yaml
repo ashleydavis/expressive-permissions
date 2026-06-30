@@ -1,0 +1,18 @@
+tool_call:
+  tool_name: Bash
+  tool_input:
+    command: cat < in.txt
+ast:
+  type: bash
+  raw: cat < in.txt
+  ast:
+    type: redirect
+    op: <
+    command:
+      type: command
+      binary: cat
+      options: {}
+      cmd: []
+      envPrefix: {}
+      raw: cat < in.txt
+    target: in.txt

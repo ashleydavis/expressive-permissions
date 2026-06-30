@@ -17,7 +17,6 @@ ast:
         options: {}
         cmd: /tmp
         envPrefix: {}
-        redirects: []
         raw: cd /tmp
       right:
         type: command
@@ -27,6 +26,5 @@ ast:
           f: true
         cmd: build
         envPrefix: {}
-        redirects: []
         raw: rm -rf build
     raw: (cd /tmp && rm -rf build)

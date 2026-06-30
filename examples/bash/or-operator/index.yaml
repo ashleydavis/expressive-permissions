@@ -8,7 +8,6 @@ ast:
     options: {}
     cmd: []
     envPrefix: {}
-    redirects: []
     raw: make
   right:
     type: command
@@ -16,5 +15,4 @@ ast:
     options: {}
     cmd: failed
     envPrefix: {}
-    redirects: []
     raw: echo failed

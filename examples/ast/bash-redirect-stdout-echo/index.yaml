@@ -1,0 +1,18 @@
+tool_call:
+  tool_name: Bash
+  tool_input:
+    command: echo foo > bar.txt
+ast:
+  type: bash
+  raw: echo foo > bar.txt
+  ast:
+    type: redirect
+    op: ">"
+    command:
+      type: command
+      binary: echo
+      options: {}
+      cmd: foo
+      envPrefix: {}
+      raw: echo foo > bar.txt
+    target: bar.txt

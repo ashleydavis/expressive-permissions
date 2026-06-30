@@ -17,7 +17,6 @@ ast:
         options: {}
         cmd: start
         envPrefix: {}
-        redirects: []
         raw: echo start
       right:
         type: command
@@ -25,6 +24,5 @@ ast:
         options: {}
         cmd: all
         envPrefix: {}
-        redirects: []
         raw: make all
     raw: "{ echo start; make all; }"

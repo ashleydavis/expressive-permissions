@@ -11,7 +11,6 @@ ast:
       options: {}
       cmd: a
       envPrefix: {}
-      redirects: []
       raw: echo a
     right:
       type: command
@@ -19,6 +18,5 @@ ast:
       options: {}
       cmd: b
       envPrefix: {}
-      redirects: []
       raw: echo b
   raw: "{ echo a; echo b; }"

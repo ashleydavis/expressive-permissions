@@ -1,0 +1,17 @@
+description: "redirect.in: allow read under project dir"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "cat < ./file.txt"
+  cwd: ${PROJECT_DIR}
+
+rules:
+  redirect:
+    in:
+      - path-in: ["./**"]
+        decide: allow
+      - decide: ask
+
+expected:
+  decision: allow

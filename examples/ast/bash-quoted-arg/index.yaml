@@ -1,15 +1,14 @@
 tool_call:
   tool_name: Bash
   tool_input:
-    command: 'echo "hello world"'
+    command: echo "hello world"
 ast:
   type: bash
-  raw: 'echo "hello world"'
+  raw: echo "hello world"
   ast:
     type: command
     binary: echo
     options: {}
     cmd: hello world
     envPrefix: {}
-    redirects: []
-    raw: 'echo "hello world"'
+    raw: echo "hello world"

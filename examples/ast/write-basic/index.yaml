@@ -2,7 +2,7 @@ tool_call:
   tool_name: Write
   tool_input:
     file_path: /tmp/out.txt
-    content: "hello world"
+    content: hello world
 ast:
   type: write
   file_path: /tmp/out.txt

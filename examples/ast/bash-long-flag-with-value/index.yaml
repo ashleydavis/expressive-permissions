@@ -1,10 +1,10 @@
 tool_call:
   tool_name: Bash
   tool_input:
-    command: "git push --remote=origin"
+    command: git push --remote=origin
 ast:
   type: bash
-  raw: "git push --remote=origin"
+  raw: git push --remote=origin
   ast:
     type: command
     binary: git
@@ -12,5 +12,4 @@ ast:
       remote: origin
     cmd: push
     envPrefix: {}
-    redirects: []
-    raw: "git push --remote=origin"
+    raw: git push --remote=origin

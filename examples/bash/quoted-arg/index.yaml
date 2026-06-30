@@ -5,5 +5,4 @@ ast:
   options: {}
   cmd: hello world
   envPrefix: {}
-  redirects: []
   raw: echo "hello world"

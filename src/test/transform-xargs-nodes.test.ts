@@ -1,14 +1,14 @@
 import { transformXargsNodes } from "../build-ast";
-import { BashAstNode, ICommand, IBinOp, IForLoop, IXargsNode } from "../types";
+import { BashAstNode, ICommand, IBinOp, IForLoop, IXargsNode, findInnerCommand } from "../types";
 
 // makeCommand builds a minimal ICommand node.
 function makeCommand(binary: string): ICommand {
-    return { type: "command", binary, options: {}, cmd: [], envPrefix: {}, redirects: [], raw: binary };
+    return { type: "command", binary, options: {}, cmd: [], envPrefix: {}, raw: binary };
 }
 
 // makeXargsCommand builds a minimal ICommand node with binary "xargs" and a raw string.
 function makeXargsCommand(raw: string): ICommand {
-    return { type: "command", binary: "xargs", options: {}, cmd: [], envPrefix: {}, redirects: [], raw };
+    return { type: "command", binary: "xargs", options: {}, cmd: [], envPrefix: {}, raw };
 }
 
 // ---------------------------------------------------------------------------
@@ -49,14 +49,14 @@ test("transformed IXargsNode preserves raw from original command", () => {
 test("transformed IXargsNode child has correct binary", () => {
     const node = makeXargsCommand("xargs rm -f");
     const result = transformXargsNodes(node, new Map()) as IXargsNode;
-    expect(result.child.binary).toBe("rm");
+    expect(findInnerCommand(result.child).binary).toBe("rm");
 });
 
 test("bare xargs command produces IXargsNode with empty child binary", () => {
     const node = makeXargsCommand("xargs");
     const result = transformXargsNodes(node, new Map()) as IXargsNode;
     expect(result.type).toBe("xargs");
-    expect(result.child.binary).toBe("");
+    expect(findInnerCommand(result.child).binary).toBe("");
 });
 
 // ---------------------------------------------------------------------------

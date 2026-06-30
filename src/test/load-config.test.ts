@@ -1,9 +1,10 @@
 import { mkdirSync, writeFileSync, rmSync, mkdtempSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { loadConfigRules, loadConfigRulesFromFile, loadHomeConfigRules, loadProjectConfigRules, validateConfig, resolveCwdPattern, resolveEntryCwdPatterns, resolveRelativeCwdPatterns, isCmdPathPattern, resolveCmdPathPattern, resolveEntryCmdPatterns, resolveRelativeCmdPatterns, expandEntryEnvTokens, expandConfigEnvTokens, aggregateOutcomes, buildBashScopedRule, buildFileScopedRule, notFieldsAllMatch, evaluateFileField, matchesFileField, lineOfOffset, annotateLines, compileTopLevelToolRules, discoverConfigDirFiles, discoverHomeConfigDirFiles, discoverProjectConfigDirFiles, makeConfigFileLoader, expandEnvVars, IYamlEntry, IYamlConfig, INotFields, IFileMatch, IConfigError, IConfigFileSource } from "../load-config";
+import { loadConfigRules, loadConfigRulesFromFile, loadHomeConfigRules, loadProjectConfigRules, validateConfig, resolveCwdPattern, resolveEntryCwdPatterns, resolveRelativeCwdPatterns, isCmdPathPattern, resolveCmdPathPattern, resolveEntryCmdPatterns, resolveRelativeCmdPatterns, expandEntryEnvTokens, expandConfigEnvTokens, aggregateOutcomes, buildBashScopedRule, buildFileScopedRule, notFieldsAllMatch, evaluateFileField, matchesFileField, lineOfOffset, annotateLines, compileTopLevelToolRules, discoverConfigDirFiles, discoverHomeConfigDirFiles, discoverProjectConfigDirFiles, makeConfigFileLoader, expandEnvVars, resolveRedirectTarget, IYamlEntry, IYamlConfig, INotFields, IFileMatch, IConfigError, IConfigFileSource } from "../load-config";
 import { parseDocument } from "yaml";
-import { IRule, IRuleOutcome, AstNode, IEnvironment, IToolCall, ICommand } from "../types";
+import { parseBash } from "../parse-bash";
+import { IRule, IRuleOutcome, AstNode, IEnvironment, IToolCall, ICommand, IRedirectNode } from "../types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -19,7 +20,7 @@ const dummyCall: IToolCall = { tool_name: "Bash", tool_input: { command: "" }, c
 
 // Builds a Command node
 function makeCommand(binary: string, cmd: string | string[], namedOptions: Record<string, string | boolean> = {}): ICommand {
-    return { type: "command", binary, options: namedOptions, cmd, envPrefix: {}, redirects: [], raw: binary };
+    return { type: "command", binary, options: namedOptions, cmd, envPrefix: {}, raw: binary };
 }
 
 // Runs the first rule and returns its decision action
@@ -3889,7 +3890,7 @@ test("loadConfigRulesFromFile: compiles rules from an existing file", () => {
     writeFileSync(filePath, "bash:\n  ls:\n    decide: allow\n", "utf-8");
     const rules = loadConfigRulesFromFile(filePath, "test.yaml", tmpDir);
     expect(rules.length).toBeGreaterThan(0);
-    const node = { type: "command" as const, binary: "ls", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "ls" };
+    const node = { type: "command" as const, binary: "ls", options: {}, cmd: [], envPrefix: {}, raw: "ls" };
     const env = { cwd: tmpDir, cwdResolved: true, env: {} };
     const call: IToolCall = { tool_name: "Bash", tool_input: { command: "ls" }, cwd: tmpDir };
     const result = rules[0](node, env, call);
@@ -3906,7 +3907,7 @@ test("loadConfigRulesFromFile: ${{PROJECT_DIR}} token in cmd is expanded and mat
     const TOK = "${{PROJECT_DIR}}";
     writeFileSync(filePath, `bash:\n  find:\n    cmd: "${TOK}/**"\n    decide: allow\n`, "utf-8");
     const rules = loadConfigRulesFromFile(filePath, "test.yaml", tmpDir);
-    const node = { type: "command" as const, binary: "find", options: {}, cmd: [join(tmpDir, "src")], envPrefix: {}, redirects: [], raw: "find" };
+    const node = { type: "command" as const, binary: "find", options: {}, cmd: [join(tmpDir, "src")], envPrefix: {}, raw: "find" };
     const env = { cwd: tmpDir, cwdResolved: true, env: {} };
     const call: IToolCall = { tool_name: "Bash", tool_input: { command: "find" }, cwd: tmpDir };
     const result = rules[0](node, env, call);
@@ -4160,7 +4161,7 @@ test("compileTopLevelToolRules direct unit test: produces rules for tool keys on
     expect(rules).toHaveLength(2);
     const grepNode: AstNode = { type: "other", tool_name: "Grep", tool_input: {} };
     const agentNode: AstNode = { type: "other", tool_name: "Agent", tool_input: {} };
-    const lsNode: AstNode = { type: "command", binary: "ls", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "ls" };
+    const lsNode: AstNode = { type: "command", binary: "ls", options: {}, cmd: [], envPrefix: {}, raw: "ls" };
     const grepActions = rules.map((rule) => rule(grepNode, makeEnv(), dummyCall).decision.action);
     const agentActions = rules.map((rule) => rule(agentNode, makeEnv(), dummyCall).decision.action);
     const lsActions = rules.map((rule) => rule(lsNode, makeEnv(), dummyCall).decision.action);
@@ -4873,4 +4874,138 @@ bash:
         const envNoVar = makeEnv("/elsewhere", true, {});
         expect(rules[0](node, envNoVar, dummyCall).decision.action).toBe("abstain");
     });
+});
+
+// ---------------------------------------------------------------------------
+// Redirect path rules
+// ---------------------------------------------------------------------------
+
+const EMPTY_DESCRIPTORS = new Map();
+
+function makeBashCall(command: string, cwd: string): IToolCall {
+    return { tool_name: "Bash", tool_input: { command }, cwd };
+}
+
+function findRedirectRule(rules: IRule[], command: string, cwd: string, node: IRedirectNode): IRule | undefined {
+    const env = makeEnv(cwd);
+    const call = makeBashCall(command, cwd);
+    return rules.find((rule) => rule(node, env, call).decision.action !== "abstain");
+}
+
+test("resolveRedirectTarget: relative path resolved against env.cwd", () => {
+    expect(resolveRedirectTarget("out.txt", makeEnv("/project/src"))).toBe("/project/src/out.txt");
+});
+
+test("resolveRedirectTarget: absolute path unchanged", () => {
+    expect(resolveRedirectTarget("/tmp/out.txt", makeEnv("/project"))).toBe("/tmp/out.txt");
+});
+
+test("matchesRedirectOut: allow when redirect target matches path-in", () => {
+    const yaml = `
+redirect:
+  out:
+    - path-in: ["/tmp/**"]
+      decide: allow
+`;
+    const command = "echo hi > /tmp/out.txt";
+    withYamlFixtures(null, yaml, (rules) => {
+        const node = parseBash(command, EMPTY_DESCRIPTORS) as IRedirectNode;
+        const matched = findRedirectRule(rules, command, "/project", node);
+        expect(matched).toBeDefined();
+        expect(matched!(node, makeEnv("/project"), makeBashCall(command, "/project")).decision.action).toBe("allow");
+    });
+});
+
+test("matchesRedirectOut: ask when redirect target outside path-in", () => {
+    const yaml = `
+redirect:
+  out:
+    - path-in: ["/tmp/**"]
+      decide: allow
+    - decide: ask
+`;
+    const command = "echo hi > /etc/passwd";
+    withYamlFixtures(null, yaml, (rules) => {
+        const node = parseBash(command, EMPTY_DESCRIPTORS) as IRedirectNode;
+        const matched = findRedirectRule(rules, command, "/project", node);
+        expect(matched).toBeDefined();
+        expect(matched!(node, makeEnv("/project"), makeBashCall(command, "/project")).decision.action).toBe("ask");
+    });
+});
+
+test("matchesRedirectOut: deny beats allow on redirect target", () => {
+    const yaml = `
+redirect:
+  out:
+    - path: "/etc/**"
+      decide: deny
+    - path-in: ["/tmp/**"]
+      decide: allow
+`;
+    const command = "echo hi > /etc/shadow";
+    withYamlFixtures(null, yaml, (rules) => {
+        const node = parseBash(command, EMPTY_DESCRIPTORS) as IRedirectNode;
+        expect(rules[0](node, makeEnv("/project"), makeBashCall(command, "/project")).decision.action).toBe("deny");
+    });
+});
+
+test("matchesRedirectIn: allow when stdin redirect matches path-in", () => {
+    const yaml = `
+redirect:
+  in:
+    - path-in: ["./**"]
+      decide: allow
+`;
+    const command = "cat < ./file.txt";
+    withYamlFixtures(null, yaml, (rules) => {
+        const projectDir = process.env["CLAUDE_PROJECT_DIR"] as string;
+        const node = parseBash(command, EMPTY_DESCRIPTORS) as IRedirectNode;
+        const matched = findRedirectRule(rules, command, projectDir, node);
+        expect(matched).toBeDefined();
+        expect(matched!(node, makeEnv(projectDir), makeBashCall(command, projectDir)).decision.action).toBe("allow");
+    });
+});
+
+test("matchesRedirectOut: fd merge redirect abstains from path rules", () => {
+    const yaml = `
+redirect:
+  out:
+    - path-in: ["/tmp/**"]
+      decide: allow
+`;
+    const command = "cmd > /tmp/out 2>&1";
+    withYamlFixtures(null, yaml, (rules) => {
+        const outer = parseBash(command, EMPTY_DESCRIPTORS) as IRedirectNode;
+        const fileRedirect = outer.command as IRedirectNode;
+        const call = makeBashCall(command, "/project");
+        const env = makeEnv("/project");
+        expect(rules[0](outer, env, call).decision.action).toBe("abstain");
+        expect(rules[0](fileRedirect, env, call).decision.action).toBe("allow");
+    });
+});
+
+test("validateConfig: path-in accepted on redirect.out", () => {
+    const config: IYamlConfig = {
+        redirect: {
+            out: [{ "path-in": ["/tmp/**"], decide: "allow" }],
+        },
+    };
+    expect(validateConfig(config)).toEqual([]);
+});
+
+test("validateConfig: path-in rejected on bash entries", () => {
+    const config: IYamlConfig = {
+        bash: {
+            echo: [{ "path-in": ["/tmp/**"], decide: "allow" }],
+        },
+    };
+    const errors = validateConfig(config);
+    expect(errors.some((error: IConfigError) => error.path.startsWith("bash.echo"))).toBe(true);
+});
+
+test("validateConfig: path-in still accepted on write section", () => {
+    const config: IYamlConfig = {
+        write: [{ "path-in": ["**/.env*"], decide: "deny" }],
+    };
+    expect(validateConfig(config)).toEqual([]);
 });

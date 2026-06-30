@@ -8,7 +8,6 @@ ast:
     options: {}
     cmd: /tmp
     envPrefix: {}
-    redirects: []
     raw: cd /tmp
   right:
     type: command
@@ -18,5 +17,4 @@ ast:
       f: true
     cmd: "*"
     envPrefix: {}
-    redirects: []
     raw: rm -rf *

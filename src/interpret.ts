@@ -38,7 +38,8 @@ export function isLeaf(node: AstNode): boolean {
         && node.type !== "xargs"
         && node.type !== "if_statement"
         && node.type !== "group"
-        && node.type !== "case_statement";
+        && node.type !== "case_statement"
+        && node.type !== "redirect";
 }
 
 
@@ -154,6 +155,14 @@ export function walkChildren(
 
     if (node.type === "xargs") {
         const childResult = interpret(node.child, env, call, logger, registry, leafEvaluations);
+        return {
+            childIAnnotations: [childResult.annotation],
+            envOut: childResult.envOut,
+        };
+    }
+
+    if (node.type === "redirect") {
+        const childResult = interpret(node.command, env, call, logger, registry, leafEvaluations);
         return {
             childIAnnotations: [childResult.annotation],
             envOut: childResult.envOut,

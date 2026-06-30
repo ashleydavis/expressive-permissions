@@ -14,7 +14,6 @@ ast:
       options: {}
       cmd: line
       envPrefix: {}
-      redirects: []
       raw: read line
     body:
       type: command
@@ -22,6 +21,5 @@ ast:
       options: {}
       cmd: $line
       envPrefix: {}
-      redirects: []
       raw: echo $line
     raw: while read line; do echo $line; done

@@ -14,8 +14,7 @@ ast:
       options: {}
       cmd: /work/tf-config
       envPrefix: {}
-      redirects: []
-      raw: "cd /work/tf-config"
+      raw: cd /work/tf-config
     right:
       type: for_loop
       variable: f
@@ -26,35 +25,36 @@ ast:
       body:
         type: if_statement
         condition:
-          type: command
-          binary: diff
-          options:
-            q: true
-          cmd:
-            - "variant-1a/$f"
-            - "variant-2/$f"
-          envPrefix: {}
-          redirects:
-            - op: ">"
-              target: "/dev/null"
-            - op: "2>&"
-              target: "1"
-          raw: "diff -q variant-1a/$f variant-2/$f >/dev/null 2>&1"
+          type: redirect
+          op: 2>&
+          command:
+            type: redirect
+            op: ">"
+            command:
+              type: command
+              binary: diff
+              options:
+                q: true
+              cmd:
+                - variant-1a/$f
+                - variant-2/$f
+              envPrefix: {}
+              raw: diff -q variant-1a/$f variant-2/$f >/dev/null 2>&1
+            target: /dev/null
+          target: "1"
         thenBranch:
           type: command
           binary: echo
           options: {}
-          cmd: 'SAME (1a==2): $f'
+          cmd: "SAME (1a==2): $f"
           envPrefix: {}
-          redirects: []
           raw: 'echo "SAME (1a==2): $f"'
+        raw: 'if diff -q variant-1a/$f variant-2/$f >/dev/null 2>&1; then echo "SAME (1a==2): $f"; else echo "DIFFERS (1a vs 2): $f"; fi'
         elseBranch:
           type: command
           binary: echo
           options: {}
-          cmd: 'DIFFERS (1a vs 2): $f'
+          cmd: "DIFFERS (1a vs 2): $f"
           envPrefix: {}
-          redirects: []
           raw: 'echo "DIFFERS (1a vs 2): $f"'
-        raw: 'if diff -q variant-1a/$f variant-2/$f >/dev/null 2>&1; then echo "SAME (1a==2): $f"; else echo "DIFFERS (1a vs 2): $f"; fi'
       raw: 'for f in behavior_locals.tf behavior_variables.tf versions.tf; do if diff -q variant-1a/$f variant-2/$f >/dev/null 2>&1; then echo "SAME (1a==2): $f"; else echo "DIFFERS (1a vs 2): $f"; fi; done'

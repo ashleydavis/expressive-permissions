@@ -17,7 +17,6 @@ ast:
           options: {}
           cmd: go
           envPrefix: {}
-          redirects: []
           raw: echo go
       - patterns:
           - stop
@@ -28,7 +27,6 @@ ast:
           options: {}
           cmd: stop
           envPrefix: {}
-          redirects: []
           raw: echo stop
       - patterns:
           - "*"
@@ -38,6 +36,5 @@ ast:
           options: {}
           cmd: usage
           envPrefix: {}
-          redirects: []
           raw: echo usage
     raw: case $1 in start) echo go;; stop|halt) echo stop;; *) echo usage;; esac

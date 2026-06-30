@@ -1,11 +1,12 @@
 command: cmd > out.log
 ast:
-  type: command
-  binary: cmd
-  options: {}
-  cmd: []
-  envPrefix: {}
-  redirects:
-    - op: ">"
-      target: out.log
-  raw: cmd > out.log
+  type: redirect
+  op: ">"
+  command:
+    type: command
+    binary: cmd
+    options: {}
+    cmd: []
+    envPrefix: {}
+    raw: cmd > out.log
+  target: out.log

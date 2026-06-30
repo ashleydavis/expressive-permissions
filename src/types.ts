@@ -48,12 +48,39 @@ export interface IAbstainDecision {
 export type Decision = IAllowDecision | IDenyDecision | IAskDecision | IAbstainDecision;
 
 
-// A single I/O redirection entry attached to a Bash command
-export interface IRedirect {
-    // The redirection operator (e.g. ">", ">>", "<", "2>")
+// A redirect intermediate node wrapping a command (or inner redirect) with an I/O redirection
+export interface IRedirectNode {
+    // Discriminator for the redirect node type
+    type: "redirect";
+    // The redirection operator (e.g. ">", ">>", "<", "2>", "&>", "2>&")
     op: string;
-    // The redirection target (file path or file-descriptor number as string)
+    // The wrapped inner node (another redirect or the command leaf)
+    command: BashAstNode;
+    // The redirection target (file path, or fd number as string for merges like "1")
     target: string;
+}
+
+// Shell operators that write redirect output to a file path
+export const REDIRECT_OUT_OPS: Set<string> = new Set([">", ">>", "2>", "&>"]);
+
+// Shell operators that read redirect input from a file path
+export const REDIRECT_IN_OPS: Set<string> = new Set(["<"]);
+
+// Returns true when the redirect node merges one fd into another (e.g. 2>&1) rather than a file path
+export function isRedirectFdMerge(node: IRedirectNode): boolean {
+    if (node.op === "2>&") {
+        return true;
+    }
+    return /^\d$/.test(node.target);
+}
+
+// Walks inward through nested redirect nodes and returns the innermost command leaf
+export function findInnerCommand(node: BashAstNode): ICommand {
+    let current: BashAstNode = node;
+    while (current.type === "redirect") {
+        current = current.command;
+    }
+    return current as ICommand;
 }
 
 // A leaf node representing a single Bash command in the sub-AST
@@ -68,8 +95,6 @@ export interface ICommand {
     cmd: string | string[];
     // Environment variable assignments prefixed before the command (e.g. FOO=bar cmd)
     envPrefix: Record<string, string>;
-    // I/O redirections attached to this command
-    redirects: IRedirect[];
     // Inner commands from embedded command substitutions ($(...) or `...`) found anywhere in this
     // command's words, redirect targets, or env values. Present only when at least one exists.
     // The interpreter evaluates each so a denial inside a substitution denies the whole command.
@@ -180,14 +205,14 @@ export interface IXargsNode {
     type: "xargs";
     // Options that belong to xargs itself (not to the subcommand), e.g. { n: "1", I: "{}" }
     options: Record<string, string | boolean>;
-    // The parsed subcommand Command that xargs will run
-    child: ICommand;
+    // The parsed subcommand that xargs will run (may be wrapped in redirect nodes)
+    child: BashAstNode;
     // The original raw command string including the xargs binary and all arguments
     raw: string;
 }
 
 // Union of all Bash sub-AST node types
-export type BashAstNode = ICommand | IBinOp | IForLoop | IXargsNode | IIfStatement | IWhileLoop | IGroup | ICaseStatement;
+export type BashAstNode = ICommand | IBinOp | IForLoop | IXargsNode | IIfStatement | IWhileLoop | IGroup | ICaseStatement | IRedirectNode;
 
 // A single edit operation within a MultiEdit tool call
 export interface IEditEntry {

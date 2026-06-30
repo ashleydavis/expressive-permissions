@@ -7144,6 +7144,10 @@ var XARGS_VALUE_LONG_FLAGS = new Set([
   "eof"
 ]);
 
+// src/types.ts
+var REDIRECT_OUT_OPS = new Set([">", ">>", "2>", "&>"]);
+var REDIRECT_IN_OPS = new Set(["<"]);
+
 // src/pending-prompt-log.ts
 var STALE_PENDING_PROMPT_MAX_AGE_DAYS = 1;
 function resolvePendingDir(projectDir) {

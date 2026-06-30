@@ -13,13 +13,13 @@ const XARGS_VALUE_LONG_FLAGS: Set<string> = new Set([
 interface IXargsParseResult {
     // Options consumed by xargs itself
     options: Record<string, string | boolean>;
-    // The subcommand Command to be evaluated for permissions
-    child: ICommand;
+    // The parsed subcommand AST (may include redirect wrappers)
+    child: BashAstNode;
 }
 
 // Parses the raw xargs command string, splitting xargs-own options from the subcommand.
 // descriptors is passed through to parseBash for the subcommand.
-// Returns the xargs options map and the parsed child ICommand.
+// Returns the xargs options map and the parsed subcommand AST.
 export function parseXargsCommand(raw: string, descriptors: Map<string, ICommandDescriptor>): IXargsParseResult {
     const tokens: IToken[] = lex(raw);
     const options: Record<string, string | boolean> = {};
@@ -29,7 +29,6 @@ export function parseXargsCommand(raw: string, descriptors: Map<string, ICommand
         options: {},
         cmd: [],
         envPrefix: {},
-        redirects: [],
         raw: "",
     };
 
@@ -102,13 +101,9 @@ export function parseXargsCommand(raw: string, descriptors: Map<string, ICommand
 
     const subcmdStart = tokens[index].start;
     const subcmdRaw = raw.substring(subcmdStart);
-    const result = parseBash(subcmdRaw, descriptors);
+    const child = parseBash(subcmdRaw, descriptors);
 
-    if (result.type === "command") {
-        return { options, child: result };
-    }
-
-    return { options, child: emptyCommand };
+    return { options, child };
 }
 
 // Recursively transforms Command nodes with binary "xargs" into IXargsNode intermediate nodes.
@@ -134,6 +129,13 @@ export function transformXargsNodes(node: BashAstNode, descriptors: Map<string, 
             return transformed;
         }
         return node;
+    }
+
+    if (node.type === "redirect") {
+        return {
+            ...node,
+            command: transformXargsNodes(node.command, descriptors),
+        };
     }
 
     if (node.type === "binop") {
@@ -237,6 +239,8 @@ export function describeNode(node: AstNode): string {
             return node.raw;
         case "xargs":
             return node.raw;
+        case "redirect":
+            return describeNode(node.command);
         case "binop":
             return `${describeNode((node as IBinOp).left)} ${(node as IBinOp).op} ${describeNode((node as IBinOp).right)}`;
         case "for_loop":

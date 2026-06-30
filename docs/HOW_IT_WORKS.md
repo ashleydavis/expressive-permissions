@@ -46,7 +46,9 @@ flowchart LR
 
 `parseBash` runs a hand-written recursive descent parser: a flat lexer produces a token stream, then grammar functions (`parseSequence` / `parseAnd` / `parseOr` / `parsePipe` / `parseStatement` / `parseCommand`) call each other recursively to build a left-associative sub-AST of `Command` leaves connected by `BinOp` nodes (`pipe`, `and`, `or`, `seq`). The lexer also normalises **newlines** and a bare **`&`** to a `;` separator, so a command after a newline or backgrounded with `&` is parsed as its own statement rather than swallowed as an argument.
 
-**Comments** are stripped by the lexer. A `#` at a token boundary (start of input, or just after whitespace, a newline, or an operator) begins a comment that is discarded to the end of the line, exactly as Bash treats it; a `#` in the middle of a word (e.g. `foo#bar`) is kept literally. This applies wherever the comment appears, not just at the start of a line, so a trailing comment like `echo hi # note` parses as just `echo hi`, and anything inside the comment (including what looks like a `$(...)` substitution) never reaches the AST or gets evaluated. Because comment-only lines and blank lines collapse with the surrounding separators, the only way to reach a completely empty `Command` (empty `binary`, no args/env/redirects) is an input that is *nothing but* a comment or whitespace; that degenerate case falls through to the default **ask** (see [§4](#4-per-node-rule-evaluation)).
+**Comments** are stripped by the lexer. A `#` at a token boundary (start of input, or just after whitespace, a newline, or an operator) begins a comment that is discarded to the end of the line, exactly as Bash treats it; a `#` in the middle of a word (e.g. `foo#bar`) is kept literally. This applies wherever the comment appears, not just at the start of a line, so a trailing comment like `echo hi # note` parses as just `echo hi`, and anything inside the comment (including what looks like a `$(...)` substitution) never reaches the AST or gets evaluated. Because comment-only lines and blank lines collapse with the surrounding separators, the only way to reach a completely empty `Command` (empty `binary`, no args/env) is an input that is *nothing but* a comment or whitespace; that degenerate case falls through to the default **ask** (see [§4](#4-per-node-rule-evaluation)).
+
+After `parseCommand` builds a `command` leaf, any I/O redirections on that command are wrapped in nested **`redirect` intermediate nodes** (innermost closest to the command). A plain command with no redirects has no wrapper. Each `redirect` node carries the operator (`>`, `>>`, `<`, `2>`, `&>`, `2>&`, …) and a `target` string (file path, or fd number as a string for merges like `2>&1`). Redirect path rules from `redirect.out` / `redirect.in` match these nodes; the inner `command` leaf has no `redirects` field.
 
 `parseStatement` recognises the block constructs:
 
@@ -73,6 +75,14 @@ graph TD
   Xargs --> Grep["command<br/>binary: grep<br/>options: {l: true}"]
 ```
 
+For `cmd > out.log`:
+
+```mermaid
+graph TD
+  Bash["bash<br/>raw: cmd &gt; out.log"] --> Redirect["redirect<br/>op: &gt;<br/>target: out.log"]
+  Redirect --> Cmd["command<br/>binary: cmd"]
+```
+
 For `cd /etc && rm -rf /`:
 
 ```mermaid
@@ -82,11 +92,13 @@ graph TD
   And --> Rm["command<br/>binary: rm<br/>options: { r: true, f: true }<br/>cmd: /"]
 ```
 
-For `if diff -q a b >/dev/null 2>&1; then echo same; else echo differ; fi` - the condition and both branches become children of the `if_statement`:
+For `if diff -q a b >/dev/null 2>&1; then echo same; else echo differ; fi` — the condition is a nested `redirect` chain around the `diff` command; both branches are plain `command` leaves:
 
 ```mermaid
 graph TD
-  If["if_statement"] --> Cond["command<br/>binary: diff<br/>options: { q: true }<br/>cmd: [a, b]"]
+  If["if_statement"] --> CondRedirect["redirect<br/>op: 2&gt;&amp;<br/>target: 1"]
+  CondRedirect --> CondOut["redirect<br/>op: &gt;<br/>target: /dev/null"]
+  CondOut --> Cond["command<br/>binary: diff<br/>options: { q: true }<br/>cmd: [a, b]"]
   If --> Then["command<br/>binary: echo<br/>cmd: same"]
   If --> Else["command<br/>binary: echo<br/>cmd: differ"]
 ```
@@ -176,7 +188,7 @@ Rules at the same node share a `runningEnv`. Each rule that returns a `scopedEnv
 
 ## 5. Bubble-up at intermediate nodes
 
-After visiting an intermediate node itself, the interpreter aggregates child outcomes and layers the visitor's result on top.
+After visiting an intermediate node itself, the interpreter aggregates child outcomes and layers the visitor's result on top. Intermediate nodes include `binop`, `redirect`, `xargs`, `for_loop`, `while_loop`, `if_statement`, `case_statement`, and `group`.
 
 **Phase 1 — aggregate children:**
 

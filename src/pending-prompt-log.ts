@@ -218,6 +218,10 @@ function simWalkEnv(node: AstNode, env: IEnvironment, leafContextMap: Map<string
         return simWalkEnv(node.child, env, leafContextMap);
     }
 
+    if (node.type === "redirect") {
+        return simWalkEnv(node.command, env, leafContextMap);
+    }
+
     if (node.type === "for_loop") {
         let lastEnv = env;
         for (const item of node.items) {
@@ -390,6 +394,11 @@ function appendTreeLines(
 
     if (node.type === "xargs") {
         appendTreeLines(node.child, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
+        return;
+    }
+
+    if (node.type === "redirect") {
+        appendTreeLines(node.command, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
         return;
     }
 

@@ -8,7 +8,6 @@ ast:
     options: {}
     cmd: []
     envPrefix: {}
-    redirects: []
     raw: server
   right:
     type: command
@@ -16,5 +15,4 @@ ast:
     options: {}
     cmd: []
     envPrefix: {}
-    redirects: []
     raw: client

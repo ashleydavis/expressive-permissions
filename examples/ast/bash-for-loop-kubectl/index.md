@@ -17,13 +17,15 @@ graph TD
   n2 --> n3
   n4["binop<br/>op: &#124;"]
   n5["binop<br/>op: &#124;"]
-  n6["command<br/>binary: kubectl<br/>cmd: get pods"]
+  n6["redirect<br/>op: 2&gt;&amp;<br/>target: 1"]
+  n7["command<br/>binary: kubectl<br/>cmd: get pods"]
+  n6 -->|command| n7
   n5 --> n6
-  n7["command<br/>binary: grep"]
-  n5 --> n7
+  n8["command<br/>binary: grep"]
+  n5 --> n8
   n4 --> n5
-  n8["command<br/>binary: head"]
-  n4 --> n8
+  n9["command<br/>binary: head"]
+  n4 --> n9
   n2 --> n4
   n1 -->|body| n2
   n0 --> n1

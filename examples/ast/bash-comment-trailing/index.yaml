@@ -13,5 +13,4 @@ ast:
       a: true
     cmd: []
     envPrefix: {}
-    redirects: []
     raw: ls -la

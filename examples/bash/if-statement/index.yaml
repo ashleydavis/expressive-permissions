@@ -8,7 +8,6 @@ ast:
       f: true
     cmd: f
     envPrefix: {}
-    redirects: []
     raw: test -f f
   thenBranch:
     type: command
@@ -16,7 +15,6 @@ ast:
     options: {}
     cmd: yes
     envPrefix: {}
-    redirects: []
     raw: echo yes
   raw: if test -f f; then echo yes; else echo no; fi
   elseBranch:
@@ -25,5 +23,4 @@ ast:
     options: {}
     cmd: no
     envPrefix: {}
-    redirects: []
     raw: echo no

@@ -14,7 +14,6 @@ ast:
       options: {}
       cmd: .
       envPrefix: {}
-      redirects: []
       raw: find .
     right:
       type: xargs
@@ -27,6 +26,5 @@ ast:
           f: true
         cmd: []
         envPrefix: {}
-        redirects: []
         raw: rm -rf
       raw: xargs rm -rf

@@ -1,0 +1,12 @@
+command: cat < in.txt
+ast:
+  type: redirect
+  op: <
+  command:
+    type: command
+    binary: cat
+    options: {}
+    cmd: []
+    envPrefix: {}
+    raw: cat < in.txt
+  target: in.txt

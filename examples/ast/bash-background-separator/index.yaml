@@ -16,7 +16,6 @@ ast:
         - run
         - dev
       envPrefix: {}
-      redirects: []
       raw: npm run dev
     right:
       type: command
@@ -26,5 +25,4 @@ ast:
         - run
         - watch
       envPrefix: {}
-      redirects: []
       raw: npm run watch

@@ -3,7 +3,8 @@ import { join, resolve } from "path";
 import { homedir } from "os";
 import { parseDocument, isMap, isSeq, isPair, isScalar, Node } from "yaml";
 import picomatch from "picomatch";
-import { IRule, IRuleOutcome, AstNode, IEnvironment, IToolCall, ABSTAIN, Decision, ICommand } from "./types";
+import { IRule, IRuleOutcome, AstNode, IEnvironment, IToolCall, ABSTAIN, Decision, ICommand, IRedirectNode, REDIRECT_OUT_OPS, REDIRECT_IN_OPS, isRedirectFdMerge, findInnerCommand, BashAstNode, ICommandDescriptor } from "./types";
+import { parseBash } from "./parse-bash";
 
 // Valid decide values in YAML config
 type DecideValue = "allow" | "deny" | "ask" | "abstain";
@@ -107,6 +108,13 @@ export interface IYamlConfig {
     multi_edit?: IYamlEntry | IYamlEntry[];
     // WebFetch tool rules
     webfetch?: IYamlEntry | IYamlEntry[];
+    // Shell redirect path rules
+    redirect?: {
+        // Rules matching stdout/stderr write redirects (>, >>, 2>, &>)
+        out?: IYamlEntry | IYamlEntry[];
+        // Rules matching stdin read redirects (<)
+        in?: IYamlEntry | IYamlEntry[];
+    };
     // Top-level tool-name keys are accessed via Object.keys() at runtime; they do not appear
     // on this typed interface. Any string key that is not a recognised section is treated as
     // a tool-name pattern matched via picomatch.
@@ -119,7 +127,7 @@ const KNOWN_FIELDS = new Set(["decide", "reason", "rules", "not", "file", "cmd",
 // Anything outside this set, and outside KNOWN_FIELDS, becomes a tool-name rule. KNOWN_FIELDS
 // names appearing at the top level (e.g. a stray `decide: allow`) are rejected by validateConfig
 // rather than silently becoming a tool named "decide".
-const KNOWN_SECTIONS = new Set(["bash", "read", "write", "edit", "multi_edit", "webfetch"]);
+const KNOWN_SECTIONS = new Set(["bash", "read", "write", "edit", "multi_edit", "webfetch", "redirect"]);
 
 // All accepted values for the decide field
 const VALID_DECIDE_VALUES = new Set<string>(["allow", "deny", "ask", "abstain"]);
@@ -497,6 +505,17 @@ function runSubRules(subRules: IRule[], node: AstNode, env: IEnvironment, call: 
     return result;
 }
 
+// Runs sub-rules in list order, returning the first non-abstaining outcome
+function runFirstMatchSubRules(subRules: IRule[], node: AstNode, env: IEnvironment, call: IToolCall): IRuleOutcome {
+    for (const subRule of subRules) {
+        const outcome = subRule(node, env, call);
+        if (outcome.decision.action !== "abstain") {
+            return outcome;
+        }
+    }
+    return ABSTAIN;
+}
+
 // Builds a scoped bash rule: checks parent conditions, then aggregates sub-rules without consuming positionals
 export function buildBashScopedRule(binary: string, subcommandPath: string[], entry: IYamlEntry): IRule {
     const subRules = compileBashBinary(binary, entry.rules!, subcommandPath);
@@ -630,6 +649,16 @@ export function notFieldsAllMatch(not: INotFields, node: AstNode, env: IEnvironm
             return false;
         }
     }
+    if (node.type === "redirect" && (not.path !== undefined || not["path-in"] !== undefined)) {
+        const redirectNode = node as IRedirectNode;
+        if (isRedirectFdMerge(redirectNode)) {
+            return false;
+        }
+        const redirectKind = REDIRECT_OUT_OPS.has(redirectNode.op) ? "out" : "in";
+        if (!matchesRedirectPathFields(not as IYamlEntry, redirectNode, env, redirectKind)) {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -740,6 +769,338 @@ function buildWebFetchRule(entry: IYamlEntry): IRule {
     rule.ruleFile = entry.sourceFile;
     rule.ruleLine = entry.sourceLine;
     return rule;
+}
+
+// Empty descriptor map used when re-parsing Bash commands for redirect chain collection.
+const EMPTY_DESCRIPTORS = new Map<string, ICommandDescriptor>();
+
+// Resolves a redirect target string against the current environment for path matching.
+export function resolveRedirectTarget(target: string, env: IEnvironment): string {
+    let expanded = expandEnvVars(target, env.env);
+    if (expanded.startsWith("~")) {
+        return homedir() + expanded.slice(1);
+    }
+    if (expanded.startsWith("/")) {
+        return expanded;
+    }
+    return resolve(env.cwd, expanded);
+}
+
+// Returns true when a redirect file target matches pattern using path-aware semantics.
+export function matchesRedirectPath(pattern: string, target: string, env: IEnvironment): boolean {
+    const resolvedTarget = resolveRedirectTarget(target, env);
+    if (!isCmdPathPattern(pattern)) {
+        return matchesPattern(pattern, resolvedTarget);
+    }
+    return matchesPathGlob(pattern, resolvedTarget);
+}
+
+// Returns true when every redirect target matches at least one pattern (AND across targets, OR within path-in).
+export function matchesRedirectTargets(patterns: string[], targets: string[], env: IEnvironment): boolean {
+    for (const target of targets) {
+        const matched = patterns.some((pattern: string) => matchesRedirectPath(pattern, target, env));
+        if (!matched) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Walks a Bash AST and collects redirect nodes whose inner command has the given raw string.
+function collectRedirectsByInnerRaw(root: BashAstNode, innerRaw: string): IRedirectNode[] {
+    const chain: IRedirectNode[] = [];
+
+    function walk(node: BashAstNode): void {
+        if (node.type === "redirect") {
+            if (findInnerCommand(node).raw === innerRaw) {
+                chain.push(node);
+            }
+            walk(node.command);
+        }
+        else if (node.type === "binop") {
+            walk(node.left);
+            walk(node.right);
+        }
+        else if (node.type === "for_loop" || node.type === "group") {
+            walk(node.body);
+        }
+        else if (node.type === "while_loop") {
+            walk(node.condition);
+            walk(node.body);
+        }
+        else if (node.type === "if_statement") {
+            walk(node.condition);
+            walk(node.thenBranch);
+            if (node.elseBranch !== undefined) {
+                walk(node.elseBranch);
+            }
+        }
+        else if (node.type === "case_statement") {
+            for (const clause of node.clauses) {
+                walk(clause.body);
+            }
+        }
+        else if (node.type === "xargs") {
+            walk(node.child);
+        }
+        else if (node.type === "command" && node.substitutions !== undefined) {
+            for (const substitution of node.substitutions) {
+                walk(substitution);
+            }
+        }
+    }
+
+    walk(root);
+    return chain;
+}
+
+// Returns the parsed Bash sub-AST from a tool call, or null when unavailable.
+function getBashAstFromCall(call: IToolCall): BashAstNode | null {
+    if (call.tool_name !== "Bash" && call.tool_name !== "Shell") {
+        return null;
+    }
+    const command = call.tool_input.command;
+    if (typeof command !== "string") {
+        return null;
+    }
+    return parseBash(command, EMPTY_DESCRIPTORS);
+}
+
+// Collects file-path targets for redirect nodes sharing the inner command of node.
+function collectRedirectFileTargetsForNode(node: IRedirectNode, call: IToolCall, ops: Set<string>): string[] {
+    const bashAst = getBashAstFromCall(call);
+    if (bashAst === null) {
+        return [];
+    }
+    const innerRaw = findInnerCommand(node).raw;
+    const chain = collectRedirectsByInnerRaw(bashAst, innerRaw);
+    const targets: string[] = [];
+    for (const redirectNode of chain) {
+        if (!ops.has(redirectNode.op)) {
+            continue;
+        }
+        if (isRedirectFdMerge(redirectNode)) {
+            continue;
+        }
+        targets.push(redirectNode.target);
+    }
+    return targets;
+}
+
+// Returns true when entry path/path-in fields match redirect path policy for the node direction.
+function matchesRedirectPathFields(entry: IYamlEntry, node: IRedirectNode, env: IEnvironment, kind: "out" | "in"): boolean {
+    const ops = kind === "out" ? REDIRECT_OUT_OPS : REDIRECT_IN_OPS;
+    if (!ops.has(node.op)) {
+        return false;
+    }
+    if (isRedirectFdMerge(node)) {
+        return false;
+    }
+    if (entry["path-in"] !== undefined) {
+        return matchesRedirectTargets(entry["path-in"], [node.target], env);
+    }
+    if (entry.path !== undefined) {
+        return matchesRedirectPath(entry.path, node.target, env);
+    }
+    return true;
+}
+
+// Returns true when the redirect node and entry conditions all match for a redirect.out rule.
+export function matchesRedirectOut(entry: IYamlEntry, node: IRedirectNode, env: IEnvironment, call: IToolCall): boolean {
+    if (!REDIRECT_OUT_OPS.has(node.op)) {
+        return false;
+    }
+    if (isRedirectFdMerge(node)) {
+        return false;
+    }
+    if (entry["path-in"] !== undefined || entry.path !== undefined) {
+        const targets = collectRedirectFileTargetsForNode(node, call, REDIRECT_OUT_OPS);
+        if (targets.length === 0) {
+            return false;
+        }
+        if (entry["path-in"] !== undefined) {
+            if (!matchesRedirectTargets(entry["path-in"], targets, env)) {
+                return false;
+            }
+        }
+        else if (entry.path !== undefined) {
+            for (const target of targets) {
+                if (!matchesRedirectPath(entry.path, target, env)) {
+                    return false;
+                }
+            }
+        }
+    }
+    if (!matchesCwd(entry, env)) {
+        return false;
+    }
+    if (!matchesCwdResolved(entry, env)) {
+        return false;
+    }
+    if (!matchesEnvVars(entry, env)) {
+        return false;
+    }
+    if (!matchesFileField(entry)) {
+        return false;
+    }
+    if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, 0)) {
+        return false;
+    }
+    return true;
+}
+
+// Returns true when the redirect node and entry conditions all match for a redirect.in rule.
+export function matchesRedirectIn(entry: IYamlEntry, node: IRedirectNode, env: IEnvironment, call: IToolCall): boolean {
+    if (!REDIRECT_IN_OPS.has(node.op)) {
+        return false;
+    }
+    if (isRedirectFdMerge(node)) {
+        return false;
+    }
+    if (entry["path-in"] !== undefined || entry.path !== undefined) {
+        const targets = collectRedirectFileTargetsForNode(node, call, REDIRECT_IN_OPS);
+        if (targets.length === 0) {
+            return false;
+        }
+        if (entry["path-in"] !== undefined) {
+            if (!matchesRedirectTargets(entry["path-in"], targets, env)) {
+                return false;
+            }
+        }
+        else if (entry.path !== undefined) {
+            for (const target of targets) {
+                if (!matchesRedirectPath(entry.path, target, env)) {
+                    return false;
+                }
+            }
+        }
+    }
+    if (!matchesCwd(entry, env)) {
+        return false;
+    }
+    if (!matchesCwdResolved(entry, env)) {
+        return false;
+    }
+    if (!matchesEnvVars(entry, env)) {
+        return false;
+    }
+    if (!matchesFileField(entry)) {
+        return false;
+    }
+    if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, 0)) {
+        return false;
+    }
+    return true;
+}
+
+// Compiles one rule for a redirect.out or redirect.in entry
+export function buildRedirectRule(kind: "out" | "in", entry: IYamlEntry): IRule {
+    const decision = mapDecision(entry.decide as DecideValue, entry.reason);
+    const ruleName = `yaml:redirect:${kind}:${entry.decide}`;
+
+    const rule: IRule = function(node: AstNode, env: IEnvironment, call: IToolCall): IRuleOutcome {
+        if (node.type !== "redirect") {
+            return ABSTAIN;
+        }
+        const redirectNode = node as IRedirectNode;
+        const matched = kind === "out"
+            ? matchesRedirectOut(entry, redirectNode, env, call)
+            : matchesRedirectIn(entry, redirectNode, env, call);
+        if (!matched) {
+            return ABSTAIN;
+        }
+        return { decision };
+    };
+
+    Object.defineProperty(rule, "name", { value: ruleName });
+    rule.ruleFile = entry.sourceFile;
+    rule.ruleLine = entry.sourceLine;
+    return rule;
+}
+
+// Builds a scoped redirect rule: checks parent conditions, then aggregates sub-rules
+function buildRedirectScopedRule(kind: "out" | "in", entry: IYamlEntry): IRule {
+    const subRules = compileRedirectEntries(kind, entry.rules!);
+    const ruleName = `yaml:redirect:${kind}:scoped`;
+
+    const rule: IRule = function(node: AstNode, env: IEnvironment, call: IToolCall): IRuleOutcome {
+        if (node.type !== "redirect") {
+            return ABSTAIN;
+        }
+        const redirectNode = node as IRedirectNode;
+        const matched = kind === "out"
+            ? matchesRedirectOut(entry, redirectNode, env, call)
+            : matchesRedirectIn(entry, redirectNode, env, call);
+        if (!matched) {
+            return ABSTAIN;
+        }
+        return runFirstMatchSubRules(subRules, node, env, call);
+    };
+
+    Object.defineProperty(rule, "name", { value: ruleName });
+    rule.ruleFile = entry.sourceFile;
+    rule.ruleLine = entry.sourceLine;
+    return rule;
+}
+
+// Compiles redirect.out or redirect.in entries into rules
+export function compileRedirectEntries(kind: "out" | "in", entries: IYamlEntry[]): IRule[] {
+    return compileEntries(entries, (entry) => buildRedirectRule(kind, entry), (entry) => buildRedirectScopedRule(kind, entry));
+}
+
+// Compiles redirect.out or redirect.in entries into one first-match-wins rule
+function buildRedirectOrderedRule(kind: "out" | "in", entries: IYamlEntry[]): IRule {
+    const subRules = compileRedirectEntries(kind, entries);
+    const ruleName = `yaml:redirect:${kind}:ordered`;
+
+    const rule: IRule = function(node: AstNode, env: IEnvironment, call: IToolCall): IRuleOutcome {
+        if (node.type !== "redirect") {
+            return ABSTAIN;
+        }
+        return runFirstMatchSubRules(subRules, node, env, call);
+    };
+
+    Object.defineProperty(rule, "name", { value: ruleName });
+    if (entries.length > 0) {
+        rule.ruleFile = entries[0].sourceFile;
+        rule.ruleLine = entries[0].sourceLine;
+    }
+    return rule;
+}
+
+// Compiles redirect.out and redirect.in sections from config
+function compileRedirectSection(redirectSection: NonNullable<IYamlConfig["redirect"]>): IRule[] {
+    const compiledRules: IRule[] = [];
+    if (redirectSection.out !== undefined) {
+        compiledRules.push(buildRedirectOrderedRule("out", normalizeToList(redirectSection.out)));
+    }
+    if (redirectSection.in !== undefined) {
+        compiledRules.push(buildRedirectOrderedRule("in", normalizeToList(redirectSection.in)));
+    }
+    return compiledRules;
+}
+
+// Walks one IYamlEntry and rewrites "./"-prefixed path/path-in patterns for redirect matchers.
+export function resolveEntryRedirectPatterns(entry: IYamlEntry, projectDir: string): void {
+    if (typeof entry.path === "string") {
+        entry.path = resolveCmdPathPattern(entry.path, projectDir);
+    }
+    if (Array.isArray(entry["path-in"])) {
+        entry["path-in"] = entry["path-in"].map((pattern: string) => resolveCmdPathPattern(pattern, projectDir));
+    }
+    if (entry.not !== undefined) {
+        if (typeof entry.not.path === "string") {
+            entry.not.path = resolveCmdPathPattern(entry.not.path, projectDir);
+        }
+        if (Array.isArray(entry.not["path-in"])) {
+            entry.not["path-in"] = entry.not["path-in"].map((pattern: string) => resolveCmdPathPattern(pattern, projectDir));
+        }
+    }
+    if (Array.isArray(entry.rules)) {
+        for (const subEntry of entry.rules) {
+            resolveEntryRedirectPatterns(subEntry, projectDir);
+        }
+    }
 }
 
 // Returns true when the node and entry conditions all match for a tool-name rule
@@ -1037,6 +1398,18 @@ export function resolveRelativeCwdPatterns(config: IYamlConfig, baseDir: string)
             }
         }
     }
+    if (config.redirect !== undefined) {
+        if (config.redirect.out !== undefined) {
+            for (const entry of normalizeToList(config.redirect.out)) {
+                resolveEntryCwdPatterns(entry, baseDir);
+            }
+        }
+        if (config.redirect.in !== undefined) {
+            for (const entry of normalizeToList(config.redirect.in)) {
+                resolveEntryCwdPatterns(entry, baseDir);
+            }
+        }
+    }
     const toolNameOptions: IEntryWalkOptions = { isToolNameEntry: true };
     for (const key of Object.keys(config)) {
         if (KNOWN_SECTIONS.has(key)) {
@@ -1148,6 +1521,18 @@ export function resolveRelativeCmdPatterns(config: IYamlConfig, projectDir: stri
         if (sectionValue !== undefined) {
             for (const entry of normalizeToList(sectionValue)) {
                 resolveEntryCmdPatterns(entry, projectDir);
+            }
+        }
+    }
+    if (config.redirect !== undefined) {
+        if (config.redirect.out !== undefined) {
+            for (const entry of normalizeToList(config.redirect.out)) {
+                resolveEntryRedirectPatterns(entry, projectDir);
+            }
+        }
+        if (config.redirect.in !== undefined) {
+            for (const entry of normalizeToList(config.redirect.in)) {
+                resolveEntryRedirectPatterns(entry, projectDir);
             }
         }
     }
@@ -1330,6 +1715,18 @@ export function expandConfigEnvTokens(
             }
         }
     }
+    if (config.redirect !== undefined) {
+        if (config.redirect.out !== undefined) {
+            for (const entry of normalizeToList(config.redirect.out)) {
+                expandEntryEnvTokens(entry, projectDir, homeDir, displayFile, warnings);
+            }
+        }
+        if (config.redirect.in !== undefined) {
+            for (const entry of normalizeToList(config.redirect.in)) {
+                expandEntryEnvTokens(entry, projectDir, homeDir, displayFile, warnings);
+            }
+        }
+    }
     const toolNameOptions: IEntryWalkOptions = { isToolNameEntry: true };
     for (const key of Object.keys(config)) {
         if (KNOWN_SECTIONS.has(key)) {
@@ -1416,6 +1813,9 @@ function validateEntry(entry: IYamlEntry, path: string, errors: IConfigError[], 
         errors.push({ path, message: `expected a rule entry object but got ${Array.isArray(entry) ? "array" : typeof entry}` });
         return;
     }
+    if (path.startsWith("bash.") && (entry.path !== undefined || entry["path-in"] !== undefined)) {
+        errors.push({ path, message: "path and path-in are not valid on bash: entries; use redirect.out or redirect.in for redirect path policy" });
+    }
     if (entry.decide !== undefined && !VALID_DECIDE_VALUES.has(entry.decide as string)) {
         errors.push({ path: `${path}.decide`, message: `invalid decide value '${entry.decide}': must be one of allow, deny, ask, abstain` });
     }
@@ -1486,6 +1886,20 @@ export function validateConfig(config: IYamlConfig): IConfigError[] {
             validateEntry(entries[index], `${section}[${index}]`, errors);
         }
     }
+    if (config.redirect !== undefined) {
+        if (config.redirect.out !== undefined) {
+            const outEntries = normalizeToList(config.redirect.out);
+            for (let index = 0; index < outEntries.length; index++) {
+                validateEntry(outEntries[index], `redirect.out[${index}]`, errors);
+            }
+        }
+        if (config.redirect.in !== undefined) {
+            const inEntries = normalizeToList(config.redirect.in);
+            for (let index = 0; index < inEntries.length; index++) {
+                validateEntry(inEntries[index], `redirect.in[${index}]`, errors);
+            }
+        }
+    }
     const toolNameOptions: IEntryWalkOptions = { isToolNameEntry: true };
     for (const key of Object.keys(config)) {
         if (KNOWN_SECTIONS.has(key)) {
@@ -1520,6 +1934,11 @@ function compileConfig(config: IYamlConfig): IRule[] {
     }
 
     compiledRules.push(...compileNonBashSections(config));
+
+    if (config.redirect !== undefined) {
+        compiledRules.push(...compileRedirectSection(config.redirect));
+    }
+
     compiledRules.push(...compileTopLevelToolRules(config));
 
     return compiledRules;

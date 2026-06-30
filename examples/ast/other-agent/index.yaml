@@ -1,11 +1,9 @@
 tool_call:
   tool_name: Agent
-  tool_input:
-    description: "test agent"
-    prompt: "do stuff"
+  tool_input: &a1
+    description: test agent
+    prompt: do stuff
 ast:
   type: other
   tool_name: Agent
-  tool_input:
-    description: test agent
-    prompt: do stuff
+  tool_input: *a1

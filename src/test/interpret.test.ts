@@ -819,7 +819,7 @@ function makeCommand(
     options: Record<string, string | boolean>,
     cmd: string | string[]
 ): ICommand {
-    return { type: "command", binary, options, cmd, envPrefix: {}, redirects: [], raw: binary };
+    return { type: "command", binary, options, cmd, envPrefix: {}, raw: binary };
 }
 
 test("expandCommandOptions: binary expanded", () => {
@@ -884,17 +884,17 @@ test("rank: deny returns 3", () => {
 // ---------------------------------------------------------------------------
 
 test("isLeaf: command node is a leaf", () => {
-    expect(isLeaf({ type: "command", binary: "ls", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "ls" })).toBe(true);
+    expect(isLeaf({ type: "command", binary: "ls", options: {}, cmd: [], envPrefix: {}, raw: "ls" })).toBe(true);
 });
 
 test("isLeaf: binop node is not a leaf", () => {
-    const left = { type: "command" as const, binary: "a", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "a" };
-    const right = { type: "command" as const, binary: "b", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "b" };
+    const left = { type: "command" as const, binary: "a", options: {}, cmd: [], envPrefix: {}, raw: "a" };
+    const right = { type: "command" as const, binary: "b", options: {}, cmd: [], envPrefix: {}, raw: "b" };
     expect(isLeaf({ type: "binop", op: "&&", left, right })).toBe(false);
 });
 
 test("isLeaf: bash node is not a leaf", () => {
-    const cmd = { type: "command" as const, binary: "ls", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "ls" };
+    const cmd = { type: "command" as const, binary: "ls", options: {}, cmd: [], envPrefix: {}, raw: "ls" };
     expect(isLeaf({ type: "bash", ast: cmd, raw: "ls" })).toBe(false);
 });
 
@@ -919,33 +919,33 @@ test("isLeaf: other node is a leaf", () => {
 });
 
 test("isLeaf: xargs node is not a leaf", () => {
-    const child: ICommand = { type: "command", binary: "grep", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "grep" };
+    const child: ICommand = { type: "command", binary: "grep", options: {}, cmd: [], envPrefix: {}, raw: "grep" };
     const xargsNode: IXargsNode = { type: "xargs", options: {}, child, raw: "xargs grep" };
     expect(isLeaf(xargsNode)).toBe(false);
 });
 
 test("isLeaf: if-statement node is not a leaf", () => {
-    const condition: ICommand = { type: "command", binary: "test", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "test" };
-    const thenBranch: ICommand = { type: "command", binary: "echo", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "echo" };
+    const condition: ICommand = { type: "command", binary: "test", options: {}, cmd: [], envPrefix: {}, raw: "test" };
+    const thenBranch: ICommand = { type: "command", binary: "echo", options: {}, cmd: [], envPrefix: {}, raw: "echo" };
     const ifNode: IIfStatement = { type: "if_statement", condition, thenBranch, raw: "if test; then echo; fi" };
     expect(isLeaf(ifNode)).toBe(false);
 });
 
 test("isLeaf: while-loop node is not a leaf", () => {
-    const condition: ICommand = { type: "command", binary: "true", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "true" };
-    const body: ICommand = { type: "command", binary: "echo", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "echo" };
+    const condition: ICommand = { type: "command", binary: "true", options: {}, cmd: [], envPrefix: {}, raw: "true" };
+    const body: ICommand = { type: "command", binary: "echo", options: {}, cmd: [], envPrefix: {}, raw: "echo" };
     const loop: IWhileLoop = { type: "while_loop", until: false, condition, body, raw: "while true; do echo; done" };
     expect(isLeaf(loop)).toBe(false);
 });
 
 test("isLeaf: group node is not a leaf", () => {
-    const body: ICommand = { type: "command", binary: "echo", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "echo" };
+    const body: ICommand = { type: "command", binary: "echo", options: {}, cmd: [], envPrefix: {}, raw: "echo" };
     const group: IGroup = { type: "group", style: "subshell", body, raw: "(echo)" };
     expect(isLeaf(group)).toBe(false);
 });
 
 test("isLeaf: case-statement node is not a leaf", () => {
-    const body: ICommand = { type: "command", binary: "echo", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "echo" };
+    const body: ICommand = { type: "command", binary: "echo", options: {}, cmd: [], envPrefix: {}, raw: "echo" };
     const caseNode: ICaseStatement = { type: "case_statement", word: "$x", clauses: [{ patterns: ["a"], body }], raw: "case $x in a) echo;; esac" };
     expect(isLeaf(caseNode)).toBe(false);
 });
@@ -1037,14 +1037,14 @@ test("combine: own deny → returns own annotation", () => {
 test("describeNode: command node returns raw string", () => {
     const node: ICommand = {
         type: "command", binary: "wc", options: { l: true },
-        cmd: [], envPrefix: {}, redirects: [], raw: "wc -l foo.txt",
+        cmd: [], envPrefix: {}, raw: "wc -l foo.txt",
     };
     expect(describeNode(node)).toBe("wc -l foo.txt");
 });
 
 test("describeNode: bash node returns raw string", () => {
     const inner: ICommand = {
-        type: "command", binary: "ls", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "ls",
+        type: "command", binary: "ls", options: {}, cmd: [], envPrefix: {}, raw: "ls",
     };
     const node: IBash ={ type: "bash", ast: inner, raw: "ls" };
     expect(describeNode(node)).toBe("ls");
@@ -1052,10 +1052,10 @@ test("describeNode: bash node returns raw string", () => {
 
 test("describeNode: binop node rebuilds left op right recursively", () => {
     const left: ICommand = {
-        type: "command", binary: "wc", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "wc -l foo.csv",
+        type: "command", binary: "wc", options: {}, cmd: [], envPrefix: {}, raw: "wc -l foo.csv",
     };
     const right: ICommand = {
-        type: "command", binary: "head", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "head -5 foo.csv",
+        type: "command", binary: "head", options: {}, cmd: [], envPrefix: {}, raw: "head -5 foo.csv",
     };
     const node: IBinOp ={ type: "binop", op: "&&", left, right };
     expect(describeNode(node)).toBe("wc -l foo.csv && head -5 foo.csv");
@@ -1063,13 +1063,13 @@ test("describeNode: binop node rebuilds left op right recursively", () => {
 
 test("describeNode: nested binop rebuilds recursively", () => {
     const cmd1: ICommand = {
-        type: "command", binary: "a", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "a",
+        type: "command", binary: "a", options: {}, cmd: [], envPrefix: {}, raw: "a",
     };
     const cmd2: ICommand = {
-        type: "command", binary: "b", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "b",
+        type: "command", binary: "b", options: {}, cmd: [], envPrefix: {}, raw: "b",
     };
     const cmd3: ICommand = {
-        type: "command", binary: "c", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "c",
+        type: "command", binary: "c", options: {}, cmd: [], envPrefix: {}, raw: "c",
     };
     const inner: IBinOp ={ type: "binop", op: ";", left: cmd1, right: cmd2 };
     const outer: IBinOp ={ type: "binop", op: "&&", left: inner, right: cmd3 };

@@ -8,7 +8,6 @@ ast:
     options: {}
     cmd: status
     envPrefix: {}
-    redirects: []
     raw: git status
   right:
     type: command
@@ -16,5 +15,4 @@ ast:
     options: {}
     cmd: modified
     envPrefix: {}
-    redirects: []
     raw: grep modified

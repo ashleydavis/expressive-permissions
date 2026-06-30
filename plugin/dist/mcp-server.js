@@ -22758,7 +22758,7 @@ function logConfigLoad(logger, displayPath, ruleCount) {
 
 // src/load-config.ts
 import { readFileSync, existsSync, readdirSync, statSync } from "fs";
-import { join, resolve } from "path";
+import { join as join2, resolve } from "path";
 import { homedir } from "os";
 
 // node_modules/yaml/dist/index.js
@@ -22811,6 +22811,21 @@ var $visitAsync = visit.visitAsync;
 var import_picomatch = __toESM(require_picomatch2(), 1);
 
 // src/types.ts
+var REDIRECT_OUT_OPS = new Set([">", ">>", "2>", "&>"]);
+var REDIRECT_IN_OPS = new Set(["<"]);
+function isRedirectFdMerge(node) {
+  if (node.op === "2>&") {
+    return true;
+  }
+  return /^\d$/.test(node.target);
+}
+function findInnerCommand(node) {
+  let current = node;
+  while (current.type === "redirect") {
+    current = current.command;
+  }
+  return current;
+}
 var ABSTAIN = { decision: { action: "abstain" } };
 var RANK = {
   abstain: 0,
@@ -22822,1209 +22837,9 @@ function rank(decision) {
   return RANK[decision.action] ?? 0;
 }
 
-// src/load-config.ts
-var KNOWN_FIELDS = new Set(["decide", "reason", "rules", "not", "file", "cmd", "cmd-in", "options", "options-in", "cwd", "cwd-in", "cwd_resolved", "env", "path", "path-in", "host", "host-in", "tool", "tool-in", "sourceLine", "sourceFile"]);
-var KNOWN_SECTIONS = new Set(["bash", "read", "write", "edit", "multi_edit", "webfetch"]);
-var VALID_DECIDE_VALUES = new Set(["allow", "deny", "ask", "abstain"]);
-function normalizeToList(value) {
-  if (Array.isArray(value)) {
-    return value;
-  }
-  return [value];
-}
-function mapDecision(decide, reason) {
-  if (decide === "allow") {
-    return { action: "allow", reason };
-  }
-  if (decide === "deny") {
-    return { action: "deny", reason };
-  }
-  if (decide === "abstain") {
-    return { action: "abstain" };
-  }
-  return { action: "ask", reason };
-}
-function matchesGlob(pattern, value) {
-  if (pattern.endsWith("/**") && value === pattern.slice(0, -3)) {
-    return false;
-  }
-  return import_picomatch.default(pattern, { dot: true })(value);
-}
-function matchesPathGlob(pattern, value) {
-  if (pattern.endsWith("/**") && value === pattern.slice(0, -3)) {
-    return true;
-  }
-  return import_picomatch.default(pattern, { dot: true })(value);
-}
-function matchesPattern(pattern, value) {
-  if (pattern.length >= 2 && pattern.startsWith("/") && pattern.endsWith("/")) {
-    return new RegExp(pattern.slice(1, -1)).test(value);
-  }
-  return matchesGlob(pattern, value);
-}
-function matchesCwd(entry, env) {
-  if (entry["cwd-in"] !== undefined) {
-    return entry["cwd-in"].some((pattern) => matchesPattern(pattern, env.cwd));
-  }
-  if (entry.cwd !== undefined) {
-    return matchesPattern(entry.cwd, env.cwd);
-  }
-  return true;
-}
-function matchesCwdResolved(entry, env) {
-  if (entry.cwd_resolved === undefined) {
-    return true;
-  }
-  return entry.cwd_resolved === env.cwdResolved;
-}
-function homePath(rawPath) {
-  if (rawPath.startsWith("~")) {
-    return homedir() + rawPath.slice(1);
-  }
-  if (!rawPath.startsWith("/")) {
-    const projectDir = process.env["CLAUDE_PROJECT_DIR"] ?? process.cwd();
-    return join(projectDir, rawPath);
-  }
-  return rawPath;
-}
-function evaluateFileField(file) {
-  for (const [rawPath, fileMatch] of Object.entries(file)) {
-    const expandedPath = homePath(rawPath);
-    if (!existsSync(expandedPath)) {
-      return "file-absent";
-    }
-    if (fileMatch === true) {
-      continue;
-    }
-    const content = readFileSync(expandedPath, "utf8");
-    if (!content.includes(fileMatch.contains)) {
-      return "no-match";
-    }
-  }
-  return "match";
-}
-function matchesFileField(entry) {
-  if (entry.file === undefined) {
-    return true;
-  }
-  return evaluateFileField(entry.file) === "match";
-}
-function matchesEnvVars(entry, env) {
-  if (entry.env === undefined) {
-    return true;
-  }
-  for (const [varName, pattern] of Object.entries(entry.env)) {
-    const actualValue = env.env[varName];
-    if (actualValue === undefined) {
-      return false;
-    }
-    if (!matchesPattern(pattern, actualValue)) {
-      return false;
-    }
-  }
-  return true;
-}
-function expandAliases(aliasExpr) {
-  return aliasExpr.split("|");
-}
-function flagPresent(aliasExpr, namedOptions) {
-  return expandAliases(aliasExpr).some((alias) => (alias in namedOptions));
-}
-function flagValue(aliasExpr, namedOptions) {
-  for (const alias of expandAliases(aliasExpr)) {
-    if (alias in namedOptions) {
-      return namedOptions[alias];
-    }
-  }
-  return;
-}
-function matchesOptions(entry, node) {
-  if (entry["options-in"] !== undefined) {
-    return entry["options-in"].some((aliasExpr) => flagPresent(aliasExpr, node.options));
-  }
-  if (entry.options === undefined) {
-    return true;
-  }
-  if (Array.isArray(entry.options)) {
-    return entry.options.every((aliasExpr) => flagPresent(aliasExpr, node.options));
-  }
-  for (const [aliasExpr, pattern] of Object.entries(entry.options)) {
-    if (typeof pattern !== "string") {
-      if (!flagPresent(aliasExpr, node.options)) {
-        return false;
-      }
-    } else {
-      const val = flagValue(aliasExpr, node.options);
-      if (val === undefined) {
-        return false;
-      }
-      if (typeof val !== "string") {
-        return false;
-      }
-      if (!matchesPattern(pattern, val)) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-function expandEnvVars(value, envVars) {
-  return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (fullMatch, bracedName, bareName) => {
-    const variableName = bracedName !== undefined ? bracedName : bareName;
-    const replacement = envVars[variableName];
-    return replacement !== undefined ? replacement : fullMatch;
-  });
-}
-function matchesCmdPattern(pattern, arg, env) {
-  if (!isCmdPathPattern(pattern)) {
-    return matchesPattern(pattern, arg);
-  }
-  const resolvedArg = resolve(env.cwd, arg);
-  return matchesPathGlob(pattern, resolvedArg);
-}
-function matchesCmd(entry, node, cmdOffset, env) {
-  const rawCmdArray = Array.isArray(node.cmd) ? node.cmd : [node.cmd];
-  const cmdArray = rawCmdArray.map((token) => expandEnvVars(token, env.env));
-  if (entry["cmd-in"] !== undefined) {
-    const slice = cmdArray.slice(cmdOffset);
-    return entry["cmd-in"].some((pattern) => slice.some((positional) => matchesCmdPattern(pattern, positional, env)));
-  }
-  if (entry.cmd !== undefined) {
-    const patterns = Array.isArray(entry.cmd) ? entry.cmd : entry.cmd.trim().split(/\s+/);
-    for (let idx = 0;idx < patterns.length; idx++) {
-      const target = cmdArray[cmdOffset + idx];
-      if (target === undefined) {
-        return false;
-      }
-      if (!matchesCmdPattern(patterns[idx], target, env)) {
-        return false;
-      }
-    }
-    return true;
-  }
-  return true;
-}
-function aggregateOutcomes(firstOutcome, secondOutcome) {
-  const firstAction = firstOutcome.decision.action;
-  const secondAction = secondOutcome.decision.action;
-  if (firstAction === "deny") {
-    return firstOutcome;
-  }
-  if (secondAction === "deny") {
-    return secondOutcome;
-  }
-  if (firstAction === "ask") {
-    return firstOutcome;
-  }
-  if (secondAction === "ask") {
-    return secondOutcome;
-  }
-  if (firstAction === "allow") {
-    return firstOutcome;
-  }
-  if (secondAction === "allow") {
-    return secondOutcome;
-  }
-  return firstOutcome;
-}
-function matchesSubcommandPath(cmdArray, subcommandPath) {
-  if (cmdArray.length < subcommandPath.length) {
-    return false;
-  }
-  for (let idx = 0;idx < subcommandPath.length; idx++) {
-    if (cmdArray[idx] !== subcommandPath[idx]) {
-      return false;
-    }
-  }
-  return true;
-}
-function buildBashRule(binary, subcommandPath, entry) {
-  const decision = mapDecision(entry.decide, entry.reason);
-  const pathLabel = subcommandPath.length > 0 ? `:${subcommandPath.join(":")}` : "";
-  const ruleName = `yaml:${binary}${pathLabel}:${entry.decide}`;
-  const cmdOffset = subcommandPath.length;
-  const rule = function(node, env, _call) {
-    if (node.type !== "command") {
-      return ABSTAIN;
-    }
-    if (node.binary !== binary) {
-      return ABSTAIN;
-    }
-    const cmdArray = Array.isArray(node.cmd) ? node.cmd : [node.cmd];
-    if (!matchesSubcommandPath(cmdArray, subcommandPath)) {
-      return ABSTAIN;
-    }
-    if (!matchesCmd(entry, node, cmdOffset, env)) {
-      return ABSTAIN;
-    }
-    if (!matchesOptions(entry, node)) {
-      return ABSTAIN;
-    }
-    if (entry.host !== undefined || entry["host-in"] !== undefined) {
-      const urlArg = cmdArray[cmdOffset];
-      const hostname = urlArg !== undefined ? extractHost(urlArg) : "";
-      if (entry["host-in"] !== undefined) {
-        const hostIn = entry["host-in"];
-        if (!hostIn.some((pattern) => matchesPattern(pattern, hostname))) {
-          return ABSTAIN;
-        }
-      } else if (entry.host !== undefined) {
-        if (!matchesPattern(entry.host, hostname)) {
-          return ABSTAIN;
-        }
-      }
-    }
-    if (!matchesCwd(entry, env)) {
-      return ABSTAIN;
-    }
-    if (!matchesCwdResolved(entry, env)) {
-      return ABSTAIN;
-    }
-    if (!matchesEnvVars(entry, env)) {
-      return ABSTAIN;
-    }
-    if (!matchesFileField(entry)) {
-      return ABSTAIN;
-    }
-    if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, cmdOffset)) {
-      return ABSTAIN;
-    }
-    return { decision };
-  };
-  Object.defineProperty(rule, "name", { value: ruleName });
-  rule.ruleFile = entry.sourceFile;
-  rule.ruleLine = entry.sourceLine;
-  return rule;
-}
-function runSubRules(subRules, node, env, call) {
-  let result = ABSTAIN;
-  for (const subRule of subRules) {
-    const outcome = subRule(node, env, call);
-    result = aggregateOutcomes(result, outcome);
-    if (result.decision.action === "deny") {
-      break;
-    }
-  }
-  return result;
-}
-function buildBashScopedRule(binary, subcommandPath, entry) {
-  const subRules = compileBashBinary(binary, entry.rules, subcommandPath);
-  const pathLabel = subcommandPath.length > 0 ? `:${subcommandPath.join(":")}` : "";
-  const ruleName = `yaml:${binary}${pathLabel}:scoped`;
-  const cmdOffset = subcommandPath.length;
-  const rule = function(node, env, call) {
-    if (node.type !== "command") {
-      return ABSTAIN;
-    }
-    if (node.binary !== binary) {
-      return ABSTAIN;
-    }
-    const cmdArray = Array.isArray(node.cmd) ? node.cmd : [node.cmd];
-    if (!matchesSubcommandPath(cmdArray, subcommandPath)) {
-      return ABSTAIN;
-    }
-    if (!matchesCmd(entry, node, cmdOffset, env)) {
-      return ABSTAIN;
-    }
-    if (!matchesOptions(entry, node)) {
-      return ABSTAIN;
-    }
-    if (!matchesCwd(entry, env)) {
-      return ABSTAIN;
-    }
-    if (!matchesCwdResolved(entry, env)) {
-      return ABSTAIN;
-    }
-    if (!matchesEnvVars(entry, env)) {
-      return ABSTAIN;
-    }
-    if (!matchesFileField(entry)) {
-      return ABSTAIN;
-    }
-    if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, cmdOffset)) {
-      return ABSTAIN;
-    }
-    return runSubRules(subRules, node, env, call);
-  };
-  Object.defineProperty(rule, "name", { value: ruleName });
-  rule.ruleFile = entry.sourceFile;
-  rule.ruleLine = entry.sourceLine;
-  return rule;
-}
-function compileBashBinary(binary, entries, subcommandPath) {
-  const compiledRules = [];
-  for (const entry of entries) {
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-      continue;
-    }
-    const subcommandKeys = Object.keys(entry).filter((key) => !KNOWN_FIELDS.has(key));
-    if (entry.rules !== undefined) {
-      compiledRules.push(buildBashScopedRule(binary, subcommandPath, entry));
-    } else if (typeof entry.decide === "string") {
-      compiledRules.push(buildBashRule(binary, subcommandPath, entry));
-    }
-    for (const subKey of subcommandKeys) {
-      const subValue = entry[subKey];
-      const subEntries = normalizeToList(subValue);
-      compiledRules.push(...compileBashBinary(binary, subEntries, [...subcommandPath, subKey]));
-    }
-  }
-  return compiledRules;
-}
-function compileBashSection(bashSection) {
-  const compiledRules = [];
-  for (const [binary, value] of Object.entries(bashSection)) {
-    const entries = normalizeToList(value);
-    compiledRules.push(...compileBashBinary(binary, entries, []));
-  }
-  return compiledRules;
-}
-function matchesPath(entry, filePath) {
-  if (entry["path-in"] !== undefined) {
-    return entry["path-in"].some((pattern) => matchesPattern(pattern, filePath));
-  }
-  if (entry.path !== undefined) {
-    return matchesPattern(entry.path, filePath);
-  }
-  return true;
-}
-function notFieldsAllMatch(not, node, env, cmdOffset) {
-  if (not.file !== undefined) {
-    const fileResult = evaluateFileField(not.file);
-    if (fileResult === "file-absent") {
-      return true;
-    }
-    if (fileResult === "no-match") {
-      return false;
-    }
-  }
-  if (node.type === "command") {
-    if (!matchesCmd(not, node, cmdOffset, env)) {
-      return false;
-    }
-    if (!matchesOptions(not, node)) {
-      return false;
-    }
-  }
-  if (!matchesCwd(not, env)) {
-    return false;
-  }
-  if (!matchesEnvVars(not, env)) {
-    return false;
-  }
-  if ("file_path" in node) {
-    const filePath = node.file_path;
-    if (!matchesPath(not, filePath)) {
-      return false;
-    }
-  }
-  return true;
-}
-function matchesFileEntry(nodeType, entry, node, env) {
-  if (node.type !== nodeType) {
-    return false;
-  }
-  if (!("file_path" in node)) {
-    return false;
-  }
-  const filePath = node.file_path;
-  if (!matchesPath(entry, filePath)) {
-    return false;
-  }
-  if (!matchesCwd(entry, env)) {
-    return false;
-  }
-  if (!matchesCwdResolved(entry, env)) {
-    return false;
-  }
-  if (!matchesEnvVars(entry, env)) {
-    return false;
-  }
-  if (!matchesFileField(entry)) {
-    return false;
-  }
-  if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, 0)) {
-    return false;
-  }
-  return true;
-}
-function buildFileRule(nodeType, entry) {
-  const decision = mapDecision(entry.decide, entry.reason);
-  const ruleName = `yaml:${nodeType}:${entry.decide}`;
-  const rule = function(node, env, _call) {
-    if (!matchesFileEntry(nodeType, entry, node, env)) {
-      return ABSTAIN;
-    }
-    return { decision };
-  };
-  Object.defineProperty(rule, "name", { value: ruleName });
-  rule.ruleFile = entry.sourceFile;
-  rule.ruleLine = entry.sourceLine;
-  return rule;
-}
-function extractHost(url) {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return "";
-  }
-}
-function matchesWebFetchEntry(entry, node, env) {
-  if (node.type !== "other" || node.tool_name !== "WebFetch") {
-    return false;
-  }
-  const url = typeof node.tool_input["url"] === "string" ? node.tool_input["url"] : "";
-  const hostname = extractHost(url);
-  if (entry.host !== undefined && !matchesPattern(entry.host, hostname)) {
-    return false;
-  }
-  if (entry["host-in"] !== undefined) {
-    const hostIn = entry["host-in"];
-    if (!hostIn.some((pattern) => matchesPattern(pattern, hostname))) {
-      return false;
-    }
-  }
-  if (!matchesCwd(entry, env)) {
-    return false;
-  }
-  if (!matchesCwdResolved(entry, env)) {
-    return false;
-  }
-  if (!matchesEnvVars(entry, env)) {
-    return false;
-  }
-  if (!matchesFileField(entry)) {
-    return false;
-  }
-  if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, 0)) {
-    return false;
-  }
-  return true;
-}
-function buildWebFetchRule(entry) {
-  const decision = mapDecision(entry.decide, entry.reason);
-  const ruleName = `yaml:webfetch:${entry.decide}`;
-  const rule = function(node, env, _call) {
-    if (!matchesWebFetchEntry(entry, node, env)) {
-      return ABSTAIN;
-    }
-    return { decision };
-  };
-  Object.defineProperty(rule, "name", { value: ruleName });
-  rule.ruleFile = entry.sourceFile;
-  rule.ruleLine = entry.sourceLine;
-  return rule;
-}
-function matchesMcpEntry(entry, node, env) {
-  if (node.type !== "other") {
-    return false;
-  }
-  if (entry["tool-in"] !== undefined) {
-    const toolIn = entry["tool-in"];
-    if (!toolIn.some((pattern) => matchesPattern(pattern, node.tool_name))) {
-      return false;
-    }
-  }
-  if (entry.tool !== undefined && !matchesPattern(entry.tool, node.tool_name)) {
-    return false;
-  }
-  if (!matchesCwd(entry, env)) {
-    return false;
-  }
-  if (!matchesCwdResolved(entry, env)) {
-    return false;
-  }
-  if (!matchesEnvVars(entry, env)) {
-    return false;
-  }
-  if (!matchesFileField(entry)) {
-    return false;
-  }
-  if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, 0)) {
-    return false;
-  }
-  return true;
-}
-function buildMcpRule(entry) {
-  const decision = mapDecision(entry.decide, entry.reason);
-  const ruleName = `yaml:tool:${entry.decide}`;
-  const rule = function(node, env, _call) {
-    if (!matchesMcpEntry(entry, node, env)) {
-      return ABSTAIN;
-    }
-    return { decision };
-  };
-  Object.defineProperty(rule, "name", { value: ruleName });
-  rule.ruleFile = entry.sourceFile;
-  rule.ruleLine = entry.sourceLine;
-  return rule;
-}
-function compileEntries(entries, buildLeaf, buildScoped) {
-  const compiledRules = [];
-  for (const entry of entries) {
-    if (entry.rules !== undefined) {
-      compiledRules.push(buildScoped(entry));
-    } else if (typeof entry.decide === "string") {
-      compiledRules.push(buildLeaf(entry));
-    }
-  }
-  return compiledRules;
-}
-function compileFileEntries(nodeType, entries) {
-  return compileEntries(entries, (entry) => buildFileRule(nodeType, entry), (entry) => buildFileScopedRule(nodeType, entry));
-}
-function buildFileScopedRule(nodeType, entry) {
-  const subRules = compileFileEntries(nodeType, entry.rules);
-  const ruleName = `yaml:${nodeType}:scoped`;
-  const rule = function(node, env, call) {
-    if (!matchesFileEntry(nodeType, entry, node, env)) {
-      return ABSTAIN;
-    }
-    return runSubRules(subRules, node, env, call);
-  };
-  Object.defineProperty(rule, "name", { value: ruleName });
-  rule.ruleFile = entry.sourceFile;
-  rule.ruleLine = entry.sourceLine;
-  return rule;
-}
-function compileWebFetchEntries(entries) {
-  return compileEntries(entries, buildWebFetchRule, buildWebFetchScopedRule);
-}
-function buildWebFetchScopedRule(entry) {
-  const subRules = compileWebFetchEntries(entry.rules);
-  const ruleName = `yaml:webfetch:scoped`;
-  const rule = function(node, env, call) {
-    if (!matchesWebFetchEntry(entry, node, env)) {
-      return ABSTAIN;
-    }
-    return runSubRules(subRules, node, env, call);
-  };
-  Object.defineProperty(rule, "name", { value: ruleName });
-  rule.ruleFile = entry.sourceFile;
-  rule.ruleLine = entry.sourceLine;
-  return rule;
-}
-function compileMcpEntries(entries) {
-  return compileEntries(entries, buildMcpRule, buildMcpScopedRule);
-}
-function buildMcpScopedRule(entry) {
-  const subRules = compileMcpEntries(entry.rules);
-  const ruleName = `yaml:tool:scoped`;
-  const rule = function(node, env, call) {
-    if (!matchesMcpEntry(entry, node, env)) {
-      return ABSTAIN;
-    }
-    return runSubRules(subRules, node, env, call);
-  };
-  Object.defineProperty(rule, "name", { value: ruleName });
-  rule.ruleFile = entry.sourceFile;
-  rule.ruleLine = entry.sourceLine;
-  return rule;
-}
-function compileTopLevelToolRules(config2) {
-  const compiledRules = [];
-  for (const key of Object.keys(config2)) {
-    if (KNOWN_SECTIONS.has(key)) {
-      continue;
-    }
-    if (KNOWN_FIELDS.has(key)) {
-      continue;
-    }
-    const sectionValue = config2[key];
-    if (sectionValue === undefined) {
-      continue;
-    }
-    const entries = normalizeToList(sectionValue);
-    for (const entry of entries) {
-      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-        continue;
-      }
-      if (entry.tool === undefined && entry["tool-in"] === undefined) {
-        entry.tool = key;
-      }
-      if (Array.isArray(entry.rules)) {
-        for (const subEntry of entry.rules) {
-          if (typeof subEntry !== "object" || subEntry === null || Array.isArray(subEntry)) {
-            continue;
-          }
-          if (subEntry.tool === undefined && subEntry["tool-in"] === undefined) {
-            subEntry.tool = key;
-          }
-        }
-      }
-    }
-    compiledRules.push(...compileMcpEntries(entries));
-  }
-  return compiledRules;
-}
-function compileNonBashSections(config2) {
-  const compiledRules = [];
-  const fileSections = [
-    ["read", "read"],
-    ["write", "write"],
-    ["edit", "edit"],
-    ["multi_edit", "multiedit"]
-  ];
-  for (const [sectionKey, nodeType] of fileSections) {
-    const sectionValue = config2[sectionKey];
-    if (sectionValue === undefined) {
-      continue;
-    }
-    const entries = normalizeToList(sectionValue);
-    for (const entry of entries) {
-      if (entry.rules !== undefined) {
-        compiledRules.push(buildFileScopedRule(nodeType, entry));
-      } else if (typeof entry.decide === "string") {
-        compiledRules.push(buildFileRule(nodeType, entry));
-      }
-    }
-  }
-  if (config2.webfetch !== undefined) {
-    const entries = normalizeToList(config2.webfetch);
-    for (const entry of entries) {
-      if (entry.rules !== undefined) {
-        compiledRules.push(buildWebFetchScopedRule(entry));
-      } else {
-        compiledRules.push(buildWebFetchRule(entry));
-      }
-    }
-  }
-  return compiledRules;
-}
-function resolveCwdPattern(pattern, baseDir) {
-  if (pattern.startsWith("./")) {
-    return baseDir + "/" + pattern.slice(2);
-  }
-  return pattern;
-}
-function resolveEntryCwdPatterns(entry, baseDir, options) {
-  if (typeof entry.cwd === "string") {
-    entry.cwd = resolveCwdPattern(entry.cwd, baseDir);
-  }
-  if (Array.isArray(entry["cwd-in"])) {
-    entry["cwd-in"] = entry["cwd-in"].map((pattern) => resolveCwdPattern(pattern, baseDir));
-  }
-  if (entry.not !== undefined) {
-    if (typeof entry.not.cwd === "string") {
-      entry.not.cwd = resolveCwdPattern(entry.not.cwd, baseDir);
-    }
-    if (Array.isArray(entry.not["cwd-in"])) {
-      entry.not["cwd-in"] = entry.not["cwd-in"].map((pattern) => resolveCwdPattern(pattern, baseDir));
-    }
-  }
-  if (Array.isArray(entry.rules)) {
-    for (const subEntry of entry.rules) {
-      resolveEntryCwdPatterns(subEntry, baseDir, options);
-    }
-  }
-  if (options !== undefined && options.isToolNameEntry) {
-    return;
-  }
-  for (const key of Object.keys(entry)) {
-    if (KNOWN_FIELDS.has(key)) {
-      continue;
-    }
-    const subValue = entry[key];
-    if (Array.isArray(subValue)) {
-      for (const subEntry of subValue) {
-        resolveEntryCwdPatterns(subEntry, baseDir);
-      }
-    } else if (typeof subValue === "object" && subValue !== null) {
-      resolveEntryCwdPatterns(subValue, baseDir);
-    }
-  }
-}
-function resolveRelativeCwdPatterns(config2, baseDir) {
-  if (config2.bash !== undefined) {
-    for (const entries of Object.values(config2.bash)) {
-      for (const entry of normalizeToList(entries)) {
-        resolveEntryCwdPatterns(entry, baseDir);
-      }
-    }
-  }
-  const sectionKeys = ["read", "write", "edit", "multi_edit", "webfetch"];
-  for (const sectionKey of sectionKeys) {
-    const sectionValue = config2[sectionKey];
-    if (sectionValue !== undefined) {
-      for (const entry of normalizeToList(sectionValue)) {
-        resolveEntryCwdPatterns(entry, baseDir);
-      }
-    }
-  }
-  const toolNameOptions = { isToolNameEntry: true };
-  for (const key of Object.keys(config2)) {
-    if (KNOWN_SECTIONS.has(key)) {
-      continue;
-    }
-    if (KNOWN_FIELDS.has(key)) {
-      continue;
-    }
-    const sectionValue = config2[key];
-    if (sectionValue === undefined) {
-      continue;
-    }
-    for (const entry of normalizeToList(sectionValue)) {
-      resolveEntryCwdPatterns(entry, baseDir, toolNameOptions);
-    }
-  }
-}
-function isCmdPathPattern(pattern) {
-  if (pattern.length >= 2 && pattern.startsWith("/") && pattern.endsWith("/")) {
-    return false;
-  }
-  return pattern.startsWith("./") || pattern.startsWith("/");
-}
-function resolveCmdPathPattern(pattern, projectDir) {
-  if (pattern.startsWith("./")) {
-    return projectDir + "/" + pattern.slice(2);
-  }
-  return pattern;
-}
-function rewriteCmdField(cmdField, projectDir) {
-  if (Array.isArray(cmdField)) {
-    return cmdField.map((pattern) => resolveCmdPathPattern(pattern, projectDir));
-  }
-  const tokens = cmdField.trim().split(/\s+/);
-  const rewrittenTokens = tokens.map((token) => resolveCmdPathPattern(token, projectDir));
-  return rewrittenTokens.join(" ");
-}
-function resolveEntryCmdPatterns(entry, projectDir, options) {
-  if (entry.cmd !== undefined) {
-    entry.cmd = rewriteCmdField(entry.cmd, projectDir);
-  }
-  if (Array.isArray(entry["cmd-in"])) {
-    entry["cmd-in"] = entry["cmd-in"].map((pattern) => resolveCmdPathPattern(pattern, projectDir));
-  }
-  if (entry.not !== undefined) {
-    if (entry.not.cmd !== undefined) {
-      entry.not.cmd = rewriteCmdField(entry.not.cmd, projectDir);
-    }
-    if (Array.isArray(entry.not["cmd-in"])) {
-      entry.not["cmd-in"] = entry.not["cmd-in"].map((pattern) => resolveCmdPathPattern(pattern, projectDir));
-    }
-  }
-  if (Array.isArray(entry.rules)) {
-    for (const subEntry of entry.rules) {
-      resolveEntryCmdPatterns(subEntry, projectDir, options);
-    }
-  }
-  if (options !== undefined && options.isToolNameEntry) {
-    return;
-  }
-  for (const key of Object.keys(entry)) {
-    if (KNOWN_FIELDS.has(key)) {
-      continue;
-    }
-    const subValue = entry[key];
-    if (Array.isArray(subValue)) {
-      for (const subEntry of subValue) {
-        resolveEntryCmdPatterns(subEntry, projectDir);
-      }
-    } else if (typeof subValue === "object" && subValue !== null) {
-      resolveEntryCmdPatterns(subValue, projectDir);
-    }
-  }
-}
-function resolveRelativeCmdPatterns(config2, projectDir) {
-  if (config2.bash !== undefined) {
-    for (const entries of Object.values(config2.bash)) {
-      for (const entry of normalizeToList(entries)) {
-        resolveEntryCmdPatterns(entry, projectDir);
-      }
-    }
-  }
-  const sectionKeys = ["read", "write", "edit", "multi_edit", "webfetch"];
-  for (const sectionKey of sectionKeys) {
-    const sectionValue = config2[sectionKey];
-    if (sectionValue !== undefined) {
-      for (const entry of normalizeToList(sectionValue)) {
-        resolveEntryCmdPatterns(entry, projectDir);
-      }
-    }
-  }
-  const toolNameOptions = { isToolNameEntry: true };
-  for (const key of Object.keys(config2)) {
-    if (KNOWN_SECTIONS.has(key)) {
-      continue;
-    }
-    if (KNOWN_FIELDS.has(key)) {
-      continue;
-    }
-    const sectionValue = config2[key];
-    if (sectionValue === undefined) {
-      continue;
-    }
-    for (const entry of normalizeToList(sectionValue)) {
-      resolveEntryCmdPatterns(entry, projectDir, toolNameOptions);
-    }
-  }
-}
-function expandEnvTokens(value, projectDir, homeDir, displayFile, warnings) {
-  if (value.length >= 2 && value.startsWith("/") && value.endsWith("/")) {
-    return value;
-  }
-  let result = value;
-  const projectDirToken = "${{PROJECT_DIR}}";
-  const homeToken = "${{HOME}}";
-  if (result.includes(projectDirToken)) {
-    if (projectDir !== undefined) {
-      result = result.split(projectDirToken).join(projectDir);
-    } else {
-      warnings.add(projectDirToken + "@" + displayFile);
-    }
-  }
-  if (result.includes(homeToken)) {
-    if (homeDir !== undefined) {
-      result = result.split(homeToken).join(homeDir);
-    } else {
-      warnings.add(homeToken + "@" + displayFile);
-    }
-  }
-  return result;
-}
-function expandMatcherFields(target, expand) {
-  if (typeof target.cmd === "string") {
-    target.cmd = expand(target.cmd);
-  } else if (Array.isArray(target.cmd)) {
-    target.cmd = target.cmd.map(expand);
-  }
-  if (Array.isArray(target["cmd-in"])) {
-    target["cmd-in"] = target["cmd-in"].map(expand);
-  }
-  if (typeof target.cwd === "string") {
-    target.cwd = expand(target.cwd);
-  }
-  if (Array.isArray(target["cwd-in"])) {
-    target["cwd-in"] = target["cwd-in"].map(expand);
-  }
-  if (typeof target.path === "string") {
-    target.path = expand(target.path);
-  }
-  if (Array.isArray(target["path-in"])) {
-    target["path-in"] = target["path-in"].map(expand);
-  }
-  if (target.env !== undefined) {
-    const newEnv = {};
-    for (const [envKey, envValue] of Object.entries(target.env)) {
-      newEnv[envKey] = typeof envValue === "string" ? expand(envValue) : envValue;
-    }
-    target.env = newEnv;
-  }
-  if (target.file !== undefined) {
-    const newFile = {};
-    for (const [fileKey, fileValue] of Object.entries(target.file)) {
-      newFile[expand(fileKey)] = fileValue;
-    }
-    target.file = newFile;
-  }
-}
-function expandEntryEnvTokens(entry, projectDir, homeDir, displayFile, warnings, options) {
-  const expand = (value) => expandEnvTokens(value, projectDir, homeDir, displayFile, warnings);
-  expandMatcherFields(entry, expand);
-  if (entry.not !== undefined) {
-    expandMatcherFields(entry.not, expand);
-  }
-  if (Array.isArray(entry.rules)) {
-    for (const subEntry of entry.rules) {
-      expandEntryEnvTokens(subEntry, projectDir, homeDir, displayFile, warnings, options);
-    }
-  }
-  if (options !== undefined && options.isToolNameEntry) {
-    return;
-  }
-  for (const key of Object.keys(entry)) {
-    if (KNOWN_FIELDS.has(key)) {
-      continue;
-    }
-    const subValue = entry[key];
-    if (Array.isArray(subValue)) {
-      for (const subEntry of subValue) {
-        expandEntryEnvTokens(subEntry, projectDir, homeDir, displayFile, warnings);
-      }
-    } else if (typeof subValue === "object" && subValue !== null) {
-      expandEntryEnvTokens(subValue, projectDir, homeDir, displayFile, warnings);
-    }
-  }
-}
-function expandConfigEnvTokens(config2, projectDir, homeDir, displayFile) {
-  const warnings = new Set;
-  if (config2.bash !== undefined) {
-    for (const entries of Object.values(config2.bash)) {
-      for (const entry of normalizeToList(entries)) {
-        expandEntryEnvTokens(entry, projectDir, homeDir, displayFile, warnings);
-      }
-    }
-  }
-  const sectionKeys = ["read", "write", "edit", "multi_edit", "webfetch"];
-  for (const sectionKey of sectionKeys) {
-    const sectionValue = config2[sectionKey];
-    if (sectionValue !== undefined) {
-      for (const entry of normalizeToList(sectionValue)) {
-        expandEntryEnvTokens(entry, projectDir, homeDir, displayFile, warnings);
-      }
-    }
-  }
-  const toolNameOptions = { isToolNameEntry: true };
-  for (const key of Object.keys(config2)) {
-    if (KNOWN_SECTIONS.has(key)) {
-      continue;
-    }
-    if (KNOWN_FIELDS.has(key)) {
-      continue;
-    }
-    const sectionValue = config2[key];
-    if (sectionValue === undefined) {
-      continue;
-    }
-    for (const entry of normalizeToList(sectionValue)) {
-      expandEntryEnvTokens(entry, projectDir, homeDir, displayFile, warnings, toolNameOptions);
-    }
-  }
-  for (const warningKey of warnings) {
-    const atIndex = warningKey.indexOf("@");
-    const token = warningKey.slice(0, atIndex);
-    process.stderr.write(`[CONFIG WARN] (${displayFile}) unresolved ${token}
-`);
-  }
-}
-function lineOfOffset(source, offset) {
-  let line = 1;
-  for (let idx = 0;idx < offset; idx++) {
-    if (source[idx] === `
-`) {
-      line++;
-    }
-  }
-  return line;
-}
-function annotateLines(node, jsValue, source, displayFile) {
-  if ($isMap(node) && jsValue !== null && typeof jsValue === "object" && !Array.isArray(jsValue)) {
-    const jsObj = jsValue;
-    if ("decide" in jsObj && node.range) {
-      jsObj.sourceFile = displayFile;
-      jsObj.sourceLine = lineOfOffset(source, node.range[0]);
-    }
-    for (const pair of node.items) {
-      if (!$isPair(pair) || !$isScalar(pair.key)) {
-        continue;
-      }
-      const key = String(pair.key.value);
-      if (key in jsObj) {
-        annotateLines(pair.value, jsObj[key], source, displayFile);
-      }
-    }
-  } else if ($isSeq(node) && Array.isArray(jsValue)) {
-    for (let idx = 0;idx < node.items.length; idx++) {
-      annotateLines(node.items[idx], jsValue[idx], source, displayFile);
-    }
-  }
-}
-function readYamlFile(filePath, displayFile) {
-  if (!existsSync(filePath)) {
-    return null;
-  }
-  const content = readFileSync(filePath, "utf-8");
-  const doc2 = $parseDocument(content);
-  if (doc2.errors.length > 0) {
-    throw doc2.errors[0];
-  }
-  const config2 = doc2.toJS();
-  annotateLines(doc2.contents, config2, content, displayFile);
-  return config2;
-}
-function validateEntry(entry, path, errors4, options) {
-  if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-    errors4.push({ path, message: `expected a rule entry object but got ${Array.isArray(entry) ? "array" : typeof entry}` });
-    return;
-  }
-  if (entry.decide !== undefined && !VALID_DECIDE_VALUES.has(entry.decide)) {
-    errors4.push({ path: `${path}.decide`, message: `invalid decide value '${entry.decide}': must be one of allow, deny, ask, abstain` });
-  }
-  if (entry.decide !== undefined && entry.rules !== undefined) {
-    errors4.push({ path, message: `'decide' and 'rules' are mutually exclusive; 'decide' will be ignored` });
-  }
-  const subcommandKeys = Object.keys(entry).filter((key) => !KNOWN_FIELDS.has(key));
-  const isToolNameEntry = options !== undefined && options.isToolNameEntry;
-  if (entry.decide === undefined && entry.rules === undefined && (isToolNameEntry || subcommandKeys.length === 0)) {
-    errors4.push({ path, message: `entry has neither 'decide', 'rules', nor subcommand keys and will always abstain` });
-  }
-  if (entry.rules !== undefined) {
-    for (let index = 0;index < entry.rules.length; index++) {
-      validateEntry(entry.rules[index], `${path}.rules[${index}]`, errors4, options);
-    }
-  }
-  if (isToolNameEntry) {
-    for (const unknownKey of subcommandKeys) {
-      errors4.push({ path: `${path}.${unknownKey}`, message: `unknown field '${unknownKey}' on tool-name rule '${path}'` });
-    }
-    return;
-  }
-  for (const subKey of subcommandKeys) {
-    const subValue = entry[subKey];
-    if (typeof subValue !== "object" || subValue === null) {
-      errors4.push({ path: `${path}.${subKey}`, message: `subcommand value must be a rule entry object or list of rule entries, got ${typeof subValue}` });
-      continue;
-    }
-    if (Array.isArray(subValue)) {
-      for (let index = 0;index < subValue.length; index++) {
-        const item = subValue[index];
-        if (typeof item !== "object" || item === null || Array.isArray(item)) {
-          errors4.push({ path: `${path}.${subKey}[${index}]`, message: `expected a rule entry object but got ${Array.isArray(item) ? "array" : typeof item}` });
-          continue;
-        }
-        validateEntry(item, `${path}.${subKey}[${index}]`, errors4);
-      }
-    } else {
-      validateEntry(subValue, `${path}.${subKey}`, errors4);
-    }
-  }
-}
-function validateConfig(config2) {
-  const errors4 = [];
-  if (config2.bash !== undefined) {
-    for (const [binary, value] of Object.entries(config2.bash)) {
-      const entries = normalizeToList(value);
-      for (let index = 0;index < entries.length; index++) {
-        validateEntry(entries[index], `bash.${binary}[${index}]`, errors4);
-      }
-    }
-  }
-  const nonBashSections = ["read", "write", "edit", "multi_edit", "webfetch"];
-  for (const section of nonBashSections) {
-    const sectionValue = config2[section];
-    if (sectionValue === undefined) {
-      continue;
-    }
-    const entries = normalizeToList(sectionValue);
-    for (let index = 0;index < entries.length; index++) {
-      validateEntry(entries[index], `${section}[${index}]`, errors4);
-    }
-  }
-  const toolNameOptions = { isToolNameEntry: true };
-  for (const key of Object.keys(config2)) {
-    if (KNOWN_SECTIONS.has(key)) {
-      continue;
-    }
-    if (KNOWN_FIELDS.has(key)) {
-      errors4.push({
-        path: key,
-        message: `top-level key '${key}' is a reserved rule field; tool-name rules cannot use these as keys`
-      });
-      continue;
-    }
-    const sectionValue = config2[key];
-    if (sectionValue === undefined) {
-      continue;
-    }
-    const entries = normalizeToList(sectionValue);
-    for (let index = 0;index < entries.length; index++) {
-      const entryPath = index > 0 ? `${key}[${index}]` : key;
-      validateEntry(entries[index], entryPath, errors4, toolNameOptions);
-    }
-  }
-  return errors4;
-}
-function compileConfig(config2) {
-  const compiledRules = [];
-  if (config2.bash !== undefined) {
-    compiledRules.push(...compileBashSection(config2.bash));
-  }
-  compiledRules.push(...compileNonBashSections(config2));
-  compiledRules.push(...compileTopLevelToolRules(config2));
-  return compiledRules;
-}
-function loadConfigRulesFromFile(filePath, displayFile, baseDir) {
-  const config2 = readYamlFile(filePath, displayFile);
-  if (config2 === null) {
-    return [];
-  }
-  expandConfigEnvTokens(config2, process.env["CLAUDE_PROJECT_DIR"], process.env["HOME"], displayFile);
-  resolveRelativeCwdPatterns(config2, baseDir);
-  const projectDir = process.env["CLAUDE_PROJECT_DIR"];
-  if (projectDir !== undefined) {
-    resolveRelativeCmdPatterns(config2, projectDir);
-  }
-  const configErrors = validateConfig(config2);
-  for (const configError of configErrors) {
-    process.stderr.write(`[CONFIG ERROR] ${configError.path}: ${configError.message}
-`);
-  }
-  return compileConfig(config2);
-}
-function loadHomeConfigRules() {
-  const homeDir = process.env["HOME"];
-  if (homeDir === undefined) {
-    return [];
-  }
-  return loadConfigRulesFromFile(join(homeDir, ".claude", "permissions.yaml"), "~/.claude/permissions.yaml", homeDir);
-}
-function loadProjectConfigRules() {
-  const projectDir = process.env["CLAUDE_PROJECT_DIR"];
-  if (projectDir === undefined) {
-    return [];
-  }
-  return loadConfigRulesFromFile(join(projectDir, ".claude", "permissions.yaml"), ".claude/permissions.yaml", projectDir);
-}
-function isDropInFileCandidate(dirPath, entryName) {
-  if (entryName.startsWith(".")) {
-    return false;
-  }
-  const stat = statSync(join(dirPath, entryName));
-  return stat.isFile();
-}
-function discoverConfigDirFiles(dirPath, displayPrefix, baseDir) {
-  if (!existsSync(dirPath)) {
-    return [];
-  }
-  const dirStat = statSync(dirPath);
-  if (!dirStat.isDirectory()) {
-    return [];
-  }
-  const allEntries = readdirSync(dirPath);
-  const matchingNames = [];
-  for (const entryName of allEntries) {
-    if (!entryName.endsWith(".yaml") && !entryName.endsWith(".yml")) {
-      continue;
-    }
-    if (!isDropInFileCandidate(dirPath, entryName)) {
-      continue;
-    }
-    matchingNames.push(entryName);
-  }
-  matchingNames.sort();
-  const sources = [];
-  for (const name of matchingNames) {
-    sources.push({
-      filePath: join(dirPath, name),
-      displayPath: displayPrefix + "/" + name,
-      baseDir
-    });
-  }
-  return sources;
-}
-function discoverHomeConfigDirFiles() {
-  const homeDir = process.env["HOME"];
-  if (homeDir === undefined) {
-    return [];
-  }
-  return discoverConfigDirFiles(join(homeDir, ".claude", "permissions.d"), "~/.claude/permissions.d", homeDir);
-}
-function discoverProjectConfigDirFiles() {
-  const projectDir = process.env["CLAUDE_PROJECT_DIR"];
-  if (projectDir === undefined) {
-    return [];
-  }
-  return discoverConfigDirFiles(join(projectDir, ".claude", "permissions.d"), ".claude/permissions.d", projectDir);
-}
-function makeConfigFileLoader(source) {
-  return function configFileLoader() {
-    return loadConfigRulesFromFile(source.filePath, source.displayPath, source.baseDir);
-  };
-}
-
 // src/load-commands.ts
 import { readdir, readFile, stat } from "fs/promises";
-import { join as join2 } from "path";
+import { join } from "path";
 function normaliseFlagDescriptor(raw) {
   return {
     arity: raw.arity ?? 0,
@@ -24068,7 +22883,7 @@ async function isYamlFile(dirPath, entryName) {
   if (!entryName.endsWith(".yaml") && !entryName.endsWith(".yml")) {
     return false;
   }
-  const fileStat = await stat(join2(dirPath, entryName));
+  const fileStat = await stat(join(dirPath, entryName));
   return fileStat.isFile();
 }
 async function mergeDescriptorsFromDir(dirPath, target) {
@@ -24086,7 +22901,7 @@ async function mergeDescriptorsFromDir(dirPath, target) {
   }
   yamlNames.sort();
   for (const yamlName of yamlNames) {
-    const filePath = join2(dirPath, yamlName);
+    const filePath = join(dirPath, yamlName);
     const content = await readFile(filePath, "utf-8");
     const parsed = $parse(content);
     if (parsed === null || typeof parsed !== "object") {
@@ -24102,9 +22917,9 @@ async function mergeDescriptorsFromDir(dirPath, target) {
 }
 async function loadCommandDescriptors(homeDir, projectDir) {
   const descriptors = new Map;
-  const homeCommandsDir = join2(homeDir, ".claude", "permissions.d", "commands");
+  const homeCommandsDir = join(homeDir, ".claude", "permissions.d", "commands");
   await mergeDescriptorsFromDir(homeCommandsDir, descriptors);
-  const projectCommandsDir = join2(projectDir, ".claude", "permissions.d", "commands");
+  const projectCommandsDir = join(projectDir, ".claude", "permissions.d", "commands");
   await mergeDescriptorsFromDir(projectCommandsDir, descriptors);
   return descriptors;
 }
@@ -24373,6 +23188,19 @@ function peek(state) {
 function consume(state) {
   return state.tokens[state.pos++];
 }
+function wrapRedirectNodes(command, redirects) {
+  let node = command;
+  for (const redirect of redirects) {
+    const redirectNode = {
+      type: "redirect",
+      op: redirect.op,
+      command: node,
+      target: redirect.target
+    };
+    node = redirectNode;
+  }
+  return node;
+}
 function parseCommand(state, descriptors) {
   const envPrefix = {};
   const redirects = [];
@@ -24433,13 +23261,12 @@ function parseCommand(state, descriptors) {
     options: argv.options,
     cmd: argv.cmd,
     envPrefix,
-    redirects,
     raw
   };
   if (substitutions.length > 0) {
     command.substitutions = substitutions;
   }
-  return command;
+  return wrapRedirectNodes(command, redirects);
 }
 function extractSubstitutions(text) {
   const results = [];
@@ -24525,7 +23352,7 @@ function parseWhileLoop(state, descriptors) {
       type: "while_loop",
       until,
       condition,
-      body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "" },
+      body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, raw: "" },
       raw: state.raw.substring(startPos, peek(state)?.start ?? state.raw.length)
     };
   }
@@ -24636,7 +23463,7 @@ function parseForLoop(state, descriptors) {
       type: "for_loop",
       variable: "",
       items: [],
-      body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "" },
+      body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, raw: "" },
       raw: state.raw.substring(startPos, forToken.end)
     };
   }
@@ -24654,7 +23481,7 @@ function parseForLoop(state, descriptors) {
       type: "for_loop",
       variable,
       items,
-      body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "" },
+      body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, raw: "" },
       raw: state.raw.substring(startPos, peek(state)?.start ?? state.raw.length)
     };
   }
@@ -24775,11 +23602,1565 @@ function parseSequence(state, descriptors) {
 function parseBash(raw, descriptors) {
   const trimmed = raw.trim();
   if (trimmed.length === 0) {
-    return { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "" };
+    return { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, raw: "" };
   }
   const tokens = lex(raw);
   const state = { tokens, pos: 0, raw };
   return parseSequence(state, descriptors);
+}
+
+// src/load-config.ts
+var KNOWN_FIELDS = new Set(["decide", "reason", "rules", "not", "file", "cmd", "cmd-in", "options", "options-in", "cwd", "cwd-in", "cwd_resolved", "env", "path", "path-in", "host", "host-in", "tool", "tool-in", "sourceLine", "sourceFile"]);
+var KNOWN_SECTIONS = new Set(["bash", "read", "write", "edit", "multi_edit", "webfetch", "redirect"]);
+var VALID_DECIDE_VALUES = new Set(["allow", "deny", "ask", "abstain"]);
+function normalizeToList(value) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  return [value];
+}
+function mapDecision(decide, reason) {
+  if (decide === "allow") {
+    return { action: "allow", reason };
+  }
+  if (decide === "deny") {
+    return { action: "deny", reason };
+  }
+  if (decide === "abstain") {
+    return { action: "abstain" };
+  }
+  return { action: "ask", reason };
+}
+function matchesGlob(pattern, value) {
+  if (pattern.endsWith("/**") && value === pattern.slice(0, -3)) {
+    return false;
+  }
+  return import_picomatch.default(pattern, { dot: true })(value);
+}
+function matchesPathGlob(pattern, value) {
+  if (pattern.endsWith("/**") && value === pattern.slice(0, -3)) {
+    return true;
+  }
+  return import_picomatch.default(pattern, { dot: true })(value);
+}
+function matchesPattern(pattern, value) {
+  if (pattern.length >= 2 && pattern.startsWith("/") && pattern.endsWith("/")) {
+    return new RegExp(pattern.slice(1, -1)).test(value);
+  }
+  return matchesGlob(pattern, value);
+}
+function matchesCwd(entry, env) {
+  if (entry["cwd-in"] !== undefined) {
+    return entry["cwd-in"].some((pattern) => matchesPattern(pattern, env.cwd));
+  }
+  if (entry.cwd !== undefined) {
+    return matchesPattern(entry.cwd, env.cwd);
+  }
+  return true;
+}
+function matchesCwdResolved(entry, env) {
+  if (entry.cwd_resolved === undefined) {
+    return true;
+  }
+  return entry.cwd_resolved === env.cwdResolved;
+}
+function homePath(rawPath) {
+  if (rawPath.startsWith("~")) {
+    return homedir() + rawPath.slice(1);
+  }
+  if (!rawPath.startsWith("/")) {
+    const projectDir = process.env["CLAUDE_PROJECT_DIR"] ?? process.cwd();
+    return join2(projectDir, rawPath);
+  }
+  return rawPath;
+}
+function evaluateFileField(file) {
+  for (const [rawPath, fileMatch] of Object.entries(file)) {
+    const expandedPath = homePath(rawPath);
+    if (!existsSync(expandedPath)) {
+      return "file-absent";
+    }
+    if (fileMatch === true) {
+      continue;
+    }
+    const content = readFileSync(expandedPath, "utf8");
+    if (!content.includes(fileMatch.contains)) {
+      return "no-match";
+    }
+  }
+  return "match";
+}
+function matchesFileField(entry) {
+  if (entry.file === undefined) {
+    return true;
+  }
+  return evaluateFileField(entry.file) === "match";
+}
+function matchesEnvVars(entry, env) {
+  if (entry.env === undefined) {
+    return true;
+  }
+  for (const [varName, pattern] of Object.entries(entry.env)) {
+    const actualValue = env.env[varName];
+    if (actualValue === undefined) {
+      return false;
+    }
+    if (!matchesPattern(pattern, actualValue)) {
+      return false;
+    }
+  }
+  return true;
+}
+function expandAliases(aliasExpr) {
+  return aliasExpr.split("|");
+}
+function flagPresent(aliasExpr, namedOptions) {
+  return expandAliases(aliasExpr).some((alias) => (alias in namedOptions));
+}
+function flagValue(aliasExpr, namedOptions) {
+  for (const alias of expandAliases(aliasExpr)) {
+    if (alias in namedOptions) {
+      return namedOptions[alias];
+    }
+  }
+  return;
+}
+function matchesOptions(entry, node) {
+  if (entry["options-in"] !== undefined) {
+    return entry["options-in"].some((aliasExpr) => flagPresent(aliasExpr, node.options));
+  }
+  if (entry.options === undefined) {
+    return true;
+  }
+  if (Array.isArray(entry.options)) {
+    return entry.options.every((aliasExpr) => flagPresent(aliasExpr, node.options));
+  }
+  for (const [aliasExpr, pattern] of Object.entries(entry.options)) {
+    if (typeof pattern !== "string") {
+      if (!flagPresent(aliasExpr, node.options)) {
+        return false;
+      }
+    } else {
+      const val = flagValue(aliasExpr, node.options);
+      if (val === undefined) {
+        return false;
+      }
+      if (typeof val !== "string") {
+        return false;
+      }
+      if (!matchesPattern(pattern, val)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+function expandEnvVars(value, envVars) {
+  return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (fullMatch, bracedName, bareName) => {
+    const variableName = bracedName !== undefined ? bracedName : bareName;
+    const replacement = envVars[variableName];
+    return replacement !== undefined ? replacement : fullMatch;
+  });
+}
+function matchesCmdPattern(pattern, arg, env) {
+  if (!isCmdPathPattern(pattern)) {
+    return matchesPattern(pattern, arg);
+  }
+  const resolvedArg = resolve(env.cwd, arg);
+  return matchesPathGlob(pattern, resolvedArg);
+}
+function matchesCmd(entry, node, cmdOffset, env) {
+  const rawCmdArray = Array.isArray(node.cmd) ? node.cmd : [node.cmd];
+  const cmdArray = rawCmdArray.map((token) => expandEnvVars(token, env.env));
+  if (entry["cmd-in"] !== undefined) {
+    const slice = cmdArray.slice(cmdOffset);
+    return entry["cmd-in"].some((pattern) => slice.some((positional) => matchesCmdPattern(pattern, positional, env)));
+  }
+  if (entry.cmd !== undefined) {
+    const patterns = Array.isArray(entry.cmd) ? entry.cmd : entry.cmd.trim().split(/\s+/);
+    for (let idx = 0;idx < patterns.length; idx++) {
+      const target = cmdArray[cmdOffset + idx];
+      if (target === undefined) {
+        return false;
+      }
+      if (!matchesCmdPattern(patterns[idx], target, env)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  return true;
+}
+function aggregateOutcomes(firstOutcome, secondOutcome) {
+  const firstAction = firstOutcome.decision.action;
+  const secondAction = secondOutcome.decision.action;
+  if (firstAction === "deny") {
+    return firstOutcome;
+  }
+  if (secondAction === "deny") {
+    return secondOutcome;
+  }
+  if (firstAction === "ask") {
+    return firstOutcome;
+  }
+  if (secondAction === "ask") {
+    return secondOutcome;
+  }
+  if (firstAction === "allow") {
+    return firstOutcome;
+  }
+  if (secondAction === "allow") {
+    return secondOutcome;
+  }
+  return firstOutcome;
+}
+function matchesSubcommandPath(cmdArray, subcommandPath) {
+  if (cmdArray.length < subcommandPath.length) {
+    return false;
+  }
+  for (let idx = 0;idx < subcommandPath.length; idx++) {
+    if (cmdArray[idx] !== subcommandPath[idx]) {
+      return false;
+    }
+  }
+  return true;
+}
+function buildBashRule(binary, subcommandPath, entry) {
+  const decision = mapDecision(entry.decide, entry.reason);
+  const pathLabel = subcommandPath.length > 0 ? `:${subcommandPath.join(":")}` : "";
+  const ruleName = `yaml:${binary}${pathLabel}:${entry.decide}`;
+  const cmdOffset = subcommandPath.length;
+  const rule = function(node, env, _call) {
+    if (node.type !== "command") {
+      return ABSTAIN;
+    }
+    if (node.binary !== binary) {
+      return ABSTAIN;
+    }
+    const cmdArray = Array.isArray(node.cmd) ? node.cmd : [node.cmd];
+    if (!matchesSubcommandPath(cmdArray, subcommandPath)) {
+      return ABSTAIN;
+    }
+    if (!matchesCmd(entry, node, cmdOffset, env)) {
+      return ABSTAIN;
+    }
+    if (!matchesOptions(entry, node)) {
+      return ABSTAIN;
+    }
+    if (entry.host !== undefined || entry["host-in"] !== undefined) {
+      const urlArg = cmdArray[cmdOffset];
+      const hostname = urlArg !== undefined ? extractHost(urlArg) : "";
+      if (entry["host-in"] !== undefined) {
+        const hostIn = entry["host-in"];
+        if (!hostIn.some((pattern) => matchesPattern(pattern, hostname))) {
+          return ABSTAIN;
+        }
+      } else if (entry.host !== undefined) {
+        if (!matchesPattern(entry.host, hostname)) {
+          return ABSTAIN;
+        }
+      }
+    }
+    if (!matchesCwd(entry, env)) {
+      return ABSTAIN;
+    }
+    if (!matchesCwdResolved(entry, env)) {
+      return ABSTAIN;
+    }
+    if (!matchesEnvVars(entry, env)) {
+      return ABSTAIN;
+    }
+    if (!matchesFileField(entry)) {
+      return ABSTAIN;
+    }
+    if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, cmdOffset)) {
+      return ABSTAIN;
+    }
+    return { decision };
+  };
+  Object.defineProperty(rule, "name", { value: ruleName });
+  rule.ruleFile = entry.sourceFile;
+  rule.ruleLine = entry.sourceLine;
+  return rule;
+}
+function runSubRules(subRules, node, env, call) {
+  let result = ABSTAIN;
+  for (const subRule of subRules) {
+    const outcome = subRule(node, env, call);
+    result = aggregateOutcomes(result, outcome);
+    if (result.decision.action === "deny") {
+      break;
+    }
+  }
+  return result;
+}
+function runFirstMatchSubRules(subRules, node, env, call) {
+  for (const subRule of subRules) {
+    const outcome = subRule(node, env, call);
+    if (outcome.decision.action !== "abstain") {
+      return outcome;
+    }
+  }
+  return ABSTAIN;
+}
+function buildBashScopedRule(binary, subcommandPath, entry) {
+  const subRules = compileBashBinary(binary, entry.rules, subcommandPath);
+  const pathLabel = subcommandPath.length > 0 ? `:${subcommandPath.join(":")}` : "";
+  const ruleName = `yaml:${binary}${pathLabel}:scoped`;
+  const cmdOffset = subcommandPath.length;
+  const rule = function(node, env, call) {
+    if (node.type !== "command") {
+      return ABSTAIN;
+    }
+    if (node.binary !== binary) {
+      return ABSTAIN;
+    }
+    const cmdArray = Array.isArray(node.cmd) ? node.cmd : [node.cmd];
+    if (!matchesSubcommandPath(cmdArray, subcommandPath)) {
+      return ABSTAIN;
+    }
+    if (!matchesCmd(entry, node, cmdOffset, env)) {
+      return ABSTAIN;
+    }
+    if (!matchesOptions(entry, node)) {
+      return ABSTAIN;
+    }
+    if (!matchesCwd(entry, env)) {
+      return ABSTAIN;
+    }
+    if (!matchesCwdResolved(entry, env)) {
+      return ABSTAIN;
+    }
+    if (!matchesEnvVars(entry, env)) {
+      return ABSTAIN;
+    }
+    if (!matchesFileField(entry)) {
+      return ABSTAIN;
+    }
+    if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, cmdOffset)) {
+      return ABSTAIN;
+    }
+    return runSubRules(subRules, node, env, call);
+  };
+  Object.defineProperty(rule, "name", { value: ruleName });
+  rule.ruleFile = entry.sourceFile;
+  rule.ruleLine = entry.sourceLine;
+  return rule;
+}
+function compileBashBinary(binary, entries, subcommandPath) {
+  const compiledRules = [];
+  for (const entry of entries) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      continue;
+    }
+    const subcommandKeys = Object.keys(entry).filter((key) => !KNOWN_FIELDS.has(key));
+    if (entry.rules !== undefined) {
+      compiledRules.push(buildBashScopedRule(binary, subcommandPath, entry));
+    } else if (typeof entry.decide === "string") {
+      compiledRules.push(buildBashRule(binary, subcommandPath, entry));
+    }
+    for (const subKey of subcommandKeys) {
+      const subValue = entry[subKey];
+      const subEntries = normalizeToList(subValue);
+      compiledRules.push(...compileBashBinary(binary, subEntries, [...subcommandPath, subKey]));
+    }
+  }
+  return compiledRules;
+}
+function compileBashSection(bashSection) {
+  const compiledRules = [];
+  for (const [binary, value] of Object.entries(bashSection)) {
+    const entries = normalizeToList(value);
+    compiledRules.push(...compileBashBinary(binary, entries, []));
+  }
+  return compiledRules;
+}
+function matchesPath(entry, filePath) {
+  if (entry["path-in"] !== undefined) {
+    return entry["path-in"].some((pattern) => matchesPattern(pattern, filePath));
+  }
+  if (entry.path !== undefined) {
+    return matchesPattern(entry.path, filePath);
+  }
+  return true;
+}
+function notFieldsAllMatch(not, node, env, cmdOffset) {
+  if (not.file !== undefined) {
+    const fileResult = evaluateFileField(not.file);
+    if (fileResult === "file-absent") {
+      return true;
+    }
+    if (fileResult === "no-match") {
+      return false;
+    }
+  }
+  if (node.type === "command") {
+    if (!matchesCmd(not, node, cmdOffset, env)) {
+      return false;
+    }
+    if (!matchesOptions(not, node)) {
+      return false;
+    }
+  }
+  if (!matchesCwd(not, env)) {
+    return false;
+  }
+  if (!matchesEnvVars(not, env)) {
+    return false;
+  }
+  if ("file_path" in node) {
+    const filePath = node.file_path;
+    if (!matchesPath(not, filePath)) {
+      return false;
+    }
+  }
+  if (node.type === "redirect" && (not.path !== undefined || not["path-in"] !== undefined)) {
+    const redirectNode = node;
+    if (isRedirectFdMerge(redirectNode)) {
+      return false;
+    }
+    const redirectKind = REDIRECT_OUT_OPS.has(redirectNode.op) ? "out" : "in";
+    if (!matchesRedirectPathFields(not, redirectNode, env, redirectKind)) {
+      return false;
+    }
+  }
+  return true;
+}
+function matchesFileEntry(nodeType, entry, node, env) {
+  if (node.type !== nodeType) {
+    return false;
+  }
+  if (!("file_path" in node)) {
+    return false;
+  }
+  const filePath = node.file_path;
+  if (!matchesPath(entry, filePath)) {
+    return false;
+  }
+  if (!matchesCwd(entry, env)) {
+    return false;
+  }
+  if (!matchesCwdResolved(entry, env)) {
+    return false;
+  }
+  if (!matchesEnvVars(entry, env)) {
+    return false;
+  }
+  if (!matchesFileField(entry)) {
+    return false;
+  }
+  if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, 0)) {
+    return false;
+  }
+  return true;
+}
+function buildFileRule(nodeType, entry) {
+  const decision = mapDecision(entry.decide, entry.reason);
+  const ruleName = `yaml:${nodeType}:${entry.decide}`;
+  const rule = function(node, env, _call) {
+    if (!matchesFileEntry(nodeType, entry, node, env)) {
+      return ABSTAIN;
+    }
+    return { decision };
+  };
+  Object.defineProperty(rule, "name", { value: ruleName });
+  rule.ruleFile = entry.sourceFile;
+  rule.ruleLine = entry.sourceLine;
+  return rule;
+}
+function extractHost(url) {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "";
+  }
+}
+function matchesWebFetchEntry(entry, node, env) {
+  if (node.type !== "other" || node.tool_name !== "WebFetch") {
+    return false;
+  }
+  const url = typeof node.tool_input["url"] === "string" ? node.tool_input["url"] : "";
+  const hostname = extractHost(url);
+  if (entry.host !== undefined && !matchesPattern(entry.host, hostname)) {
+    return false;
+  }
+  if (entry["host-in"] !== undefined) {
+    const hostIn = entry["host-in"];
+    if (!hostIn.some((pattern) => matchesPattern(pattern, hostname))) {
+      return false;
+    }
+  }
+  if (!matchesCwd(entry, env)) {
+    return false;
+  }
+  if (!matchesCwdResolved(entry, env)) {
+    return false;
+  }
+  if (!matchesEnvVars(entry, env)) {
+    return false;
+  }
+  if (!matchesFileField(entry)) {
+    return false;
+  }
+  if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, 0)) {
+    return false;
+  }
+  return true;
+}
+function buildWebFetchRule(entry) {
+  const decision = mapDecision(entry.decide, entry.reason);
+  const ruleName = `yaml:webfetch:${entry.decide}`;
+  const rule = function(node, env, _call) {
+    if (!matchesWebFetchEntry(entry, node, env)) {
+      return ABSTAIN;
+    }
+    return { decision };
+  };
+  Object.defineProperty(rule, "name", { value: ruleName });
+  rule.ruleFile = entry.sourceFile;
+  rule.ruleLine = entry.sourceLine;
+  return rule;
+}
+var EMPTY_DESCRIPTORS = new Map;
+function resolveRedirectTarget(target, env) {
+  let expanded = expandEnvVars(target, env.env);
+  if (expanded.startsWith("~")) {
+    return homedir() + expanded.slice(1);
+  }
+  if (expanded.startsWith("/")) {
+    return expanded;
+  }
+  return resolve(env.cwd, expanded);
+}
+function matchesRedirectPath(pattern, target, env) {
+  const resolvedTarget = resolveRedirectTarget(target, env);
+  if (!isCmdPathPattern(pattern)) {
+    return matchesPattern(pattern, resolvedTarget);
+  }
+  return matchesPathGlob(pattern, resolvedTarget);
+}
+function matchesRedirectTargets(patterns, targets, env) {
+  for (const target of targets) {
+    const matched = patterns.some((pattern) => matchesRedirectPath(pattern, target, env));
+    if (!matched) {
+      return false;
+    }
+  }
+  return true;
+}
+function collectRedirectsByInnerRaw(root, innerRaw) {
+  const chain = [];
+  function walk(node) {
+    if (node.type === "redirect") {
+      if (findInnerCommand(node).raw === innerRaw) {
+        chain.push(node);
+      }
+      walk(node.command);
+    } else if (node.type === "binop") {
+      walk(node.left);
+      walk(node.right);
+    } else if (node.type === "for_loop" || node.type === "group") {
+      walk(node.body);
+    } else if (node.type === "while_loop") {
+      walk(node.condition);
+      walk(node.body);
+    } else if (node.type === "if_statement") {
+      walk(node.condition);
+      walk(node.thenBranch);
+      if (node.elseBranch !== undefined) {
+        walk(node.elseBranch);
+      }
+    } else if (node.type === "case_statement") {
+      for (const clause of node.clauses) {
+        walk(clause.body);
+      }
+    } else if (node.type === "xargs") {
+      walk(node.child);
+    } else if (node.type === "command" && node.substitutions !== undefined) {
+      for (const substitution of node.substitutions) {
+        walk(substitution);
+      }
+    }
+  }
+  walk(root);
+  return chain;
+}
+function getBashAstFromCall(call) {
+  if (call.tool_name !== "Bash" && call.tool_name !== "Shell") {
+    return null;
+  }
+  const command = call.tool_input.command;
+  if (typeof command !== "string") {
+    return null;
+  }
+  return parseBash(command, EMPTY_DESCRIPTORS);
+}
+function collectRedirectFileTargetsForNode(node, call, ops) {
+  const bashAst = getBashAstFromCall(call);
+  if (bashAst === null) {
+    return [];
+  }
+  const innerRaw = findInnerCommand(node).raw;
+  const chain = collectRedirectsByInnerRaw(bashAst, innerRaw);
+  const targets = [];
+  for (const redirectNode of chain) {
+    if (!ops.has(redirectNode.op)) {
+      continue;
+    }
+    if (isRedirectFdMerge(redirectNode)) {
+      continue;
+    }
+    targets.push(redirectNode.target);
+  }
+  return targets;
+}
+function matchesRedirectPathFields(entry, node, env, kind) {
+  const ops = kind === "out" ? REDIRECT_OUT_OPS : REDIRECT_IN_OPS;
+  if (!ops.has(node.op)) {
+    return false;
+  }
+  if (isRedirectFdMerge(node)) {
+    return false;
+  }
+  if (entry["path-in"] !== undefined) {
+    return matchesRedirectTargets(entry["path-in"], [node.target], env);
+  }
+  if (entry.path !== undefined) {
+    return matchesRedirectPath(entry.path, node.target, env);
+  }
+  return true;
+}
+function matchesRedirectOut(entry, node, env, call) {
+  if (!REDIRECT_OUT_OPS.has(node.op)) {
+    return false;
+  }
+  if (isRedirectFdMerge(node)) {
+    return false;
+  }
+  if (entry["path-in"] !== undefined || entry.path !== undefined) {
+    const targets = collectRedirectFileTargetsForNode(node, call, REDIRECT_OUT_OPS);
+    if (targets.length === 0) {
+      return false;
+    }
+    if (entry["path-in"] !== undefined) {
+      if (!matchesRedirectTargets(entry["path-in"], targets, env)) {
+        return false;
+      }
+    } else if (entry.path !== undefined) {
+      for (const target of targets) {
+        if (!matchesRedirectPath(entry.path, target, env)) {
+          return false;
+        }
+      }
+    }
+  }
+  if (!matchesCwd(entry, env)) {
+    return false;
+  }
+  if (!matchesCwdResolved(entry, env)) {
+    return false;
+  }
+  if (!matchesEnvVars(entry, env)) {
+    return false;
+  }
+  if (!matchesFileField(entry)) {
+    return false;
+  }
+  if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, 0)) {
+    return false;
+  }
+  return true;
+}
+function matchesRedirectIn(entry, node, env, call) {
+  if (!REDIRECT_IN_OPS.has(node.op)) {
+    return false;
+  }
+  if (isRedirectFdMerge(node)) {
+    return false;
+  }
+  if (entry["path-in"] !== undefined || entry.path !== undefined) {
+    const targets = collectRedirectFileTargetsForNode(node, call, REDIRECT_IN_OPS);
+    if (targets.length === 0) {
+      return false;
+    }
+    if (entry["path-in"] !== undefined) {
+      if (!matchesRedirectTargets(entry["path-in"], targets, env)) {
+        return false;
+      }
+    } else if (entry.path !== undefined) {
+      for (const target of targets) {
+        if (!matchesRedirectPath(entry.path, target, env)) {
+          return false;
+        }
+      }
+    }
+  }
+  if (!matchesCwd(entry, env)) {
+    return false;
+  }
+  if (!matchesCwdResolved(entry, env)) {
+    return false;
+  }
+  if (!matchesEnvVars(entry, env)) {
+    return false;
+  }
+  if (!matchesFileField(entry)) {
+    return false;
+  }
+  if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, 0)) {
+    return false;
+  }
+  return true;
+}
+function buildRedirectRule(kind, entry) {
+  const decision = mapDecision(entry.decide, entry.reason);
+  const ruleName = `yaml:redirect:${kind}:${entry.decide}`;
+  const rule = function(node, env, call) {
+    if (node.type !== "redirect") {
+      return ABSTAIN;
+    }
+    const redirectNode = node;
+    const matched = kind === "out" ? matchesRedirectOut(entry, redirectNode, env, call) : matchesRedirectIn(entry, redirectNode, env, call);
+    if (!matched) {
+      return ABSTAIN;
+    }
+    return { decision };
+  };
+  Object.defineProperty(rule, "name", { value: ruleName });
+  rule.ruleFile = entry.sourceFile;
+  rule.ruleLine = entry.sourceLine;
+  return rule;
+}
+function buildRedirectScopedRule(kind, entry) {
+  const subRules = compileRedirectEntries(kind, entry.rules);
+  const ruleName = `yaml:redirect:${kind}:scoped`;
+  const rule = function(node, env, call) {
+    if (node.type !== "redirect") {
+      return ABSTAIN;
+    }
+    const redirectNode = node;
+    const matched = kind === "out" ? matchesRedirectOut(entry, redirectNode, env, call) : matchesRedirectIn(entry, redirectNode, env, call);
+    if (!matched) {
+      return ABSTAIN;
+    }
+    return runFirstMatchSubRules(subRules, node, env, call);
+  };
+  Object.defineProperty(rule, "name", { value: ruleName });
+  rule.ruleFile = entry.sourceFile;
+  rule.ruleLine = entry.sourceLine;
+  return rule;
+}
+function compileRedirectEntries(kind, entries) {
+  return compileEntries(entries, (entry) => buildRedirectRule(kind, entry), (entry) => buildRedirectScopedRule(kind, entry));
+}
+function buildRedirectOrderedRule(kind, entries) {
+  const subRules = compileRedirectEntries(kind, entries);
+  const ruleName = `yaml:redirect:${kind}:ordered`;
+  const rule = function(node, env, call) {
+    if (node.type !== "redirect") {
+      return ABSTAIN;
+    }
+    return runFirstMatchSubRules(subRules, node, env, call);
+  };
+  Object.defineProperty(rule, "name", { value: ruleName });
+  if (entries.length > 0) {
+    rule.ruleFile = entries[0].sourceFile;
+    rule.ruleLine = entries[0].sourceLine;
+  }
+  return rule;
+}
+function compileRedirectSection(redirectSection) {
+  const compiledRules = [];
+  if (redirectSection.out !== undefined) {
+    compiledRules.push(buildRedirectOrderedRule("out", normalizeToList(redirectSection.out)));
+  }
+  if (redirectSection.in !== undefined) {
+    compiledRules.push(buildRedirectOrderedRule("in", normalizeToList(redirectSection.in)));
+  }
+  return compiledRules;
+}
+function resolveEntryRedirectPatterns(entry, projectDir) {
+  if (typeof entry.path === "string") {
+    entry.path = resolveCmdPathPattern(entry.path, projectDir);
+  }
+  if (Array.isArray(entry["path-in"])) {
+    entry["path-in"] = entry["path-in"].map((pattern) => resolveCmdPathPattern(pattern, projectDir));
+  }
+  if (entry.not !== undefined) {
+    if (typeof entry.not.path === "string") {
+      entry.not.path = resolveCmdPathPattern(entry.not.path, projectDir);
+    }
+    if (Array.isArray(entry.not["path-in"])) {
+      entry.not["path-in"] = entry.not["path-in"].map((pattern) => resolveCmdPathPattern(pattern, projectDir));
+    }
+  }
+  if (Array.isArray(entry.rules)) {
+    for (const subEntry of entry.rules) {
+      resolveEntryRedirectPatterns(subEntry, projectDir);
+    }
+  }
+}
+function matchesMcpEntry(entry, node, env) {
+  if (node.type !== "other") {
+    return false;
+  }
+  if (entry["tool-in"] !== undefined) {
+    const toolIn = entry["tool-in"];
+    if (!toolIn.some((pattern) => matchesPattern(pattern, node.tool_name))) {
+      return false;
+    }
+  }
+  if (entry.tool !== undefined && !matchesPattern(entry.tool, node.tool_name)) {
+    return false;
+  }
+  if (!matchesCwd(entry, env)) {
+    return false;
+  }
+  if (!matchesCwdResolved(entry, env)) {
+    return false;
+  }
+  if (!matchesEnvVars(entry, env)) {
+    return false;
+  }
+  if (!matchesFileField(entry)) {
+    return false;
+  }
+  if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, 0)) {
+    return false;
+  }
+  return true;
+}
+function buildMcpRule(entry) {
+  const decision = mapDecision(entry.decide, entry.reason);
+  const ruleName = `yaml:tool:${entry.decide}`;
+  const rule = function(node, env, _call) {
+    if (!matchesMcpEntry(entry, node, env)) {
+      return ABSTAIN;
+    }
+    return { decision };
+  };
+  Object.defineProperty(rule, "name", { value: ruleName });
+  rule.ruleFile = entry.sourceFile;
+  rule.ruleLine = entry.sourceLine;
+  return rule;
+}
+function compileEntries(entries, buildLeaf, buildScoped) {
+  const compiledRules = [];
+  for (const entry of entries) {
+    if (entry.rules !== undefined) {
+      compiledRules.push(buildScoped(entry));
+    } else if (typeof entry.decide === "string") {
+      compiledRules.push(buildLeaf(entry));
+    }
+  }
+  return compiledRules;
+}
+function compileFileEntries(nodeType, entries) {
+  return compileEntries(entries, (entry) => buildFileRule(nodeType, entry), (entry) => buildFileScopedRule(nodeType, entry));
+}
+function buildFileScopedRule(nodeType, entry) {
+  const subRules = compileFileEntries(nodeType, entry.rules);
+  const ruleName = `yaml:${nodeType}:scoped`;
+  const rule = function(node, env, call) {
+    if (!matchesFileEntry(nodeType, entry, node, env)) {
+      return ABSTAIN;
+    }
+    return runSubRules(subRules, node, env, call);
+  };
+  Object.defineProperty(rule, "name", { value: ruleName });
+  rule.ruleFile = entry.sourceFile;
+  rule.ruleLine = entry.sourceLine;
+  return rule;
+}
+function compileWebFetchEntries(entries) {
+  return compileEntries(entries, buildWebFetchRule, buildWebFetchScopedRule);
+}
+function buildWebFetchScopedRule(entry) {
+  const subRules = compileWebFetchEntries(entry.rules);
+  const ruleName = `yaml:webfetch:scoped`;
+  const rule = function(node, env, call) {
+    if (!matchesWebFetchEntry(entry, node, env)) {
+      return ABSTAIN;
+    }
+    return runSubRules(subRules, node, env, call);
+  };
+  Object.defineProperty(rule, "name", { value: ruleName });
+  rule.ruleFile = entry.sourceFile;
+  rule.ruleLine = entry.sourceLine;
+  return rule;
+}
+function compileMcpEntries(entries) {
+  return compileEntries(entries, buildMcpRule, buildMcpScopedRule);
+}
+function buildMcpScopedRule(entry) {
+  const subRules = compileMcpEntries(entry.rules);
+  const ruleName = `yaml:tool:scoped`;
+  const rule = function(node, env, call) {
+    if (!matchesMcpEntry(entry, node, env)) {
+      return ABSTAIN;
+    }
+    return runSubRules(subRules, node, env, call);
+  };
+  Object.defineProperty(rule, "name", { value: ruleName });
+  rule.ruleFile = entry.sourceFile;
+  rule.ruleLine = entry.sourceLine;
+  return rule;
+}
+function compileTopLevelToolRules(config2) {
+  const compiledRules = [];
+  for (const key of Object.keys(config2)) {
+    if (KNOWN_SECTIONS.has(key)) {
+      continue;
+    }
+    if (KNOWN_FIELDS.has(key)) {
+      continue;
+    }
+    const sectionValue = config2[key];
+    if (sectionValue === undefined) {
+      continue;
+    }
+    const entries = normalizeToList(sectionValue);
+    for (const entry of entries) {
+      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+        continue;
+      }
+      if (entry.tool === undefined && entry["tool-in"] === undefined) {
+        entry.tool = key;
+      }
+      if (Array.isArray(entry.rules)) {
+        for (const subEntry of entry.rules) {
+          if (typeof subEntry !== "object" || subEntry === null || Array.isArray(subEntry)) {
+            continue;
+          }
+          if (subEntry.tool === undefined && subEntry["tool-in"] === undefined) {
+            subEntry.tool = key;
+          }
+        }
+      }
+    }
+    compiledRules.push(...compileMcpEntries(entries));
+  }
+  return compiledRules;
+}
+function compileNonBashSections(config2) {
+  const compiledRules = [];
+  const fileSections = [
+    ["read", "read"],
+    ["write", "write"],
+    ["edit", "edit"],
+    ["multi_edit", "multiedit"]
+  ];
+  for (const [sectionKey, nodeType] of fileSections) {
+    const sectionValue = config2[sectionKey];
+    if (sectionValue === undefined) {
+      continue;
+    }
+    const entries = normalizeToList(sectionValue);
+    for (const entry of entries) {
+      if (entry.rules !== undefined) {
+        compiledRules.push(buildFileScopedRule(nodeType, entry));
+      } else if (typeof entry.decide === "string") {
+        compiledRules.push(buildFileRule(nodeType, entry));
+      }
+    }
+  }
+  if (config2.webfetch !== undefined) {
+    const entries = normalizeToList(config2.webfetch);
+    for (const entry of entries) {
+      if (entry.rules !== undefined) {
+        compiledRules.push(buildWebFetchScopedRule(entry));
+      } else {
+        compiledRules.push(buildWebFetchRule(entry));
+      }
+    }
+  }
+  return compiledRules;
+}
+function resolveCwdPattern(pattern, baseDir) {
+  if (pattern.startsWith("./")) {
+    return baseDir + "/" + pattern.slice(2);
+  }
+  return pattern;
+}
+function resolveEntryCwdPatterns(entry, baseDir, options) {
+  if (typeof entry.cwd === "string") {
+    entry.cwd = resolveCwdPattern(entry.cwd, baseDir);
+  }
+  if (Array.isArray(entry["cwd-in"])) {
+    entry["cwd-in"] = entry["cwd-in"].map((pattern) => resolveCwdPattern(pattern, baseDir));
+  }
+  if (entry.not !== undefined) {
+    if (typeof entry.not.cwd === "string") {
+      entry.not.cwd = resolveCwdPattern(entry.not.cwd, baseDir);
+    }
+    if (Array.isArray(entry.not["cwd-in"])) {
+      entry.not["cwd-in"] = entry.not["cwd-in"].map((pattern) => resolveCwdPattern(pattern, baseDir));
+    }
+  }
+  if (Array.isArray(entry.rules)) {
+    for (const subEntry of entry.rules) {
+      resolveEntryCwdPatterns(subEntry, baseDir, options);
+    }
+  }
+  if (options !== undefined && options.isToolNameEntry) {
+    return;
+  }
+  for (const key of Object.keys(entry)) {
+    if (KNOWN_FIELDS.has(key)) {
+      continue;
+    }
+    const subValue = entry[key];
+    if (Array.isArray(subValue)) {
+      for (const subEntry of subValue) {
+        resolveEntryCwdPatterns(subEntry, baseDir);
+      }
+    } else if (typeof subValue === "object" && subValue !== null) {
+      resolveEntryCwdPatterns(subValue, baseDir);
+    }
+  }
+}
+function resolveRelativeCwdPatterns(config2, baseDir) {
+  if (config2.bash !== undefined) {
+    for (const entries of Object.values(config2.bash)) {
+      for (const entry of normalizeToList(entries)) {
+        resolveEntryCwdPatterns(entry, baseDir);
+      }
+    }
+  }
+  const sectionKeys = ["read", "write", "edit", "multi_edit", "webfetch"];
+  for (const sectionKey of sectionKeys) {
+    const sectionValue = config2[sectionKey];
+    if (sectionValue !== undefined) {
+      for (const entry of normalizeToList(sectionValue)) {
+        resolveEntryCwdPatterns(entry, baseDir);
+      }
+    }
+  }
+  if (config2.redirect !== undefined) {
+    if (config2.redirect.out !== undefined) {
+      for (const entry of normalizeToList(config2.redirect.out)) {
+        resolveEntryCwdPatterns(entry, baseDir);
+      }
+    }
+    if (config2.redirect.in !== undefined) {
+      for (const entry of normalizeToList(config2.redirect.in)) {
+        resolveEntryCwdPatterns(entry, baseDir);
+      }
+    }
+  }
+  const toolNameOptions = { isToolNameEntry: true };
+  for (const key of Object.keys(config2)) {
+    if (KNOWN_SECTIONS.has(key)) {
+      continue;
+    }
+    if (KNOWN_FIELDS.has(key)) {
+      continue;
+    }
+    const sectionValue = config2[key];
+    if (sectionValue === undefined) {
+      continue;
+    }
+    for (const entry of normalizeToList(sectionValue)) {
+      resolveEntryCwdPatterns(entry, baseDir, toolNameOptions);
+    }
+  }
+}
+function isCmdPathPattern(pattern) {
+  if (pattern.length >= 2 && pattern.startsWith("/") && pattern.endsWith("/")) {
+    return false;
+  }
+  return pattern.startsWith("./") || pattern.startsWith("/");
+}
+function resolveCmdPathPattern(pattern, projectDir) {
+  if (pattern.startsWith("./")) {
+    return projectDir + "/" + pattern.slice(2);
+  }
+  return pattern;
+}
+function rewriteCmdField(cmdField, projectDir) {
+  if (Array.isArray(cmdField)) {
+    return cmdField.map((pattern) => resolveCmdPathPattern(pattern, projectDir));
+  }
+  const tokens = cmdField.trim().split(/\s+/);
+  const rewrittenTokens = tokens.map((token) => resolveCmdPathPattern(token, projectDir));
+  return rewrittenTokens.join(" ");
+}
+function resolveEntryCmdPatterns(entry, projectDir, options) {
+  if (entry.cmd !== undefined) {
+    entry.cmd = rewriteCmdField(entry.cmd, projectDir);
+  }
+  if (Array.isArray(entry["cmd-in"])) {
+    entry["cmd-in"] = entry["cmd-in"].map((pattern) => resolveCmdPathPattern(pattern, projectDir));
+  }
+  if (entry.not !== undefined) {
+    if (entry.not.cmd !== undefined) {
+      entry.not.cmd = rewriteCmdField(entry.not.cmd, projectDir);
+    }
+    if (Array.isArray(entry.not["cmd-in"])) {
+      entry.not["cmd-in"] = entry.not["cmd-in"].map((pattern) => resolveCmdPathPattern(pattern, projectDir));
+    }
+  }
+  if (Array.isArray(entry.rules)) {
+    for (const subEntry of entry.rules) {
+      resolveEntryCmdPatterns(subEntry, projectDir, options);
+    }
+  }
+  if (options !== undefined && options.isToolNameEntry) {
+    return;
+  }
+  for (const key of Object.keys(entry)) {
+    if (KNOWN_FIELDS.has(key)) {
+      continue;
+    }
+    const subValue = entry[key];
+    if (Array.isArray(subValue)) {
+      for (const subEntry of subValue) {
+        resolveEntryCmdPatterns(subEntry, projectDir);
+      }
+    } else if (typeof subValue === "object" && subValue !== null) {
+      resolveEntryCmdPatterns(subValue, projectDir);
+    }
+  }
+}
+function resolveRelativeCmdPatterns(config2, projectDir) {
+  if (config2.bash !== undefined) {
+    for (const entries of Object.values(config2.bash)) {
+      for (const entry of normalizeToList(entries)) {
+        resolveEntryCmdPatterns(entry, projectDir);
+      }
+    }
+  }
+  const sectionKeys = ["read", "write", "edit", "multi_edit", "webfetch"];
+  for (const sectionKey of sectionKeys) {
+    const sectionValue = config2[sectionKey];
+    if (sectionValue !== undefined) {
+      for (const entry of normalizeToList(sectionValue)) {
+        resolveEntryCmdPatterns(entry, projectDir);
+      }
+    }
+  }
+  if (config2.redirect !== undefined) {
+    if (config2.redirect.out !== undefined) {
+      for (const entry of normalizeToList(config2.redirect.out)) {
+        resolveEntryRedirectPatterns(entry, projectDir);
+      }
+    }
+    if (config2.redirect.in !== undefined) {
+      for (const entry of normalizeToList(config2.redirect.in)) {
+        resolveEntryRedirectPatterns(entry, projectDir);
+      }
+    }
+  }
+  const toolNameOptions = { isToolNameEntry: true };
+  for (const key of Object.keys(config2)) {
+    if (KNOWN_SECTIONS.has(key)) {
+      continue;
+    }
+    if (KNOWN_FIELDS.has(key)) {
+      continue;
+    }
+    const sectionValue = config2[key];
+    if (sectionValue === undefined) {
+      continue;
+    }
+    for (const entry of normalizeToList(sectionValue)) {
+      resolveEntryCmdPatterns(entry, projectDir, toolNameOptions);
+    }
+  }
+}
+function expandEnvTokens(value, projectDir, homeDir, displayFile, warnings) {
+  if (value.length >= 2 && value.startsWith("/") && value.endsWith("/")) {
+    return value;
+  }
+  let result = value;
+  const projectDirToken = "${{PROJECT_DIR}}";
+  const homeToken = "${{HOME}}";
+  if (result.includes(projectDirToken)) {
+    if (projectDir !== undefined) {
+      result = result.split(projectDirToken).join(projectDir);
+    } else {
+      warnings.add(projectDirToken + "@" + displayFile);
+    }
+  }
+  if (result.includes(homeToken)) {
+    if (homeDir !== undefined) {
+      result = result.split(homeToken).join(homeDir);
+    } else {
+      warnings.add(homeToken + "@" + displayFile);
+    }
+  }
+  return result;
+}
+function expandMatcherFields(target, expand) {
+  if (typeof target.cmd === "string") {
+    target.cmd = expand(target.cmd);
+  } else if (Array.isArray(target.cmd)) {
+    target.cmd = target.cmd.map(expand);
+  }
+  if (Array.isArray(target["cmd-in"])) {
+    target["cmd-in"] = target["cmd-in"].map(expand);
+  }
+  if (typeof target.cwd === "string") {
+    target.cwd = expand(target.cwd);
+  }
+  if (Array.isArray(target["cwd-in"])) {
+    target["cwd-in"] = target["cwd-in"].map(expand);
+  }
+  if (typeof target.path === "string") {
+    target.path = expand(target.path);
+  }
+  if (Array.isArray(target["path-in"])) {
+    target["path-in"] = target["path-in"].map(expand);
+  }
+  if (target.env !== undefined) {
+    const newEnv = {};
+    for (const [envKey, envValue] of Object.entries(target.env)) {
+      newEnv[envKey] = typeof envValue === "string" ? expand(envValue) : envValue;
+    }
+    target.env = newEnv;
+  }
+  if (target.file !== undefined) {
+    const newFile = {};
+    for (const [fileKey, fileValue] of Object.entries(target.file)) {
+      newFile[expand(fileKey)] = fileValue;
+    }
+    target.file = newFile;
+  }
+}
+function expandEntryEnvTokens(entry, projectDir, homeDir, displayFile, warnings, options) {
+  const expand = (value) => expandEnvTokens(value, projectDir, homeDir, displayFile, warnings);
+  expandMatcherFields(entry, expand);
+  if (entry.not !== undefined) {
+    expandMatcherFields(entry.not, expand);
+  }
+  if (Array.isArray(entry.rules)) {
+    for (const subEntry of entry.rules) {
+      expandEntryEnvTokens(subEntry, projectDir, homeDir, displayFile, warnings, options);
+    }
+  }
+  if (options !== undefined && options.isToolNameEntry) {
+    return;
+  }
+  for (const key of Object.keys(entry)) {
+    if (KNOWN_FIELDS.has(key)) {
+      continue;
+    }
+    const subValue = entry[key];
+    if (Array.isArray(subValue)) {
+      for (const subEntry of subValue) {
+        expandEntryEnvTokens(subEntry, projectDir, homeDir, displayFile, warnings);
+      }
+    } else if (typeof subValue === "object" && subValue !== null) {
+      expandEntryEnvTokens(subValue, projectDir, homeDir, displayFile, warnings);
+    }
+  }
+}
+function expandConfigEnvTokens(config2, projectDir, homeDir, displayFile) {
+  const warnings = new Set;
+  if (config2.bash !== undefined) {
+    for (const entries of Object.values(config2.bash)) {
+      for (const entry of normalizeToList(entries)) {
+        expandEntryEnvTokens(entry, projectDir, homeDir, displayFile, warnings);
+      }
+    }
+  }
+  const sectionKeys = ["read", "write", "edit", "multi_edit", "webfetch"];
+  for (const sectionKey of sectionKeys) {
+    const sectionValue = config2[sectionKey];
+    if (sectionValue !== undefined) {
+      for (const entry of normalizeToList(sectionValue)) {
+        expandEntryEnvTokens(entry, projectDir, homeDir, displayFile, warnings);
+      }
+    }
+  }
+  if (config2.redirect !== undefined) {
+    if (config2.redirect.out !== undefined) {
+      for (const entry of normalizeToList(config2.redirect.out)) {
+        expandEntryEnvTokens(entry, projectDir, homeDir, displayFile, warnings);
+      }
+    }
+    if (config2.redirect.in !== undefined) {
+      for (const entry of normalizeToList(config2.redirect.in)) {
+        expandEntryEnvTokens(entry, projectDir, homeDir, displayFile, warnings);
+      }
+    }
+  }
+  const toolNameOptions = { isToolNameEntry: true };
+  for (const key of Object.keys(config2)) {
+    if (KNOWN_SECTIONS.has(key)) {
+      continue;
+    }
+    if (KNOWN_FIELDS.has(key)) {
+      continue;
+    }
+    const sectionValue = config2[key];
+    if (sectionValue === undefined) {
+      continue;
+    }
+    for (const entry of normalizeToList(sectionValue)) {
+      expandEntryEnvTokens(entry, projectDir, homeDir, displayFile, warnings, toolNameOptions);
+    }
+  }
+  for (const warningKey of warnings) {
+    const atIndex = warningKey.indexOf("@");
+    const token = warningKey.slice(0, atIndex);
+    process.stderr.write(`[CONFIG WARN] (${displayFile}) unresolved ${token}
+`);
+  }
+}
+function lineOfOffset(source, offset) {
+  let line = 1;
+  for (let idx = 0;idx < offset; idx++) {
+    if (source[idx] === `
+`) {
+      line++;
+    }
+  }
+  return line;
+}
+function annotateLines(node, jsValue, source, displayFile) {
+  if ($isMap(node) && jsValue !== null && typeof jsValue === "object" && !Array.isArray(jsValue)) {
+    const jsObj = jsValue;
+    if ("decide" in jsObj && node.range) {
+      jsObj.sourceFile = displayFile;
+      jsObj.sourceLine = lineOfOffset(source, node.range[0]);
+    }
+    for (const pair of node.items) {
+      if (!$isPair(pair) || !$isScalar(pair.key)) {
+        continue;
+      }
+      const key = String(pair.key.value);
+      if (key in jsObj) {
+        annotateLines(pair.value, jsObj[key], source, displayFile);
+      }
+    }
+  } else if ($isSeq(node) && Array.isArray(jsValue)) {
+    for (let idx = 0;idx < node.items.length; idx++) {
+      annotateLines(node.items[idx], jsValue[idx], source, displayFile);
+    }
+  }
+}
+function readYamlFile(filePath, displayFile) {
+  if (!existsSync(filePath)) {
+    return null;
+  }
+  const content = readFileSync(filePath, "utf-8");
+  const doc2 = $parseDocument(content);
+  if (doc2.errors.length > 0) {
+    throw doc2.errors[0];
+  }
+  const config2 = doc2.toJS();
+  annotateLines(doc2.contents, config2, content, displayFile);
+  return config2;
+}
+function validateEntry(entry, path, errors4, options) {
+  if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+    errors4.push({ path, message: `expected a rule entry object but got ${Array.isArray(entry) ? "array" : typeof entry}` });
+    return;
+  }
+  if (path.startsWith("bash.") && (entry.path !== undefined || entry["path-in"] !== undefined)) {
+    errors4.push({ path, message: "path and path-in are not valid on bash: entries; use redirect.out or redirect.in for redirect path policy" });
+  }
+  if (entry.decide !== undefined && !VALID_DECIDE_VALUES.has(entry.decide)) {
+    errors4.push({ path: `${path}.decide`, message: `invalid decide value '${entry.decide}': must be one of allow, deny, ask, abstain` });
+  }
+  if (entry.decide !== undefined && entry.rules !== undefined) {
+    errors4.push({ path, message: `'decide' and 'rules' are mutually exclusive; 'decide' will be ignored` });
+  }
+  const subcommandKeys = Object.keys(entry).filter((key) => !KNOWN_FIELDS.has(key));
+  const isToolNameEntry = options !== undefined && options.isToolNameEntry;
+  if (entry.decide === undefined && entry.rules === undefined && (isToolNameEntry || subcommandKeys.length === 0)) {
+    errors4.push({ path, message: `entry has neither 'decide', 'rules', nor subcommand keys and will always abstain` });
+  }
+  if (entry.rules !== undefined) {
+    for (let index = 0;index < entry.rules.length; index++) {
+      validateEntry(entry.rules[index], `${path}.rules[${index}]`, errors4, options);
+    }
+  }
+  if (isToolNameEntry) {
+    for (const unknownKey of subcommandKeys) {
+      errors4.push({ path: `${path}.${unknownKey}`, message: `unknown field '${unknownKey}' on tool-name rule '${path}'` });
+    }
+    return;
+  }
+  for (const subKey of subcommandKeys) {
+    const subValue = entry[subKey];
+    if (typeof subValue !== "object" || subValue === null) {
+      errors4.push({ path: `${path}.${subKey}`, message: `subcommand value must be a rule entry object or list of rule entries, got ${typeof subValue}` });
+      continue;
+    }
+    if (Array.isArray(subValue)) {
+      for (let index = 0;index < subValue.length; index++) {
+        const item = subValue[index];
+        if (typeof item !== "object" || item === null || Array.isArray(item)) {
+          errors4.push({ path: `${path}.${subKey}[${index}]`, message: `expected a rule entry object but got ${Array.isArray(item) ? "array" : typeof item}` });
+          continue;
+        }
+        validateEntry(item, `${path}.${subKey}[${index}]`, errors4);
+      }
+    } else {
+      validateEntry(subValue, `${path}.${subKey}`, errors4);
+    }
+  }
+}
+function validateConfig(config2) {
+  const errors4 = [];
+  if (config2.bash !== undefined) {
+    for (const [binary, value] of Object.entries(config2.bash)) {
+      const entries = normalizeToList(value);
+      for (let index = 0;index < entries.length; index++) {
+        validateEntry(entries[index], `bash.${binary}[${index}]`, errors4);
+      }
+    }
+  }
+  const nonBashSections = ["read", "write", "edit", "multi_edit", "webfetch"];
+  for (const section of nonBashSections) {
+    const sectionValue = config2[section];
+    if (sectionValue === undefined) {
+      continue;
+    }
+    const entries = normalizeToList(sectionValue);
+    for (let index = 0;index < entries.length; index++) {
+      validateEntry(entries[index], `${section}[${index}]`, errors4);
+    }
+  }
+  if (config2.redirect !== undefined) {
+    if (config2.redirect.out !== undefined) {
+      const outEntries = normalizeToList(config2.redirect.out);
+      for (let index = 0;index < outEntries.length; index++) {
+        validateEntry(outEntries[index], `redirect.out[${index}]`, errors4);
+      }
+    }
+    if (config2.redirect.in !== undefined) {
+      const inEntries = normalizeToList(config2.redirect.in);
+      for (let index = 0;index < inEntries.length; index++) {
+        validateEntry(inEntries[index], `redirect.in[${index}]`, errors4);
+      }
+    }
+  }
+  const toolNameOptions = { isToolNameEntry: true };
+  for (const key of Object.keys(config2)) {
+    if (KNOWN_SECTIONS.has(key)) {
+      continue;
+    }
+    if (KNOWN_FIELDS.has(key)) {
+      errors4.push({
+        path: key,
+        message: `top-level key '${key}' is a reserved rule field; tool-name rules cannot use these as keys`
+      });
+      continue;
+    }
+    const sectionValue = config2[key];
+    if (sectionValue === undefined) {
+      continue;
+    }
+    const entries = normalizeToList(sectionValue);
+    for (let index = 0;index < entries.length; index++) {
+      const entryPath = index > 0 ? `${key}[${index}]` : key;
+      validateEntry(entries[index], entryPath, errors4, toolNameOptions);
+    }
+  }
+  return errors4;
+}
+function compileConfig(config2) {
+  const compiledRules = [];
+  if (config2.bash !== undefined) {
+    compiledRules.push(...compileBashSection(config2.bash));
+  }
+  compiledRules.push(...compileNonBashSections(config2));
+  if (config2.redirect !== undefined) {
+    compiledRules.push(...compileRedirectSection(config2.redirect));
+  }
+  compiledRules.push(...compileTopLevelToolRules(config2));
+  return compiledRules;
+}
+function loadConfigRulesFromFile(filePath, displayFile, baseDir) {
+  const config2 = readYamlFile(filePath, displayFile);
+  if (config2 === null) {
+    return [];
+  }
+  expandConfigEnvTokens(config2, process.env["CLAUDE_PROJECT_DIR"], process.env["HOME"], displayFile);
+  resolveRelativeCwdPatterns(config2, baseDir);
+  const projectDir = process.env["CLAUDE_PROJECT_DIR"];
+  if (projectDir !== undefined) {
+    resolveRelativeCmdPatterns(config2, projectDir);
+  }
+  const configErrors = validateConfig(config2);
+  for (const configError of configErrors) {
+    process.stderr.write(`[CONFIG ERROR] ${configError.path}: ${configError.message}
+`);
+  }
+  return compileConfig(config2);
+}
+function loadHomeConfigRules() {
+  const homeDir = process.env["HOME"];
+  if (homeDir === undefined) {
+    return [];
+  }
+  return loadConfigRulesFromFile(join2(homeDir, ".claude", "permissions.yaml"), "~/.claude/permissions.yaml", homeDir);
+}
+function loadProjectConfigRules() {
+  const projectDir = process.env["CLAUDE_PROJECT_DIR"];
+  if (projectDir === undefined) {
+    return [];
+  }
+  return loadConfigRulesFromFile(join2(projectDir, ".claude", "permissions.yaml"), ".claude/permissions.yaml", projectDir);
+}
+function isDropInFileCandidate(dirPath, entryName) {
+  if (entryName.startsWith(".")) {
+    return false;
+  }
+  const stat2 = statSync(join2(dirPath, entryName));
+  return stat2.isFile();
+}
+function discoverConfigDirFiles(dirPath, displayPrefix, baseDir) {
+  if (!existsSync(dirPath)) {
+    return [];
+  }
+  const dirStat = statSync(dirPath);
+  if (!dirStat.isDirectory()) {
+    return [];
+  }
+  const allEntries = readdirSync(dirPath);
+  const matchingNames = [];
+  for (const entryName of allEntries) {
+    if (!entryName.endsWith(".yaml") && !entryName.endsWith(".yml")) {
+      continue;
+    }
+    if (!isDropInFileCandidate(dirPath, entryName)) {
+      continue;
+    }
+    matchingNames.push(entryName);
+  }
+  matchingNames.sort();
+  const sources = [];
+  for (const name of matchingNames) {
+    sources.push({
+      filePath: join2(dirPath, name),
+      displayPath: displayPrefix + "/" + name,
+      baseDir
+    });
+  }
+  return sources;
+}
+function discoverHomeConfigDirFiles() {
+  const homeDir = process.env["HOME"];
+  if (homeDir === undefined) {
+    return [];
+  }
+  return discoverConfigDirFiles(join2(homeDir, ".claude", "permissions.d"), "~/.claude/permissions.d", homeDir);
+}
+function discoverProjectConfigDirFiles() {
+  const projectDir = process.env["CLAUDE_PROJECT_DIR"];
+  if (projectDir === undefined) {
+    return [];
+  }
+  return discoverConfigDirFiles(join2(projectDir, ".claude", "permissions.d"), ".claude/permissions.d", projectDir);
+}
+function makeConfigFileLoader(source) {
+  return function configFileLoader() {
+    return loadConfigRulesFromFile(source.filePath, source.displayPath, source.baseDir);
+  };
 }
 
 // src/build-ast.ts
@@ -24803,7 +25184,6 @@ function parseXargsCommand(raw, descriptors) {
     options: {},
     cmd: [],
     envPrefix: {},
-    redirects: [],
     raw: ""
   };
   let index = 1;
@@ -24860,11 +25240,8 @@ function parseXargsCommand(raw, descriptors) {
   }
   const subcmdStart = tokens[index].start;
   const subcmdRaw = raw.substring(subcmdStart);
-  const result = parseBash(subcmdRaw, descriptors);
-  if (result.type === "command") {
-    return { options, child: result };
-  }
-  return { options, child: emptyCommand };
+  const child = parseBash(subcmdRaw, descriptors);
+  return { options, child };
 }
 function transformXargsNodes(node, descriptors) {
   if (node.type === "command") {
@@ -24886,6 +25263,12 @@ function transformXargsNodes(node, descriptors) {
       return transformed;
     }
     return node;
+  }
+  if (node.type === "redirect") {
+    return {
+      ...node,
+      command: transformXargsNodes(node.command, descriptors)
+    };
   }
   if (node.type === "binop") {
     return {
@@ -24965,6 +25348,8 @@ function describeNode(node) {
       return node.raw;
     case "xargs":
       return node.raw;
+    case "redirect":
+      return describeNode(node.command);
     case "binop":
       return `${describeNode(node.left)} ${node.op} ${describeNode(node.right)}`;
     case "for_loop":
@@ -25281,7 +25666,7 @@ var builtinRules = [cdRule, envPrefixRule, envSetRule, exportRule, xargsRule];
 // src/interpret.ts
 var ASK = { action: "ask" };
 function isLeaf(node) {
-  return node.type !== "binop" && node.type !== "bash" && node.type !== "for_loop" && node.type !== "while_loop" && node.type !== "xargs" && node.type !== "if_statement" && node.type !== "group" && node.type !== "case_statement";
+  return node.type !== "binop" && node.type !== "bash" && node.type !== "for_loop" && node.type !== "while_loop" && node.type !== "xargs" && node.type !== "if_statement" && node.type !== "group" && node.type !== "case_statement" && node.type !== "redirect";
 }
 function aggregateChildren(childIAnnotations) {
   for (const annotation of childIAnnotations) {
@@ -25338,6 +25723,13 @@ function walkChildren(node, env, call, logger, registry2, leafEvaluations) {
   }
   if (node.type === "xargs") {
     const childResult = interpret(node.child, env, call, logger, registry2, leafEvaluations);
+    return {
+      childIAnnotations: [childResult.annotation],
+      envOut: childResult.envOut
+    };
+  }
+  if (node.type === "redirect") {
+    const childResult = interpret(node.command, env, call, logger, registry2, leafEvaluations);
     return {
       childIAnnotations: [childResult.annotation],
       envOut: childResult.envOut

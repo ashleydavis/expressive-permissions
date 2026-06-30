@@ -16,12 +16,16 @@ graph TD
   n1 --> n2
   n3["for_loop<br/>var: f<br/>in: behavior_locals.tf behavior_variables.tf versions.tf"]
   n4["if_statement"]
-  n5["command<br/>binary: diff<br/>cmd: variant-1a/$f variant-2/$f"]
+  n5["redirect<br/>op: 2&gt;&amp;<br/>target: 1"]
+  n6["redirect<br/>op: &gt;<br/>target: /dev/null"]
+  n7["command<br/>binary: diff<br/>cmd: variant-1a/$f variant-2/$f"]
+  n6 -->|command| n7
+  n5 -->|command| n6
   n4 -->|cond| n5
-  n6["command<br/>binary: echo<br/>cmd: SAME (1a==2): $f"]
-  n4 -->|then| n6
-  n7["command<br/>binary: echo<br/>cmd: DIFFERS (1a vs 2): $f"]
-  n4 -->|else| n7
+  n8["command<br/>binary: echo<br/>cmd: SAME (1a==2): $f"]
+  n4 -->|then| n8
+  n9["command<br/>binary: echo<br/>cmd: DIFFERS (1a vs 2): $f"]
+  n4 -->|else| n9
   n3 -->|body| n4
   n1 --> n3
   n0 --> n1

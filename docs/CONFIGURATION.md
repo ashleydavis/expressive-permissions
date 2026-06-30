@@ -22,6 +22,7 @@ Rules are declared in `.claude/permissions.yaml` in your project root, or `~/.cl
 - [Subcommand matching](#subcommand-matching)
 - [File tool rules](#file-tool-rules-read-write-edit-multi_edit)
 - [WebFetch rules](#webfetch-rules)
+- [Redirect path rules](#redirect-path-rules)
 - [Tool-name rules](#tool-name-rules)
 - [Matching the working directory](#matching-the-working-directory)
 - [Decision values](#decision-values)
@@ -35,7 +36,7 @@ Rules are declared in `.claude/permissions.yaml` in your project root, or `~/.cl
 
 ## Structure overview
 
-The top-level keys are either **section names** (`bash`, `read`, `write`, `edit`, `multi_edit`, `webfetch`) or **tool name patterns** for everything else (`Grep`, `ToolSearch`, `"mcp__*__delete_*"`, ...). Bash rules nest under the `bash:` section keyed by command name.
+The top-level keys are either **section names** (`bash`, `read`, `write`, `edit`, `multi_edit`, `webfetch`, `redirect`) or **tool name patterns** for everything else (`Grep`, `ToolSearch`, `"mcp__*__delete_*"`, ...). Bash rules nest under the `bash:` section keyed by command name.
 
 For commands that take subcommands (e.g. `git`, `npm`), nest rules under the subcommand name. For commands without subcommands (e.g. `rm`, `sudo`), put rules directly under the command name.
 
@@ -756,9 +757,127 @@ webfetch:
     decide: allow
 ```
 
+## Redirect path rules
+
+Shell redirects (`>`, `>>`, `<`, `2>`, `&>`, `2>&1`, and similar) write to or read from file paths. Redirect path rules let you allow or deny those file targets globally, without writing a separate rule for every binary that might redirect (`echo`, `tee`, `cat`, and so on).
+
+The permission engine parses each redirect into an intermediate **`redirect` AST node** that wraps the inner command. Rules can match on the redirect operator and the resolved file path.
+
+### Shell operators and directions
+
+| Direction | Shell operators |
+|---|---|
+| **out** (write) | `>`, `>>`, `2>`, `&>` |
+| **in** (read) | `<` |
+
+**Fd merges** such as `2>&1` are parsed as redirect nodes whose target is a file descriptor number (for example `"1"`). Redirect path matchers ignore fd merges; only file-path targets are checked.
+
+### Global `redirect:` section
+
+Add a top-level `redirect:` section with `out:` and `in:` subsections. Each subsection accepts a single rule object or a list of rules (same list semantics as `write:` or `read:`). Use `path` and `path-in` to match redirect file targets — the same fields as file-tool rules. Direction comes from the subsection (`redirect.out` for write redirects, `redirect.in` for read redirects).
+
+```yaml
+redirect:
+  out:
+    - path-in: ["/tmp/**", "${{PROJECT_DIR}}/**"]
+      decide: allow
+    - decide: ask
+      reason: Shell write outside allowed dirs
+  in:
+    - path-in: ["/tmp/**", "${{PROJECT_DIR}}/**"]
+      decide: allow
+    - decide: ask
+      reason: Shell read outside allowed dirs
+```
+
+Global redirect rules apply to **every** Bash command that uses a redirect of the matching direction. An `echo hi > /tmp/out.txt` and a `cat > /tmp/log` both match `redirect.out` rules on their redirect targets without a separate `bash:` rule for each command.
+
+Rule names in the audit log look like `yaml:redirect:out:allow`, `yaml:redirect:in:ask`, and so on.
+
+Redirect path rules match **`redirect` AST nodes**, not `bash:` entries. Use `bash:` for the inner `command` leaf (binary, `cmd`, `options`, and so on) as usual.
+
+### Matcher semantics
+
+| Field | Semantics |
+|---|---|
+| `path: "/tmp/**"` | Redirect file target must match the pattern |
+| `path-in: [A, B]` | Redirect file target must match **any** listed pattern (OR) |
+
+When a redirect path matcher field is present, **every** file-target redirect of that direction on the command must match. Within `path-in`, any listed pattern may match each individual target (OR per target).
+
+Example: `cmd > /tmp/a > /etc/b` has two out-redirects. A rule with `path-in: ["/tmp/**"]` under `redirect.out` does **not** match, because `/etc/b` fails the pattern check even though `/tmp/a` matches.
+
+Redirect targets are resolved before pattern matching: expand `$VAR` when present in the tracked environment, resolve relative paths against `env.cwd`, leave absolute paths unchanged, and expand a leading `~` to the home directory. Targets that still contain unexpanded `$VAR` or `$(...)` after resolution fail to match path patterns (same posture as `cmd` env expansion). Patterns support the same forms as other path fields.
+
+Invert redirect matchers with `not:` on `redirect:` entries:
+
+```yaml
+redirect:
+  out:
+    - not:
+        path-in: ["/tmp/**", "${{PROJECT_DIR}}/**"]
+      decide: ask
+      reason: Shell write outside allowed dirs
+    - decide: allow
+```
+
+### How redirects appear in the AST
+
+The engine represents each shell redirect as a `redirect` node wrapping the inner command. Multiple redirects nest outward; the innermost redirect sits closest to the `command` leaf.
+
+```
+redirect  op: >
+├── command
+│   └── echo foo
+└── target: bar.txt
+```
+
+```
+redirect  op: 2>&
+├── redirect  op: >
+│   ├── command
+│   │   └── cmd
+│   └── target: out.log
+└── target: 1
+```
+
+Permission decisions on the inner `command` leaf, each `redirect` node, and parent compounds aggregate via strictest-wins as the walker moves up the tree. A `redirect.out` rule fires on the `redirect` node; a `bash.echo` rule fires on the inner `command` leaf inside the wrapper.
+
+### Examples
+
+Allow writes to `/tmp` and the project; ask elsewhere:
+
+```yaml
+redirect:
+  out:
+    - path-in: ["/tmp/**", "${{PROJECT_DIR}}/**"]
+      decide: allow
+    - decide: ask
+      reason: Shell write outside allowed dirs
+```
+
+- `echo hi > /tmp/out.txt` → **allow**
+- `echo hi > ./logs/out.txt` → **allow**
+- `echo hi > /etc/passwd` → **ask**
+
+Deny beats allow:
+
+```yaml
+redirect:
+  out:
+    - path: "/etc/**"
+      decide: deny
+      reason: Never write under /etc
+    - path-in: ["/tmp/**", "${{PROJECT_DIR}}/**"]
+      decide: allow
+    - decide: ask
+```
+
+- `echo hi > /etc/shadow` → **deny**
+
 ## Tool-name rules
 
-Top-level YAML keys that are not section names (`bash`, `read`, `write`, `edit`, `multi_edit`, `webfetch`) are interpreted as tool-name patterns matched against the Claude Code tool name. The key itself is the matcher; quote the key when it contains glob characters.
+Top-level YAML keys that are not section names (`bash`, `read`, `write`, `edit`, `multi_edit`, `webfetch`, `redirect`) are interpreted as tool-name patterns matched against the Claude Code tool name. The key itself is the matcher; quote the key when it contains glob characters.
 
 Exact match against a single tool:
 
@@ -936,8 +1055,8 @@ Every field follows this unified pattern:
 | `options` | object | Bash | All key/value pairs must match (AND). |
 | `cwd` | string | any | cwd matches the pattern. |
 | `cwd-in` | array | any | cwd matches any pattern (OR). |
-| `path` | string | read, write, edit, multi_edit | path matches the pattern. |
-| `path-in` | array | read, write, edit, multi_edit | path matches any pattern (OR). |
+| `path` | string | read, write, edit, multi_edit, `redirect.out`, `redirect.in` | path matches the pattern. Under `redirect.out` / `redirect.in`, matches the redirect file target on a `redirect` AST node. |
+| `path-in` | array | read, write, edit, multi_edit, `redirect.out`, `redirect.in` | path matches any pattern (OR). Under `redirect.out` / `redirect.in`, matches redirect file targets on `redirect` AST nodes. |
 | `env` | object | any | All key/value pairs must be present (AND). |
 | `file` | object | any | File at the given path must exist. If `contains:` is set, the file's contents must also match the pattern (exact string, glob, or `/regex/`). |
 | `cwd_resolved` | boolean | any | When true, only matches when cwd is known to be accurate. When false, only matches when cwd tracking was broken by an unresolvable `cd`. Omit to match either. |
@@ -945,6 +1064,8 @@ Every field follows this unified pattern:
 | `host-in` | array | webfetch | Host matches any entry (OR). |
 | `tool` | string | any top-level tool-name rule | Glob match against the full tool name (e.g. `mcp__github__list_repos`). Use `mcp__*__list_*` to match all list operations across any server. When set, replaces the YAML key as the matcher; the key becomes a label only. |
 | `tool-in` | array | any top-level tool-name rule | Tool name matches any entry (OR). When set, replaces the YAML key as the matcher; the key becomes a label only. |
+
+`path` / `path-in` on file-tool sections match tool input paths. Under `redirect.out` / `redirect.in`, they match redirect file targets on `redirect` AST nodes.
 
 ## Troubleshooting
 

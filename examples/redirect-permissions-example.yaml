@@ -1,0 +1,13 @@
+# Sample global redirect policy. Adapt into .claude/permissions.yaml or a permissions.d drop-in.
+
+redirect:
+  out:
+    - path-in: ["/tmp/**", "${{PROJECT_DIR}}/**"]
+      decide: allow
+    - decide: ask
+      reason: Shell write outside allowed dirs
+  in:
+    - path-in: ["/tmp/**", "${{PROJECT_DIR}}/**"]
+      decide: allow
+    - decide: ask
+      reason: Shell read outside allowed dirs

@@ -16,7 +16,6 @@ ast:
         c: true
       cmd: host
       envPrefix: {}
-      redirects: []
       raw: ping -c1 host
     body:
       type: command
@@ -24,6 +23,5 @@ ast:
       options: {}
       cmd: "1"
       envPrefix: {}
-      redirects: []
       raw: sleep 1
     raw: until ping -c1 host; do sleep 1; done

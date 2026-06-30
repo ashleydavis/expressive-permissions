@@ -112,6 +112,32 @@ All fields in a rule are AND'd.
 | `file: {"~/.kube/config": true}` | File exists |
 | `file: {"~/.kube/config": {contains: "current-context: sandbox"}}` | File exists and contains pattern |
 
+---
+
+## Redirect path rules
+
+Shell redirects write to or read from file paths. Match those paths globally without a separate rule for each command (`echo`, `tee`, `cat`, and similar).
+
+```yaml
+redirect:
+  out:   # >, >>, 2>, &>
+    - path-in: ["/tmp/**", "${{PROJECT_DIR}}/**"]
+      decide: allow
+    - decide: ask
+      reason: Shell write outside allowed dirs
+  in:    # <
+    - path-in: ["/tmp/**", "${{PROJECT_DIR}}/**"]
+      decide: allow
+    - decide: ask
+      reason: Shell read outside allowed dirs
+```
+
+- **`path` / `path-in`** under `redirect.out` or `redirect.in` only
+- **AND across redirects:** every file-target redirect of that direction must match
+- **Fd merges** (`2>&1`) are ignored by path matchers
+- **`bash:`** matches the inner `command` leaf only (not redirect targets); use `redirect.out` / `redirect.in` for redirect paths
+- `not:` inverts redirect matchers on `redirect:` entries
+
 ## not:
 
 `not:` inverts any combination of fields and works in any rule type. The example below denies all `aws` commands when `AWS_PROFILE` is anything other than `sandbox`:

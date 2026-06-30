@@ -9,7 +9,6 @@ ast:
       f: true
     cmd: /tmp/ready
     envPrefix: {}
-    redirects: []
     raw: test -f /tmp/ready
   body:
     type: command
@@ -17,6 +16,5 @@ ast:
     options: {}
     cmd: "1"
     envPrefix: {}
-    redirects: []
     raw: sleep 1
   raw: until test -f /tmp/ready; do sleep 1; done

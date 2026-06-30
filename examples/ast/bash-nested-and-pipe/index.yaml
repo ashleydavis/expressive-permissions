@@ -1,10 +1,10 @@
 tool_call:
   tool_name: Bash
   tool_input:
-    command: "cd /some/path && git status | grep foo"
+    command: cd /some/path && git status | grep foo
 ast:
   type: bash
-  raw: "cd /some/path && git status | grep foo"
+  raw: cd /some/path && git status | grep foo
   ast:
     type: binop
     op: "&&"
@@ -14,8 +14,7 @@ ast:
       options: {}
       cmd: /some/path
       envPrefix: {}
-      redirects: []
-      raw: "cd /some/path"
+      raw: cd /some/path
     right:
       type: binop
       op: "|"
@@ -25,13 +24,11 @@ ast:
         options: {}
         cmd: status
         envPrefix: {}
-        redirects: []
-        raw: "git status"
+        raw: git status
       right:
         type: command
         binary: grep
         options: {}
         cmd: foo
         envPrefix: {}
-        redirects: []
-        raw: "grep foo"
+        raw: grep foo

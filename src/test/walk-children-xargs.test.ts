@@ -10,7 +10,7 @@ function makeEnv(cwd: string = "/start"): IEnvironment {
 
 // makeCommand builds a minimal ICommand node.
 function makeCommand(binary: string): ICommand {
-    return { type: "command", binary, options: {}, cmd: [], envPrefix: {}, redirects: [], raw: binary };
+    return { type: "command", binary, options: {}, cmd: [], envPrefix: {}, raw: binary };
 }
 
 // makeXargsNode builds a minimal IXargsNode with the given child binary.

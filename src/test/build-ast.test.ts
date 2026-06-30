@@ -256,24 +256,24 @@ describe("expandToken", () => {
 
 describe("expandCommandOptions", () => {
     test("expands binary", () => {
-        const node = { type: "command" as const, binary: "$CMD", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "$CMD" };
+        const node = { type: "command" as const, binary: "$CMD", options: {}, cmd: [], envPrefix: {}, raw: "$CMD" };
         expect(expandCommandOptions(node, { CMD: "git" }).binary).toBe("git");
     });
 
     test("expands positional array element", () => {
-        const node = { type: "command" as const, binary: "git", options: {}, cmd: ["add", "$FILE"], envPrefix: {}, redirects: [], raw: "git add $FILE" };
+        const node = { type: "command" as const, binary: "git", options: {}, cmd: ["add", "$FILE"], envPrefix: {}, raw: "git add $FILE" };
         expect(expandCommandOptions(node, { FILE: "foo.ts" }).cmd).toEqual(["add", "foo.ts"]);
     });
 
     test("preserves raw field unchanged", () => {
-        const node = { type: "command" as const, binary: "$CMD", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "original $CMD" };
+        const node = { type: "command" as const, binary: "$CMD", options: {}, cmd: [], envPrefix: {}, raw: "original $CMD" };
         expect(expandCommandOptions(node, { CMD: "git" }).raw).toBe("original $CMD");
     });
 });
 
 describe("describeNode", () => {
     test("command node returns raw", () => {
-        const node = { type: "command" as const, binary: "ls", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "ls -la" };
+        const node = { type: "command" as const, binary: "ls", options: {}, cmd: [], envPrefix: {}, raw: "ls -la" };
         expect(describeNode(node)).toBe("ls -la");
     });
 
@@ -286,39 +286,39 @@ describe("describeNode", () => {
     });
 
     test("binop node rebuilds left op right", () => {
-        const left = { type: "command" as const, binary: "a", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "a" };
-        const right = { type: "command" as const, binary: "b", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "b" };
+        const left = { type: "command" as const, binary: "a", options: {}, cmd: [], envPrefix: {}, raw: "a" };
+        const right = { type: "command" as const, binary: "b", options: {}, cmd: [], envPrefix: {}, raw: "b" };
         expect(describeNode({ type: "binop", op: "&&", left, right })).toBe("a && b");
     });
 
     test("xargs node returns raw", () => {
-        const child: ICommand = { type: "command", binary: "grep", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "grep" };
+        const child: ICommand = { type: "command", binary: "grep", options: {}, cmd: [], envPrefix: {}, raw: "grep" };
         const xargsNode: IXargsNode = { type: "xargs", options: {}, child, raw: "xargs grep -l pattern" };
         expect(describeNode(xargsNode)).toBe("xargs grep -l pattern");
     });
 
     test("if-statement node returns raw", () => {
-        const condition: ICommand = { type: "command", binary: "test", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "test" };
-        const thenBranch: ICommand = { type: "command", binary: "echo", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "echo" };
+        const condition: ICommand = { type: "command", binary: "test", options: {}, cmd: [], envPrefix: {}, raw: "test" };
+        const thenBranch: ICommand = { type: "command", binary: "echo", options: {}, cmd: [], envPrefix: {}, raw: "echo" };
         const ifNode: IIfStatement = { type: "if_statement", condition, thenBranch, raw: "if test; then echo; fi" };
         expect(describeNode(ifNode)).toBe("if test; then echo; fi");
     });
 
     test("while-loop node returns raw", () => {
-        const condition: ICommand = { type: "command", binary: "true", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "true" };
-        const body: ICommand = { type: "command", binary: "echo", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "echo" };
+        const condition: ICommand = { type: "command", binary: "true", options: {}, cmd: [], envPrefix: {}, raw: "true" };
+        const body: ICommand = { type: "command", binary: "echo", options: {}, cmd: [], envPrefix: {}, raw: "echo" };
         const loop: IWhileLoop = { type: "while_loop", until: false, condition, body, raw: "while true; do echo; done" };
         expect(describeNode(loop)).toBe("while true; do echo; done");
     });
 
     test("group node returns raw", () => {
-        const body: ICommand = { type: "command", binary: "echo", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "echo" };
+        const body: ICommand = { type: "command", binary: "echo", options: {}, cmd: [], envPrefix: {}, raw: "echo" };
         const group: IGroup = { type: "group", style: "subshell", body, raw: "(echo)" };
         expect(describeNode(group)).toBe("(echo)");
     });
 
     test("case-statement node returns raw", () => {
-        const body: ICommand = { type: "command", binary: "echo", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "echo" };
+        const body: ICommand = { type: "command", binary: "echo", options: {}, cmd: [], envPrefix: {}, raw: "echo" };
         const caseNode: ICaseStatement = { type: "case_statement", word: "$x", clauses: [{ patterns: ["a"], body }], raw: "case $x in a) echo;; esac" };
         expect(describeNode(caseNode)).toBe("case $x in a) echo;; esac");
     });

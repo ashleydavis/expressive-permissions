@@ -11,7 +11,7 @@ It converts each tool call into an abstract syntax tree (AST), threads a simulat
 ## Documentation
 
 - [Permissions quick reference](PERMISSIONS-QUICKREF.md) - Concise permissions format reference. Point your AI at this doc when asking it to write or edit your `permissions.yaml`.
-- [Configuration](CONFIGURATION.md) - Full rule syntax: matchers, AND/OR logic, file-path rules, WebFetch rules, and cwd scoping.
+- [Configuration](CONFIGURATION.md) - Full rule syntax: matchers, AND/OR logic, file-path rules, redirect path rules, WebFetch rules, and cwd scoping.
 - [How it works](HOW_IT_WORKS.md) - Architecture deep-dive with AST diagrams, env-threading details, and a guide to writing non-trivial rules.
 - [Protecting production](PROTECTING-PRODUCTION.md) - Recipes for locking down production environments covering AWS CLI and kubectl.
 - [Audit log](AUDIT-LOG.md) - Audit log format and retention policy for the machine-readable and human-readable logs.

@@ -1,5 +1,5 @@
 import { buildAst } from "../build-ast";
-import { IBash, IBinOp, IXargsNode, IToolCall } from "../types";
+import { IBash, IBinOp, IXargsNode, IToolCall, findInnerCommand, IRedirectNode } from "../types";
 
 // makeBashCall builds a minimal IToolCall for a Bash command string.
 function makeBashCall(command: string): IToolCall {
@@ -20,14 +20,14 @@ test('xargs grep -l "pattern": top-level node is IXargsNode with child.binary gr
     const ast = getAst('xargs grep -l "pattern"');
     expect(ast.type).toBe("xargs");
     const xargsNode = ast as IXargsNode;
-    expect(xargsNode.child.binary).toBe("grep");
+    expect(findInnerCommand(xargsNode.child).binary).toBe("grep");
 });
 
 test('xargs -n 1 rm: IXargsNode with child.binary rm and options.n === "1"', () => {
     const ast = getAst("xargs -n 1 rm");
     expect(ast.type).toBe("xargs");
     const xargsNode = ast as IXargsNode;
-    expect(xargsNode.child.binary).toBe("rm");
+    expect(findInnerCommand(xargsNode.child).binary).toBe("rm");
     expect(xargsNode.options["n"]).toBe("1");
 });
 
@@ -35,7 +35,7 @@ test('xargs -I{} cp {} /dest: IXargsNode with child.binary cp and options.I === 
     const ast = getAst("xargs -I{} cp {} /dest");
     expect(ast.type).toBe("xargs");
     const xargsNode = ast as IXargsNode;
-    expect(xargsNode.child.binary).toBe("cp");
+    expect(findInnerCommand(xargsNode.child).binary).toBe("cp");
     expect(xargsNode.options["I"]).toBe("{}");
 });
 
@@ -43,7 +43,7 @@ test("xargs (no subcommand): IXargsNode with child.binary empty string", () => {
     const ast = getAst("xargs");
     expect(ast.type).toBe("xargs");
     const xargsNode = ast as IXargsNode;
-    expect(xargsNode.child.binary).toBe("");
+    expect(findInnerCommand(xargsNode.child).binary).toBe("");
 });
 
 // ---------------------------------------------------------------------------
@@ -57,7 +57,7 @@ test('find . | xargs rm: BinOp with right being IXargsNode with child.binary rm'
     expect(binop.op).toBe("|");
     expect(binop.right.type).toBe("xargs");
     const rightXargs = binop.right as IXargsNode;
-    expect(rightXargs.child.binary).toBe("rm");
+    expect(findInnerCommand(rightXargs.child).binary).toBe("rm");
 });
 
 test('ls && xargs rm: BinOp with right being IXargsNode', () => {
@@ -67,23 +67,24 @@ test('ls && xargs rm: BinOp with right being IXargsNode', () => {
     expect(binop.op).toBe("&&");
     expect(binop.right.type).toBe("xargs");
     const rightXargs = binop.right as IXargsNode;
-    expect(rightXargs.child.binary).toBe("rm");
+    expect(findInnerCommand(rightXargs.child).binary).toBe("rm");
 });
 
 // ---------------------------------------------------------------------------
 // Complex pattern with redirect
 // ---------------------------------------------------------------------------
 
-test('xargs grep -l "pattern..." 2>/dev/null: IXargsNode with grep child, redirect in child', () => {
+test('xargs grep -l "pattern..." 2>/dev/null: redirect wraps xargs, grep is inner child', () => {
     const ast = getAst('xargs grep -l "loadDesktopConfig\\|saveDesktopConfig\\|desktopConfig" 2>/dev/null');
-    expect(ast.type).toBe("xargs");
-    const xargsNode = ast as IXargsNode;
-    expect(xargsNode.child.binary).toBe("grep");
-    expect(xargsNode.child.options["l"]).toBeDefined();
-    const redirects = xargsNode.child.redirects;
-    expect(redirects.length).toBeGreaterThanOrEqual(1);
-    expect(redirects[0].op).toBe("2>");
-    expect(redirects[0].target).toBe("/dev/null");
+    expect(ast.type).toBe("redirect");
+    const outerRedirect = ast as IRedirectNode;
+    expect(outerRedirect.op).toBe("2>");
+    expect(outerRedirect.target).toBe("/dev/null");
+    expect(outerRedirect.command.type).toBe("xargs");
+    const xargsNode = outerRedirect.command as IXargsNode;
+    const innerCmd = findInnerCommand(xargsNode.child);
+    expect(innerCmd.binary).toBe("grep");
+    expect(innerCmd.options["l"]).toBeDefined();
 });
 
 // ---------------------------------------------------------------------------

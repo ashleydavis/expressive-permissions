@@ -23,7 +23,6 @@ ast:
         options: {}
         cmd: /app
         envPrefix: {}
-        redirects: []
         raw: cd /app
       right:
         type: command
@@ -31,7 +30,6 @@ ast:
         options: {}
         cmd: install
         envPrefix: {}
-        redirects: []
         raw: npm install
     right:
       type: command
@@ -39,5 +37,4 @@ ast:
       options: {}
       cmd: test
       envPrefix: {}
-      redirects: []
       raw: npm test

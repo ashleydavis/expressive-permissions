@@ -1,10 +1,10 @@
 tool_call:
   tool_name: Bash
   tool_input:
-    command: "git status | grep modified"
+    command: git status | grep modified
 ast:
   type: bash
-  raw: "git status | grep modified"
+  raw: git status | grep modified
   ast:
     type: binop
     op: "|"
@@ -14,13 +14,11 @@ ast:
       options: {}
       cmd: status
       envPrefix: {}
-      redirects: []
-      raw: "git status"
+      raw: git status
     right:
       type: command
       binary: grep
       options: {}
       cmd: modified
       envPrefix: {}
-      redirects: []
-      raw: "grep modified"
+      raw: grep modified

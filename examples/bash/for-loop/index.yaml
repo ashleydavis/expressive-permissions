@@ -12,6 +12,5 @@ ast:
     options: {}
     cmd: $f
     envPrefix: {}
-    redirects: []
     raw: echo $f
   raw: for f in a b c; do echo $f; done

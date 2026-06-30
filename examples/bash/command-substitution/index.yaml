@@ -5,7 +5,6 @@ ast:
   options: {}
   cmd: $(whoami)
   envPrefix: {}
-  redirects: []
   raw: echo $(whoami)
   substitutions:
     - type: command
@@ -13,5 +12,4 @@ ast:
       options: {}
       cmd: []
       envPrefix: {}
-      redirects: []
       raw: whoami

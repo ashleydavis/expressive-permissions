@@ -1,0 +1,17 @@
+description: "redirect.out: same rule matches echo and cat redirects"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: "cat > /tmp/b"
+  cwd: ${PROJECT_DIR}
+
+rules:
+  redirect:
+    out:
+      - path-in: ["/tmp/**"]
+        decide: allow
+      - decide: ask
+
+expected:
+  decision: allow

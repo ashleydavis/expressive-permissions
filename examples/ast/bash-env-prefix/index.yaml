@@ -1,10 +1,10 @@
 tool_call:
   tool_name: Bash
   tool_input:
-    command: "FOO=bar node index.js"
+    command: FOO=bar node index.js
 ast:
   type: bash
-  raw: "FOO=bar node index.js"
+  raw: FOO=bar node index.js
   ast:
     type: command
     binary: node
@@ -12,5 +12,4 @@ ast:
     cmd: index.js
     envPrefix:
       FOO: bar
-    redirects: []
-    raw: "FOO=bar node index.js"
+    raw: FOO=bar node index.js

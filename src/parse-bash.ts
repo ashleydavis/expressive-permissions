@@ -1,4 +1,4 @@
-import { BashAstNode, ICaseClause, ICaseStatement, ICommand, ICommandDescriptor, IForLoop, IGroup, IIfStatement, IRedirect, IWhileLoop } from "./types";
+import { BashAstNode, ICaseClause, ICaseStatement, ICommand, ICommandDescriptor, IForLoop, IGroup, IIfStatement, IRedirectNode, IWhileLoop } from "./types";
 import { resolveFlagArity } from "./load-commands";
 
 // A single token produced by the lexer
@@ -388,12 +388,35 @@ function consume(state: IParserState): IToken {
     return state.tokens[state.pos++];
 }
 
+// A parsed redirect operator and target collected while reading a command
+interface IParsedRedirect {
+    // The redirection operator token
+    op: string;
+    // The redirection target word
+    target: string;
+}
+
+// Wraps a command leaf in nested redirect nodes (innermost redirect closest to the command).
+function wrapRedirectNodes(command: ICommand, redirects: IParsedRedirect[]): BashAstNode {
+    let node: BashAstNode = command;
+    for (const redirect of redirects) {
+        const redirectNode: IRedirectNode = {
+            type: "redirect",
+            op: redirect.op,
+            command: node,
+            target: redirect.target,
+        };
+        node = redirectNode;
+    }
+    return node;
+}
+
 // Parses a single Command leaf, collecting the env-var prefix, binary, options, and redirects.
 // Stops when a non-redirect operator is seen (caller handles that operator).
 // descriptors is used to look up flag arity and positional kinds for the parsed binary.
-function parseCommand(state: IParserState, descriptors: Map<string, ICommandDescriptor>): ICommand {
+function parseCommand(state: IParserState, descriptors: Map<string, ICommandDescriptor>): BashAstNode {
     const envPrefix: Record<string, string> = {};
-    const redirects: IRedirect[] = [];
+    const redirects: IParsedRedirect[] = [];
     const argTokens: string[] = [];
     let binary = "";
     let firstTokenStart = -1;
@@ -467,13 +490,12 @@ function parseCommand(state: IParserState, descriptors: Map<string, ICommandDesc
         options: argv.options,
         cmd: argv.cmd,
         envPrefix,
-        redirects,
         raw,
     };
     if (substitutions.length > 0) {
         command.substitutions = substitutions;
     }
-    return command;
+    return wrapRedirectNodes(command, redirects);
 }
 
 // extractSubstitutions scans a single text fragment and returns the inner command string of each
@@ -581,7 +603,7 @@ function parseWhileLoop(state: IParserState, descriptors: Map<string, ICommandDe
             type: "while_loop",
             until,
             condition,
-            body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "" },
+            body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, raw: "" },
             raw: state.raw.substring(startPos, peek(state)?.start ?? state.raw.length),
         };
     }
@@ -729,7 +751,7 @@ function parseForLoop(state: IParserState, descriptors: Map<string, ICommandDesc
             type: "for_loop",
             variable: "",
             items: [],
-            body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "" },
+            body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, raw: "" },
             raw: state.raw.substring(startPos, forToken.end),
         };
     }
@@ -751,7 +773,7 @@ function parseForLoop(state: IParserState, descriptors: Map<string, ICommandDesc
             type: "for_loop",
             variable,
             items,
-            body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "" },
+            body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, raw: "" },
             raw: state.raw.substring(startPos, peek(state)?.start ?? state.raw.length),
         };
     }
@@ -928,7 +950,7 @@ function parseSequence(state: IParserState, descriptors: Map<string, ICommandDes
 export function parseBash(raw: string, descriptors: Map<string, ICommandDescriptor>): BashAstNode {
     const trimmed = raw.trim();
     if (trimmed.length === 0) {
-        return { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, redirects: [], raw: "" };
+        return { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, raw: "" };
     }
 
     const tokens = lex(raw);

@@ -1,5 +1,5 @@
 import { parseBash } from "../parse-bash";
-import { BashAstNode, ICommand, IBinOp, ICaseStatement, IForLoop, IGroup, IIfStatement, IWhileLoop, ICommandDescriptor } from "../types";
+import { BashAstNode, ICommand, IBinOp, ICaseStatement, IForLoop, IGroup, IIfStatement, IWhileLoop, ICommandDescriptor, IRedirectNode } from "../types";
 
 // makeDescriptors returns a descriptor map with a single command whose named flags have arity 1.
 // All unlisted flags default to arity 0 via the EMPTY_DESCRIPTOR fallback.
@@ -33,10 +33,19 @@ function makeDescriptorsWithCmds(
     return new Map([[cmd, { description: cmd, positionals: [], flags: topLevelFlags, cmds }]]);
 }
 
-// Asserts the node is a Command with the given binary and returns it for further inspection.
+// Unwraps nested redirect nodes to reach the inner command leaf.
+function unwrapCommand(node: BashAstNode): ICommand {
+    let current: BashAstNode = node;
+    while (current.type === "redirect") {
+        current = current.command;
+    }
+    expect(current.type).toBe("command");
+    return current as ICommand;
+}
+
+// Asserts the node (possibly wrapped in redirects) is a Command with the given binary.
 function expectCommand(node: BashAstNode, binary: string): ICommand {
-    expect(node.type).toBe("command");
-    const cmd = node as ICommand;
+    const cmd = unwrapCommand(node);
     expect(cmd.binary).toBe(binary);
     return cmd;
 }
@@ -151,7 +160,6 @@ describe("parseBash", () => {
             expect(cmd.options).toEqual({});
             expect(cmd.cmd).toEqual([]);
             expect(cmd.envPrefix).toEqual({});
-            expect(cmd.redirects).toEqual([]);
             expect(cmd.raw).toBe("");
         });
 
@@ -277,41 +285,54 @@ describe("parseBash", () => {
     describe("redirects", () => {
         test("stdout redirect", () => {
             const node = parseBash("cmd > out.log", new Map());
-            const cmd = expectCommand(node, "cmd");
-            expect(cmd.redirects).toEqual([{ op: ">", target: "out.log" }]);
+            expect(node.type).toBe("redirect");
+            const redirect = node as IRedirectNode;
+            expect(redirect.op).toBe(">");
+            expect(redirect.target).toBe("out.log");
+            expectCommand(redirect.command, "cmd");
         });
 
         test("stdout append redirect", () => {
             const node = parseBash("cmd >> out.log", new Map());
-            const cmd = expectCommand(node, "cmd");
-            expect(cmd.redirects).toEqual([{ op: ">>", target: "out.log" }]);
+            const redirect = node as IRedirectNode;
+            expect(redirect.op).toBe(">>");
+            expect(redirect.target).toBe("out.log");
+            expectCommand(redirect.command, "cmd");
         });
 
         test("stdin redirect", () => {
             const node = parseBash("cmd < in.txt", new Map());
-            const cmd = expectCommand(node, "cmd");
-            expect(cmd.redirects).toEqual([{ op: "<", target: "in.txt" }]);
+            const redirect = node as IRedirectNode;
+            expect(redirect.op).toBe("<");
+            expect(redirect.target).toBe("in.txt");
+            expectCommand(redirect.command, "cmd");
         });
 
         test("stderr redirect", () => {
             const node = parseBash("cmd 2> err.log", new Map());
-            const cmd = expectCommand(node, "cmd");
-            expect(cmd.redirects).toEqual([{ op: "2>", target: "err.log" }]);
+            const redirect = node as IRedirectNode;
+            expect(redirect.op).toBe("2>");
+            expect(redirect.target).toBe("err.log");
+            expectCommand(redirect.command, "cmd");
         });
 
         test("stdout redirect with stderr merged to stdout", () => {
             const node = parseBash("cmd > out 2>&1", new Map());
-            const cmd = expectCommand(node, "cmd");
-            expect(cmd.redirects).toEqual([
-                { op: ">", target: "out" },
-                { op: "2>&", target: "1" },
-            ]);
+            const outer = node as IRedirectNode;
+            expect(outer.op).toBe("2>&");
+            expect(outer.target).toBe("1");
+            const inner = outer.command as IRedirectNode;
+            expect(inner.op).toBe(">");
+            expect(inner.target).toBe("out");
+            expectCommand(inner.command, "cmd");
         });
 
         test("merged stdout+stderr redirect", () => {
             const node = parseBash("cmd &> all.log", new Map());
-            const cmd = expectCommand(node, "cmd");
-            expect(cmd.redirects).toEqual([{ op: "&>", target: "all.log" }]);
+            const redirect = node as IRedirectNode;
+            expect(redirect.op).toBe("&>");
+            expect(redirect.target).toBe("all.log");
+            expectCommand(redirect.command, "cmd");
         });
     });
 
@@ -440,8 +461,10 @@ describe("parseBash", () => {
 
         test("2>&1 lexes as a single fd-merge redirect", () => {
             const node = parseBash("cmd 2>&1", new Map());
-            const cmd = node as ICommand;
-            expect(cmd.redirects).toEqual([{ op: "2>&", target: "1" }]);
+            const redirect = node as IRedirectNode;
+            expect(redirect.op).toBe("2>&");
+            expect(redirect.target).toBe("1");
+            expectCommand(redirect.command, "cmd");
         });
     });
 
@@ -505,12 +528,13 @@ describe("parseBash", () => {
             expect(loop.items).toEqual(["a", "b"]);
             const ifNode = loop.body as IIfStatement;
             expect(ifNode.type).toBe("if_statement");
-            const condition = ifNode.condition as ICommand;
-            expect(condition.binary).toBe("diff");
-            expect(condition.redirects).toEqual([
-                { op: ">", target: "/dev/null" },
-                { op: "2>&", target: "1" },
-            ]);
+            const condition = ifNode.condition as IRedirectNode;
+            expect(condition.op).toBe("2>&");
+            expect(condition.target).toBe("1");
+            const stdoutRedirect = condition.command as IRedirectNode;
+            expect(stdoutRedirect.op).toBe(">");
+            expect(stdoutRedirect.target).toBe("/dev/null");
+            expectCommand(stdoutRedirect.command, "diff");
             expect((ifNode.thenBranch as ICommand).cmd).toBe("same");
             expect((ifNode.elseBranch as ICommand).cmd).toBe("diff");
         });
@@ -548,8 +572,10 @@ describe("parseBash", () => {
 
         test("2>&1 is not mistaken for a bare & separator", () => {
             const node = parseBash("cmd 2>&1", new Map());
-            const cmd = expectCommand(node, "cmd");
-            expect(cmd.redirects).toEqual([{ op: "2>&", target: "1" }]);
+            const redirect = node as IRedirectNode;
+            expect(redirect.op).toBe("2>&");
+            expect(redirect.target).toBe("1");
+            expectCommand(redirect.command, "cmd");
         });
     });
 
@@ -559,7 +585,6 @@ describe("parseBash", () => {
             const cmd = expectCommand(node, "");
             expect(cmd.cmd).toEqual([]);
             expect(cmd.envPrefix).toEqual({});
-            expect(cmd.redirects).toEqual([]);
         });
 
         test("an indented comment also strips to an empty command", () => {

@@ -1,10 +1,10 @@
 tool_call:
   tool_name: Bash
   tool_input:
-    command: "git commit -m=wip"
+    command: git commit -m=wip
 ast:
   type: bash
-  raw: "git commit -m=wip"
+  raw: git commit -m=wip
   ast:
     type: command
     binary: git
@@ -12,5 +12,4 @@ ast:
       m: wip
     cmd: commit
     envPrefix: {}
-    redirects: []
-    raw: "git commit -m=wip"
+    raw: git commit -m=wip

@@ -1,10 +1,10 @@
 tool_call:
   tool_name: Bash
   tool_input:
-    command: "rm -r -f /tmp"
+    command: rm -r -f /tmp
 ast:
   type: bash
-  raw: "rm -r -f /tmp"
+  raw: rm -r -f /tmp
   ast:
     type: command
     binary: rm
@@ -13,5 +13,4 @@ ast:
       f: true
     cmd: /tmp
     envPrefix: {}
-    redirects: []
-    raw: "rm -r -f /tmp"
+    raw: rm -r -f /tmp
