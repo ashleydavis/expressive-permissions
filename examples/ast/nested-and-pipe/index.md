@@ -14,7 +14,7 @@ graph TD
   n1["binop<br/>op: &amp;&amp;"]
   n2["command<br/>binary: cd<br/>cmd: /some/path"]
   n1 --> n2
-  n3["binop<br/>op: &#124;"]
+  n3["binop<br/>op: |"]
   n4["command<br/>binary: git<br/>cmd: status"]
   n3 --> n4
   n5["command<br/>binary: grep<br/>cmd: foo"]

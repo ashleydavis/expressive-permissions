@@ -1,9 +1,9 @@
-# long-flag-with-hyphen
+# flag-long-with-value
 
 Command:
 
 ```sh
-git push --force-with-lease
+git push --remote=origin
 ```
 
 AST:

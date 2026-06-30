@@ -1,9 +1,9 @@
-# separate-flags
+# flag-ls-combined
 
 Command:
 
 ```sh
-rm -r -f /tmp
+ls -la /tmp
 ```
 
 AST:
@@ -11,6 +11,6 @@ AST:
 ```mermaid
 graph TD
   n0["bash"]
-  n1["command<br/>binary: rm<br/>cmd: /tmp"]
+  n1["command<br/>binary: ls<br/>cmd: /tmp"]
   n0 --> n1
 ```

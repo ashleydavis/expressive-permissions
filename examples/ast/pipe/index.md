@@ -11,7 +11,7 @@ AST:
 ```mermaid
 graph TD
   n0["bash"]
-  n1["binop<br/>op: &#124;"]
+  n1["binop<br/>op: |"]
   n2["command<br/>binary: git<br/>cmd: status"]
   n1 --> n2
   n3["command<br/>binary: grep<br/>cmd: modified"]

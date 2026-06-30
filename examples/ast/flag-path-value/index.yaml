@@ -1,0 +1,25 @@
+tool_call:
+  tool_name: Bash
+  tool_input:
+    command: git -C /some/path status -sb
+ast:
+  type: bash
+  raw: git -C /some/path status -sb
+  ast:
+    type: command
+    binary: git
+    options:
+      C: /some/path
+      s: true
+      b: true
+    cmd: status
+    envPrefix: {}
+    raw: git -C /some/path status -sb
+descriptors:
+  git:
+    description: Git
+    flags:
+      C:
+        arity: 1
+        kind: path
+        description: Run as if started in the given directory

@@ -1,4 +1,4 @@
-# long-flags
+# flag-long-boolean
 
 Command:
 

@@ -1,0 +1,23 @@
+tool_call:
+  tool_name: Bash
+  tool_input:
+    command: git commit -m wip
+ast:
+  type: bash
+  raw: git commit -m wip
+  ast:
+    type: command
+    binary: git
+    options:
+      m: wip
+    cmd: commit
+    envPrefix: {}
+    raw: git commit -m wip
+descriptors:
+  git:
+    description: Git
+    flags:
+      m:
+        arity: 1
+        kind: string
+        description: Commit message

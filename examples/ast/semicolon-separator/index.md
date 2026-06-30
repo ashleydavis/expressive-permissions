@@ -1,4 +1,4 @@
-# sequence
+# semicolon-separator
 
 Command:
 

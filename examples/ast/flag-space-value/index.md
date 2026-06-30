@@ -1,9 +1,9 @@
-# flag-with-value
+# flag-space-value
 
 Command:
 
 ```sh
-git commit -m=wip
+git commit -m wip
 ```
 
 AST:

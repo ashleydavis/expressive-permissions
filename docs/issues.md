@@ -71,13 +71,13 @@ A generic visitor can then walk any node by iterating `children` keys (and recur
 
 ---
 
-## File-tool paths are flat fields, not AST child nodes
+## File paths are flat fields, not AST child nodes
 
 For Read, Write, Edit, and MultiEdit tool calls, `file_path` is a scalar field on the tool root node (e.g. `type: edit` with `file_path: /tmp/foo.ts`). Rules in `write:`, `edit:`, and similar sections match only when the walker is at that root and inspect `node.file_path` directly.
 
-Bash shell writes work differently. Each redirect is an intermediate `redirect` node with a `target` field; `redirect.out` rules fire during tree traversal on those nodes, independent of the inner `command` binary. That gives granular, path-centric policy for shell file writes without a separate `bash:` rule per command.
+Bash shell redirects work differently and already expose file targets on intermediate nodes. Each redirect is a `redirect` node with a `target` field; `redirect.out` / `redirect.in` rules fire during tree traversal on those nodes, independent of the inner `command` binary. That gives granular, path-centric policy for shell file I/O without a separate `bash:` rule per command.
 
-If file-tool targets were represented as child AST nodes (analogous to `redirect` wrapping a command with a `target`), the same walk-and-match model could apply to Edit, Write, and MultiEdit. A unified "writes to files" policy could cover both `redirect.out` targets and file-tool paths in one place, with path rules evaluated at the target node during traversal instead of only at the tool root.
+If file-tool targets were represented as child AST nodes (analogous to `redirect` wrapping a command with a `target`), the same walk-and-match model could apply to Edit, Write, and MultiEdit. A unified file-access policy could cover redirect targets, file-tool paths, `other`-tool paths, and Bash command arguments in one place, with path rules evaluated at the target node during traversal instead of only at the tool root or command leaf.
 
 Illustrative target shape for `Edit` on `/tmp/foo.ts`:
 
@@ -92,16 +92,55 @@ operation:
 
 Read tools could use a sibling `file_read` node with the same `path` field for symmetry.
 
-**Recommended fix:** Introduce intermediate file-target AST nodes (`file_write`, `file_read`, or similar) that hold the resolved path and wrap the operation-specific payload. Teach walkers and YAML matchers to evaluate path rules on those nodes the way `redirect.out` / `redirect.in` work today.
+The same applies to `other` tools whose `tool_input` carries path-like fields. For example, `Grep` with `path: /tmp` is today a single `other` leaf with the path buried in opaque `tool_input`; a child file-target node would allow path-centric rules during traversal instead of tool-specific matchers on the raw input blob.
 
-**Affected examples:**
+Bash command arguments and flag values that are paths (including those marked `kind: path` in command descriptors) are still flat strings in `cmd` or `options` on the `command` leaf. A `cd /tmp`, `mv src/main.ts dist/main.ts`, or `git -C /some/path` does not yield path child nodes the way a redirect does.
 
+**Recommended fix:** Introduce intermediate file-target AST nodes (`file_write`, `file_read`, or similar) that hold the resolved path and wrap the operation-specific payload. Teach walkers and YAML matchers to evaluate path rules on those nodes the way `redirect.out` / `redirect.in` work today. Extend the same model to descriptor-known path positionals and path-valued flags on Bash commands, and to path fields lifted out of `other` tool inputs.
+
+**Reference examples (desired shape today for Bash redirects):**
+
+- `examples/ast/redirect-and-binop/` — `echo hi > out.txt` after `cd /tmp`; `target: out.txt` on a `redirect` node separate from the inner `echo` command
+- `examples/ast/redirect-append/` — `>> bar.txt`
+- `examples/ast/redirect-fd-merge/` — `> out.log` with `2>&1`
+- `examples/ast/redirect-stderr/` — `2> err.log`
+- `examples/ast/redirect-stdin/` — `< in.txt`
+- `examples/ast/redirect-stdout/` — `> out.log`
+- `examples/ast/redirect-stdout-echo/` — `echo foo > bar.txt`
+
+**Affected examples (file tools, flat `file_path` on tool root):**
+
+- `examples/ast/read-basic/`
+- `examples/ast/read-with-limit/`
+- `examples/ast/read-with-offset/`
+- `examples/ast/read-with-offset-and-limit/`
+- `examples/ast/write-basic/`
 - `examples/ast/edit-basic/`
 - `examples/ast/edit-replace-all/`
-- `examples/ast/write-basic/`
 - `examples/ast/multiedit-single/`
 - `examples/ast/multiedit-multiple/`
-- `examples/ast/read-basic/` (and other read examples, for symmetry)
+
+**Affected examples (`other` tools, path buried in opaque `tool_input`):**
+
+- `examples/ast/other-grep/` — `path: /tmp`
+
+**Affected examples (Bash commands, paths flat in `cmd` or `options`):**
+
+- `examples/ast/and-operator/` — `cd /tmp`
+- `examples/ast/backtick-substitution/` — `cat list` (path positional inside substitution)
+- `examples/ast/cd/` — `cd /tmp`
+- `examples/ast/flag-long-boolean/` — `rm ... /tmp`
+- `examples/ast/flag-ls-combined/` — `ls ... /tmp`
+- `examples/ast/flag-path-value/` — `git -C /some/path` (path in `options.C`, descriptor `kind: path`)
+- `examples/ast/flag-short-separate/` — `rm ... /tmp`
+- `examples/ast/if-in-for-loop/` — `cd /work/tf-config`, `diff ... variant-1a/$f variant-2/$f` (also contains redirect targets on `redirect` nodes; see reference examples above)
+- `examples/ast/if-statement/` — `test -f f`
+- `examples/ast/multiple-positionals/` — `mv src/main.ts dist/main.ts`
+- `examples/ast/nested-and-pipe/` — `cd /some/path`
+- `examples/ast/redirect-and-binop/` — `cd /tmp` (redirect half already correct; see reference examples above)
+- `examples/ast/subshell/` — `cd src`
+- `examples/ast/until-loop/` — `test -f /tmp/ready`
+- `examples/ast/xargs/` — `find .`
 
 ---
 
@@ -143,3 +182,35 @@ Built-in rules `envSetRule` and `envPrefixRule` would move to match and walk the
 - `examples/ast/env-prefix/`
 - `examples/ast/multi-env-prefix/`
 - (and any example where `envPrefix` appears on a `command` node)
+
+---
+
+## Shell quoting is incomplete
+
+The Bash lexer in `src/parse-bash.ts` handles basic single and double quotes for typical agent commands (e.g. `echo "hello world"`, flag values, env-prefix values). Several Bash quoting rules are missing or wrong.
+
+**Lexer gaps (`lex()`):**
+
+- **Double-quote backslash rules:** Inside `"..."`, Bash only treats `\` as special before `$`, `` ` ``, `"`, `\`, or newline. Other sequences such as `"\n"` and `"\t"` keep the backslash. The lexer strips any `\` + character pair, so `"\n"` becomes `n` instead of `\n`.
+- **Empty quoted words:** `""` and `''` are valid empty arguments in Bash (`echo "" foo` passes three words). The lexer drops words when `wordValue.length === 0`, so empty quoted args never become tokens.
+- **ANSI-C quoting (`$'...'`):** Not interpreted; `$'hello\nworld'` is kept as the literal string `$hello\nworld` instead of expanding escape sequences.
+- **Locale quoting (`$"..."`):** Not interpreted; `$"hello"` is kept as `$hello`.
+
+**Substitution extraction ignores quote context (`extractSubstitutions()`):**
+
+After lexing, `extractSubstitutions()` scans resolved word text for `$(...)` and backticks without knowing whether those characters were inside quotes or escaped. Bash does not run substitutions in those positions, but the permission hook still evaluates the inner command. This can over-enforce: deny or ask about a nested command that would never execute.
+
+| Command | Bash runs inner command? | Hook today |
+| --- | --- | --- |
+| `echo '$(whoami)'` | No (literal text) | Yes |
+| `echo "\$(whoami)"` | No (escaped `$`) | Yes |
+| `echo $(whoami)` | Yes | Yes |
+| `echo "$(whoami)"` | Yes | Yes |
+
+**Recommended fix:** Teach `lex()` Bash-accurate double-quote backslash rules, emit tokens for empty quoted words, and optionally add `$'...'` / `$"..."` if needed. Track which spans of each word were single-quoted, double-quoted, or backslash-escaped during lexing (or extract substitutions during lex with quote context), and skip `extractSubstitutions()` matches inside single quotes or after an escaped `$` in double quotes.
+
+**Affected examples:**
+
+- `examples/ast/quoted-arg/` (basic double quotes work; documents the quoting surface)
+- `examples/ast/command-substitution/` (unquoted and double-quoted `$(...)`; quote-context bug affects single-quoted and escaped forms not yet illustrated)
+- `examples/ast/backtick-substitution/` (same for backticks inside quotes)

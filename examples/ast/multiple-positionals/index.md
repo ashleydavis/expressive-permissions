@@ -1,4 +1,4 @@
-# multiple-cmd
+# multiple-positionals
 
 Command:
 
