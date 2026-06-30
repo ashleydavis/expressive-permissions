@@ -20,9 +20,3 @@ graph TD
   n1 -->|body| n2
   n0 --> n1
 ```
-
-## Duplicates
-
-Same construct as:
-
-- [bash-brace-group](../bash-brace-group/index.md)

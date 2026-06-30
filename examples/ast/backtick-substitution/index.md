@@ -16,9 +16,3 @@ graph TD
   n1 -->|subst| n2
   n0 --> n1
 ```
-
-## Duplicates
-
-Same construct as:
-
-- [bash-backtick-substitution](../bash-backtick-substitution/index.md)
