@@ -1,0 +1,24 @@
+tool_call:
+  tool_name: "Bash"
+  tool_input:
+    command: "make || echo failed"
+ast:
+  type: "bash"
+  raw: "make || echo failed"
+  ast:
+    type: "binop"
+    op: "||"
+    left:
+      type: "command"
+      binary: "make"
+      options: {}
+      cmd: []
+      envPrefix: {}
+      raw: "make"
+    right:
+      type: "command"
+      binary: "echo"
+      options: {}
+      cmd: "failed"
+      envPrefix: {}
+      raw: "echo failed"

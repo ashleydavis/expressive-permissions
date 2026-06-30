@@ -1,0 +1,14 @@
+tool_call:
+  tool_name: "Bash"
+  tool_input:
+    command: ""
+ast:
+  type: "bash"
+  raw: ""
+  ast:
+    type: "command"
+    binary: ""
+    options: {}
+    cmd: []
+    envPrefix: {}
+    raw: ""

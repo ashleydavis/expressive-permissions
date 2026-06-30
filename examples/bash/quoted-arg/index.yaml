@@ -1,8 +1,0 @@
-command: echo "hello world"
-ast:
-  type: command
-  binary: echo
-  options: {}
-  cmd: hello world
-  envPrefix: {}
-  raw: echo "hello world"

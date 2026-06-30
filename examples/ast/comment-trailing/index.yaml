@@ -1,0 +1,16 @@
+tool_call:
+  tool_name: "Bash"
+  tool_input:
+    command: "ls -la # list the directory"
+ast:
+  type: "bash"
+  raw: "ls -la # list the directory"
+  ast:
+    type: "command"
+    binary: "ls"
+    options:
+      l: true
+      a: true
+    cmd: []
+    envPrefix: {}
+    raw: "ls -la"

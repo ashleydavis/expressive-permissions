@@ -1,0 +1,15 @@
+tool_call:
+  tool_name: "Bash"
+  tool_input:
+    command: "FOO=bar"
+ast:
+  type: "bash"
+  raw: "FOO=bar"
+  ast:
+    type: "command"
+    binary: ""
+    options: {}
+    cmd: []
+    envPrefix:
+      FOO: "bar"
+    raw: "FOO=bar"

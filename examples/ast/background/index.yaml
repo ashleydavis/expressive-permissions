@@ -1,0 +1,24 @@
+tool_call:
+  tool_name: "Bash"
+  tool_input:
+    command: "server & client"
+ast:
+  type: "bash"
+  raw: "server & client"
+  ast:
+    type: "binop"
+    op: ";"
+    left:
+      type: "command"
+      binary: "server"
+      options: {}
+      cmd: []
+      envPrefix: {}
+      raw: "server"
+    right:
+      type: "command"
+      binary: "client"
+      options: {}
+      cmd: []
+      envPrefix: {}
+      raw: "client"

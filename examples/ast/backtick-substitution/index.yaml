@@ -1,0 +1,21 @@
+tool_call:
+  tool_name: "Bash"
+  tool_input:
+    command: "rm `cat list`"
+ast:
+  type: "bash"
+  raw: "rm `cat list`"
+  ast:
+    type: "command"
+    binary: "rm"
+    options: {}
+    cmd: "`cat list`"
+    envPrefix: {}
+    raw: "rm `cat list`"
+    substitutions:
+      - type: "command"
+        binary: "cat"
+        options: {}
+        cmd: "list"
+        envPrefix: {}
+        raw: "cat list"

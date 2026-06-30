@@ -291,12 +291,7 @@ Unit tests live under `src/test/` mirroring the source tree. `src/test/pre-hook.
 
 ### AST example fixtures
 
-Parser behaviour is also pinned by YAML fixtures, one per Bash construct:
-
-- [`examples/bash/`](../examples/bash) — compact fixtures asserting only the parsed Bash sub-AST (`command` + bare `ast`), checked by `scripts/check-bash-example.ts` via `scripts/smoke-tests-bash-examples.sh`.
-- [`examples/ast/`](../examples/ast) — full tool-call fixtures (`tool_call` + `ToolRoot` `ast`), checked by `scripts/check-ast-example.ts` via `scripts/smoke-tests-bash-parser.sh`.
-
-Each fixture has a sibling `.md` file with a Mermaid diagram of its AST. Edit fixtures and diagrams by hand when parser output changes. Both fixture suites run as part of `bun run test:all`.
+Parser behaviour is pinned by YAML fixtures under [`examples/ast/`](../examples/ast): each file carries a `tool_call`, optional inline command `descriptors`, and the expected `ToolRoot` `ast`. Bash construct fixtures also exist under [`examples/bash/`](../examples/bash) in compact form (legacy; same cases are duplicated in `examples/ast/` under matching directory names). Fixtures are checked by `scripts/check-ast-example.ts` via `scripts/smoke-tests-bash-parser.sh`. Each fixture has a sibling `.md` file with a Mermaid diagram. Edit fixtures and diagrams by hand when parser output changes. The suite runs as part of `bun run test:all`.
 
 ## Publishing
 

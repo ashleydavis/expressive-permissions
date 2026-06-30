@@ -1,0 +1,24 @@
+tool_call:
+  tool_name: "Bash"
+  tool_input:
+    command: "git status | grep modified"
+ast:
+  type: "bash"
+  raw: "git status | grep modified"
+  ast:
+    type: "binop"
+    op: "|"
+    left:
+      type: "command"
+      binary: "git"
+      options: {}
+      cmd: "status"
+      envPrefix: {}
+      raw: "git status"
+    right:
+      type: "command"
+      binary: "grep"
+      options: {}
+      cmd: "modified"
+      envPrefix: {}
+      raw: "grep modified"

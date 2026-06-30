@@ -1,9 +1,0 @@
-command: FOO=bar
-ast:
-  type: command
-  binary: ""
-  options: {}
-  cmd: []
-  envPrefix:
-    FOO: bar
-  raw: FOO=bar

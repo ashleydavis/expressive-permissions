@@ -1,8 +1,0 @@
-command: ""
-ast:
-  type: command
-  binary: ""
-  options: {}
-  cmd: []
-  envPrefix: {}
-  raw: ""
