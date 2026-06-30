@@ -30,3 +30,9 @@ graph TD
   n1 -->|body| n2
   n0 --> n1
 ```
+
+## Duplicates
+
+Same construct as:
+
+- [for-loop](../for-loop/index.md)

@@ -19,3 +19,9 @@ graph TD
   n1 --> n3
   n0 --> n1
 ```
+
+## Duplicates
+
+Same construct as:
+
+- [bash-newline-separator](../bash-newline-separator/index.md)

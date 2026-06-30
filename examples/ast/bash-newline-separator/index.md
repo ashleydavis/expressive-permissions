@@ -24,3 +24,9 @@ graph TD
   n1 --> n5
   n0 --> n1
 ```
+
+## Duplicates
+
+Same construct as:
+
+- [newline-separator](../newline-separator/index.md)

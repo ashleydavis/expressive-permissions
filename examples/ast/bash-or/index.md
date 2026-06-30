@@ -18,3 +18,9 @@ graph TD
   n1 --> n3
   n0 --> n1
 ```
+
+## Duplicates
+
+Same construct as:
+
+- [or-operator](../or-operator/index.md)

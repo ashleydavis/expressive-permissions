@@ -20,3 +20,9 @@ graph TD
   n1 --> n3
   n0 --> n1
 ```
+
+## Duplicates
+
+Same construct as:
+
+- [xargs](../xargs/index.md)

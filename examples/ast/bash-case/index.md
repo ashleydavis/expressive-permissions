@@ -20,3 +20,9 @@ graph TD
   n1 -->|*| n4
   n0 --> n1
 ```
+
+## Duplicates
+
+Same construct as:
+
+- [case](../case/index.md)
