@@ -296,7 +296,7 @@ Parser behaviour is also pinned by YAML fixtures, one per Bash construct:
 - [`examples/bash/`](../examples/bash) — compact fixtures asserting only the parsed Bash sub-AST (`command` + bare `ast`), checked by `scripts/check-bash-example.ts` via `scripts/smoke-tests-bash-examples.sh`.
 - [`examples/ast/`](../examples/ast) — full tool-call fixtures (`tool_call` + `ToolRoot` `ast`), checked by `scripts/check-ast-example.ts` via `scripts/smoke-tests-bash-parser.sh`.
 
-Each fixture has a sibling `.md` file with a Mermaid diagram of its AST. Regenerate the `examples/bash/` fixtures and **all** diagrams (both directories) with `bun run gen:examples` (`scripts/gen-examples.ts`). Both fixture suites run as part of `bun run test:all`.
+Each fixture has a sibling `.md` file with a Mermaid diagram of its AST. Edit fixtures and diagrams by hand when parser output changes. Both fixture suites run as part of `bun run test:all`.
 
 ## Publishing
 

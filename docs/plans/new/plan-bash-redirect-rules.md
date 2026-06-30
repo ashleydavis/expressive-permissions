@@ -126,11 +126,7 @@ Do **not** document `ICommand.redirects` in user-facing docs; describe redirect 
 
 8. **Published docs** — redirect sections live in `docs/CONFIGURATION.md` and `docs/PERMISSIONS-QUICKREF.md` (done in Phase 1).
 
-9. **Gallery examples** — wire approved fixtures in `examples/bash/` and `examples/ast/`:
-   - Extend `BASH_SPECS` in `scripts/gen-examples.ts`
-   - Add `redirect` to `nodeLabel` (show `op` and `target`) and `childRefs` (edge label `command`)
-   - Remove `redirects` from `command` labels
-   - Run `bun run gen:examples`
+9. **Gallery examples** — wire approved fixtures in `examples/bash/` and `examples/ast/` by hand (nested `redirect` nodes, updated `index.md` Mermaid diagrams).
 
 10. **Tests** — update `src/test/parse-bash.test.ts` redirect expectations to nested `redirect` nodes; update test helpers that set `redirects: []` on commands.
 
@@ -203,16 +199,14 @@ Add e2e cases under `e2e/bash/` (YAML + harness only, no TypeScript smoke tests)
 ### After Phase 2 (AST refactor)
 
 - `ICommand` has no `redirects` field; `IRedirectNode` is in `BashAstNode`
-- Gallery redirect examples use nested `redirect` nodes; `scripts/gen-examples.ts` updated
+- Gallery redirect examples use nested `redirect` nodes
 - `bun run compile` and `bun run test` pass (parser/interpret updates only; no redirect rule matching yet)
-- `bun run gen:examples` completes; redirect examples show nested `redirect` nodes
 
 ### After Phase 3 (rule matching)
 
 - `bun run compile` passes with no errors
 - `bun run test` passes with no failures
 - `bun run smoke` passes with no failures
-- `bun run gen:examples` still regenerates cleanly
 
 ## Notes
 
