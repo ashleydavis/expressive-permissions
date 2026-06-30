@@ -1,26 +1,16 @@
 tool_call:
   tool_name: Bash
   tool_input:
-    command: cd /restricted && SECRET=1 some-tool --flag
+    command: SECRET=1 some-tool --flag
 ast:
   type: bash
-  raw: cd /restricted && SECRET=1 some-tool --flag
+  raw: SECRET=1 some-tool --flag
   ast:
-    type: binop
-    op: "&&"
-    left:
-      type: command
-      binary: cd
-      options: {}
-      cmd: /restricted
-      envPrefix: {}
-      raw: cd /restricted
-    right:
-      type: command
-      binary: some-tool
-      options:
-        flag: true
-      cmd: []
-      envPrefix:
-        SECRET: "1"
-      raw: SECRET=1 some-tool --flag
+    type: command
+    binary: some-tool
+    options:
+      flag: true
+    cmd: []
+    envPrefix:
+      SECRET: "1"
+    raw: SECRET=1 some-tool --flag
