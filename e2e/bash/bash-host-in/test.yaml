@@ -1,4 +1,4 @@
-description: "bash: host-in OR list"
+description: "bash: curl URL host matched via cmd-in OR list"
 
 input:
   tool_name: Bash
@@ -9,9 +9,9 @@ input:
 rules:
   bash:
     curl:
-      host-in:
-        - "api.example.com"
-        - "cdn.example.com"
+      cmd-in:
+        - "https://api.example.com/*"
+        - "https://cdn.example.com/*"
       decide: allow
 
 expected:

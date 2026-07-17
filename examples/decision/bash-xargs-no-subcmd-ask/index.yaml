@@ -1,0 +1,15 @@
+description: "bash: xargs with no subcommand defaults to ask"
+source_e2e: e2e/bash/bash-xargs-no-subcmd-ask/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: xargs
+  cwd: ${PROJECT_DIR}
+rules: {}
+expected:
+  decision: ask
+home_dir_files:
+  bash-rules.yaml:
+    bash:
+      grep:
+        decide: allow

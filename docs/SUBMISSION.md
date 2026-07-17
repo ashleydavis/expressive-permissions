@@ -1,6 +1,6 @@
 # Community marketplace submission
 
-Paste-ready copy for the plugin submission form at https://platform.claude.com/plugins/submit
+This doc has paste-ready copy for the Claude plugin submission form.
 
 - Repo URL: https://github.com/ashleydavis/expressive-permissions
 - Plugin name: expressive-permissions

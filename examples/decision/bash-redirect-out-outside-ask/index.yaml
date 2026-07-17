@@ -1,0 +1,18 @@
+description: "redirect.out: ask when write outside allowed dirs"
+source_e2e: e2e/bash/bash-redirect-out-outside-ask/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: echo hi > /etc/passwd
+  cwd: ${PROJECT_DIR}
+rules:
+  redirect:
+    out:
+      - path-in:
+          - /tmp/**
+          - ./**
+        decide: allow
+      - decide: ask
+        reason: Shell write outside allowed dirs
+expected:
+  decision: ask

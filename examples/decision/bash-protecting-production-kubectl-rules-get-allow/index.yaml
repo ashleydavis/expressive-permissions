@@ -1,0 +1,37 @@
+description: "protecting-production: kubectl rules: non-sandbox context + get → allow"
+source_e2e: e2e/bash/bash-protecting-production-kubectl-rules-get-allow/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: kubectl get pods --context prod-cluster
+  cwd: /home/user/project
+rules:
+  bash:
+    kubectl:
+      - options:
+          context: sandbox-*
+        decide: allow
+      - options:
+          context: /^(?!sandbox)/
+        rules:
+          - cmd: get
+            decide: allow
+            reason: Read-only resource listing.
+          - cmd: describe
+            decide: allow
+            reason: Read-only resource inspection.
+          - cmd: delete
+            decide: deny
+            reason: Deleted resources outside sandbox may not be recoverable.
+expected:
+  decision: allow
+  reason: Read-only resource listing.
+project_dir_files:
+  commands/kubectl.yaml:
+    kubectl:
+      description: Kubernetes CLI
+      flags:
+        context:
+          arity: 1
+          kind: string
+          description: Kubeconfig context name

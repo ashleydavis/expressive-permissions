@@ -1,4 +1,4 @@
-description: "bash: host pattern for curl-like commands"
+description: "bash: curl URL positional glob match"
 
 input:
   tool_name: Bash
@@ -9,7 +9,7 @@ input:
 rules:
   bash:
     curl:
-      host: "api.example.com"
+      cmd: "https://api.example.com/*"
       decide: allow
 
 expected:

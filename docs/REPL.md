@@ -1,8 +1,6 @@
 # Permission REPL
 
-The permission REPL is an interactive terminal tool for testing commands against your `permissions.yaml` in real time. Type a command, see which rules fired, and get the final decision without having to involve Claude at all.
-
----
+This doc explains the interactive REPL for testing commands against your permissions rules.
 
 - [Running the REPL](#running-the-repl)
 - [One-shot mode](#one-shot-mode)
@@ -10,7 +8,6 @@ The permission REPL is an interactive terminal tool for testing commands against
 - [REPL commands](#repl-commands)
 - [Reading the output](#reading-the-output)
 
----
 
 ## Running the REPL
 
@@ -74,7 +71,7 @@ Use `:project` when you want to "move into" a different project so that path-anc
 
 Each evaluation prints a trace followed by a verdict line.
 
-The trace shows every rule that ran (RULE), every leaf node where no rule matched (NOMATCH), and the aggregated decision at each tree node (NODE). `config_load` and `tool_request` entries are suppressed because they appear on every run and add noise.
+The trace shows every rule that ran (RULE), every node where no rule matched (NOMATCH), and the aggregated decision at each tree node (NODE). `config_load` and `tool_request` entries are suppressed because they appear on every run and add noise.
 
 The verdict line shows the decision in colour:
 
@@ -103,4 +100,4 @@ Example output for `ls /tmp` with no matching rule:
 ASK
 ```
 
-The REPL rebuilds the rule registry on every input, so edits to `permissions.yaml` or any file under `permissions.d/` are picked up immediately without restarting.
+The REPL reloads rules on every input, so edits to `permissions.yaml` or any file under `permissions.d/` are picked up immediately without restarting.

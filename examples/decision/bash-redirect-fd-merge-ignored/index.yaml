@@ -1,0 +1,16 @@
+description: "redirect.out: fd merge ignored, file target matched"
+source_e2e: e2e/bash/bash-redirect-fd-merge-ignored/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: cmd > /tmp/out 2>&1
+  cwd: ${PROJECT_DIR}
+rules:
+  redirect:
+    out:
+      - path-in:
+          - /tmp/**
+        decide: allow
+      - decide: ask
+expected:
+  decision: allow

@@ -1,21 +1,27 @@
 tool_call:
-  tool_name: "Bash"
+  tool_name: Bash
   tool_input:
-    command: "echo $(whoami)"
+    command: echo $(whoami)
 ast:
-  type: "bash"
-  raw: "echo $(whoami)"
-  ast:
-    type: "command"
-    binary: "echo"
-    options: {}
-    cmd: "$(whoami)"
-    envPrefix: {}
-    raw: "echo $(whoami)"
-    substitutions:
-      - type: "command"
-        binary: "whoami"
-        options: {}
-        cmd: []
-        envPrefix: {}
-        raw: "whoami"
+  type: bash
+  source: echo $(whoami)
+  children:
+    command:
+      type: command
+      source: echo $(whoami)
+      children:
+        substitution:
+          type: substitution
+          source: $(whoami)
+          children:
+            command:
+              type: command
+              source: whoami
+              commandName: whoami
+              options: {}
+              positionals: []
+              envPrefix: {}
+      commandName: echo
+      options: {}
+      positionals: []
+      envPrefix: {}

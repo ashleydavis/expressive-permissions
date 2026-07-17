@@ -49,6 +49,8 @@ function makeNoRuleMatchEntry(): INoRuleMatchEntry {
         timestamp: "2025-06-15T10:00:00.003+10:00",
         nodeType: "command",
         cmd: "ls /tmp",
+        cwd: "/project",
+        env: {},
     };
 }
 

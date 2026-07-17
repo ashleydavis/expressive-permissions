@@ -1,0 +1,24 @@
+tool_call:
+  tool_name: Bash
+  tool_input:
+    command: zap -v
+ast:
+  type: bash
+  source: zap -v
+  children:
+    command:
+      type: command
+      source: zap -v
+      commandName: zap
+      options:
+        v: true
+      positionals: []
+      envPrefix: {}
+descriptors:
+  zap:
+    description: Made-up verbose zap tool
+    flags:
+      v|verbose:
+        arity: 0
+        kind: string
+        description: Enable verbose output

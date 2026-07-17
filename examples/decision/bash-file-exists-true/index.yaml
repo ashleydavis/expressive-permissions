@@ -1,0 +1,19 @@
+description: "bash file: path: true should match when the file exists (CONFIGURATION.md Matching file contents)"
+input:
+  tool_name: Bash
+  tool_input:
+    command: kubectl get pods
+  cwd: /home/user/project
+rules:
+  bash:
+    kubectl:
+      - file:
+          ~/.kube/config: true
+        decide: ask
+        reason: A kubeconfig is present
+expected:
+  decision: ask
+  reason: A kubeconfig is present
+home_files:
+  .kube/config: |
+    current-context: sandbox

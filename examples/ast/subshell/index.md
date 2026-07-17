@@ -11,7 +11,7 @@ AST:
 ```mermaid
 graph TD
   n0["bash"]
-  n1["group<br/>style: subshell"]
+  n1["subshell"]
   n2["binop<br/>op: &amp;&amp;"]
   n3["command<br/>binary: cd<br/>cmd: src"]
   n2 --> n3

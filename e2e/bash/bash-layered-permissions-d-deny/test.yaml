@@ -1,4 +1,4 @@
-description: "bash: project permissions.d/git.yaml drop-in denies git"
+description: "bash: project permissions.d/git.yaml file denies git"
 
 input:
   tool_name: Bash

@@ -1,0 +1,12 @@
+description: "webfetch: WEBFETCH section key with host allow"
+input:
+  tool_name: WebFetch
+  tool_input:
+    url: https://api.example.com/data
+  cwd: /home/user/project
+rules:
+  WEBFETCH:
+    host: api.example.com
+    decide: allow
+expected:
+  decision: allow

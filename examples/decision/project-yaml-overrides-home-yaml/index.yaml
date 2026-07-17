@@ -1,0 +1,19 @@
+description: "layered: a rule in project permissions.yaml overrides a rule in home permissions.yaml"
+input:
+  tool_name: Bash
+  tool_input:
+    command: whoami
+  cwd: /home/user/project
+rules:
+  bash:
+    whoami:
+      decide: deny
+      reason: denied by project yaml
+home_rules:
+  bash:
+    whoami:
+      decide: allow
+      reason: allowed by home yaml
+expected:
+  decision: deny
+  reason: denied by project yaml

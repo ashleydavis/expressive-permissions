@@ -16,4 +16,4 @@ rules:
 
 expected:
   decision: allow
-  reason: sed within /tmp
+  reason: set environment variable; sed within /tmp

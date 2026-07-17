@@ -1,0 +1,16 @@
+description: "bash: cmd-in ${{PROJECT_DIR}}/** matches a relative path under the project"
+input:
+  tool_name: Bash
+  tool_input:
+    command: sed s/a/b/ foo.txt
+  cwd: ${PROJECT_DIR}
+rules:
+  bash:
+    sed:
+      cmd-in:
+        - ${{PROJECT_DIR}}/**
+      decide: allow
+      reason: Allow sed on files within the project directory
+expected:
+  decision: allow
+  reason: Allow sed on files within the project directory

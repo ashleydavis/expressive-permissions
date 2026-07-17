@@ -1,26 +1,30 @@
 tool_call:
-  tool_name: "Bash"
+  tool_name: Bash
   tool_input:
-    command: "until test -f /tmp/ready; do sleep 1; done"
+    command: until test -f /tmp/ready; do sleep 1; done
 ast:
-  type: "bash"
-  raw: "until test -f /tmp/ready; do sleep 1; done"
-  ast:
-    type: "while_loop"
-    until: true
-    condition:
-      type: "command"
-      binary: "test"
-      options:
-        f: true
-      cmd: "/tmp/ready"
-      envPrefix: {}
-      raw: "test -f /tmp/ready"
-    body:
-      type: "command"
-      binary: "sleep"
-      options: {}
-      cmd: "1"
-      envPrefix: {}
-      raw: "sleep 1"
-    raw: "until test -f /tmp/ready; do sleep 1; done"
+  type: bash
+  source: until test -f /tmp/ready; do sleep 1; done
+  children:
+    command:
+      type: while_loop
+      source: until test -f /tmp/ready; do sleep 1; done
+      children:
+        condition:
+          type: command
+          source: test -f /tmp/ready
+          commandName: test
+          options:
+            f: true
+          positionals:
+            - /tmp/ready
+          envPrefix: {}
+        body:
+          type: command
+          source: sleep 1
+          commandName: sleep
+          options: {}
+          positionals:
+            - "1"
+          envPrefix: {}
+      until: true

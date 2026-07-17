@@ -1,0 +1,19 @@
+description: "layered: permissions.d files ending in .yml are loaded"
+input:
+  tool_name: Bash
+  tool_input:
+    command: git status
+  cwd: /home/user/project
+rules:
+  bash:
+    ls:
+      decide: allow
+expected:
+  decision: allow
+  reason: allowed by permissions.d yml
+project_dir_files:
+  git-allow.yml:
+    bash:
+      git:
+        decide: allow
+        reason: allowed by permissions.d yml

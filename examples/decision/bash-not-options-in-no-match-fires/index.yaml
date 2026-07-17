@@ -1,0 +1,42 @@
+description: "bash not: options-in does not match → rule fires (allow)"
+input:
+  tool_name: Bash
+  tool_input:
+    command: "gh api /repos"
+  cwd: /home/user/project
+rules:
+  bash:
+    gh:
+      api:
+        - not:
+            options-in:
+              - X|method
+              - f|raw-field
+              - F|field
+              - input
+          decide: allow
+          reason: Readonly gh api
+expected:
+  decision: allow
+  reason: Readonly gh api
+project_dir_files:
+  commands/gh.yaml:
+    gh:
+      description: GitHub CLI
+      flags:
+        X|method:
+          arity: 1
+          kind: string
+          description: HTTP method
+        f|raw-field:
+          arity: 1
+          kind: string
+          description: Raw field
+        F|field:
+          arity: 1
+          kind: string
+          description: Field
+        input:
+          arity: 1
+          kind: string
+          description: Input file

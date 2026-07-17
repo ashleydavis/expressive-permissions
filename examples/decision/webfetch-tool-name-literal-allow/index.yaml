@@ -1,0 +1,13 @@
+description: "tool-name rule: literal WebFetch key allows any WebFetch call"
+input:
+  tool_name: WebFetch
+  tool_input:
+    url: https://example.com/data
+  cwd: ${PROJECT_DIR}
+rules:
+  WebFetch:
+    decide: allow
+    reason: Allow fetching any URL
+expected:
+  decision: allow
+  reason: Allow fetching any URL

@@ -1,4 +1,8 @@
+@src/parse.ts:5 Can we factor a separately tested `parseArgument` out of this? It consumes the tokens for the next argument, returns them and the remainder of the arguments.
 
+@src/parse.ts:44 Why is `cmd` a string or an array? UNLESS YOU HAVE A GOOD REASON FOR IT BEING STRING, YOU SHOULD MAKE IT JUST AN ARRAY.
+
+@src/parse.ts:44 Why is `cmd` a string or an array? UNLESS YOU HAVE A GOOD REASON FOR IT BEING STRING, YOU SHOULD MAKE IT JUST AN ARRAY.
 ---
 
 I need a way to nest rules so the production part of this isn't repeated:

@@ -1,0 +1,25 @@
+description: "bash: deny in any `permissions.d` file wins regardless of alphabetical
+  discovery order"
+source_e2e: e2e/bash/bash-layered-permissions-d-ordering/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: git status
+  cwd: /home/user/project
+rules:
+  bash:
+    ls:
+      decide: allow
+expected:
+  decision: deny
+  reason: blocked by b-deny
+project_dir_files:
+  a-allow.yaml:
+    bash:
+      git:
+        decide: allow
+  b-deny.yaml:
+    bash:
+      git:
+        decide: deny
+        reason: blocked by b-deny

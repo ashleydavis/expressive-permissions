@@ -1,0 +1,17 @@
+description: "bash: an unknown $VAR is left literal (not expanded), so it does
+  not match an allowed path and falls through to ask"
+source_e2e: e2e/bash/bash-env-var-unknown-not-expanded-ask/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: sed -i 's/a/b/' "$Z"
+  cwd: /home/user/outside-the-project
+rules:
+  bash:
+    sed:
+      cmd-in:
+        - /tmp/**
+      decide: allow
+      reason: sed within /tmp
+expected:
+  decision: ask

@@ -1,0 +1,15 @@
+description: "file: read **/.env* deny with reason"
+source_e2e: e2e/file/read-deny-sensitive/test.yaml
+input:
+  tool_name: Read
+  tool_input:
+    file_path: /home/user/project/.env.production
+  cwd: /home/user/project
+rules:
+  read:
+    path: "**/.env*"
+    decide: deny
+    reason: env files are sensitive
+expected:
+  decision: deny
+  reason: env files are sensitive

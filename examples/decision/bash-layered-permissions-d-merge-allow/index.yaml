@@ -1,0 +1,19 @@
+description: "bash: home permissions.d/ls.yaml file allows ls when project
+  main yaml does not mention it"
+source_e2e: e2e/bash/bash-layered-permissions-d-merge-allow/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: ls -la
+  cwd: /home/user/project
+rules:
+  bash:
+    echo:
+      decide: deny
+expected:
+  decision: allow
+home_dir_files:
+  ls.yaml:
+    bash:
+      ls:
+        decide: allow

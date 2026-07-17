@@ -1,0 +1,16 @@
+description: "integration: cd /foo/bar; cmd — cwd rule fires with new cwd"
+source_e2e: e2e/integration/cd-cwd-update/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: cd /tmp; ls
+  cwd: /home/user/project
+rules:
+  bash:
+    cd:
+      decide: allow
+    ls:
+      cwd: /tmp
+      decide: allow
+expected:
+  decision: allow

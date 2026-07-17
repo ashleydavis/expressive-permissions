@@ -1,0 +1,24 @@
+tool_call:
+  tool_name: Bash
+  tool_input:
+    command: grep -e=pattern
+ast:
+  type: bash
+  source: grep -e=pattern
+  children:
+    command:
+      type: command
+      source: grep -e=pattern
+      commandName: grep
+      options:
+        e: pattern
+      positionals: []
+      envPrefix: {}
+descriptors:
+  grep:
+    description: Search file contents with patterns
+    flags:
+      e|expression:
+        arity: 1
+        kind: string
+        description: Pattern to search for

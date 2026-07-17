@@ -1,0 +1,17 @@
+description: "bash: npm install with cwd under project subdir matches rule cwd:
+  ${{PROJECT_DIR}}/**"
+source_e2e: e2e/bash/bash-explicit-projectdir-cwd-allow/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: npm install
+  cwd: ${PROJECT_DIR}/src
+rules: {}
+expected:
+  decision: allow
+home_dir_files:
+  bash-explicit-cwd.yaml:
+    bash:
+      npm:
+        cwd: ${{PROJECT_DIR}}/**
+        decide: allow

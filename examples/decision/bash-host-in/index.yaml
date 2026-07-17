@@ -1,0 +1,16 @@
+description: "bash: curl URL host matched via cmd-in OR list"
+source_e2e: e2e/bash/bash-host-in/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: curl https://cdn.example.com/file.js
+  cwd: /home/user/project
+rules:
+  bash:
+    curl:
+      cmd-in:
+        - "https://api.example.com/*"
+        - "https://cdn.example.com/*"
+      decide: allow
+expected:
+  decision: allow

@@ -1,18 +1,21 @@
 tool_call:
-  tool_name: "Bash"
+  tool_name: Bash
   tool_input:
-    command: "cat < in.txt"
+    command: cat < in.txt
 ast:
-  type: "bash"
-  raw: "cat < in.txt"
-  ast:
-    type: "redirect"
-    op: "<"
+  type: bash
+  source: cat < in.txt
+  children:
     command:
-      type: "command"
-      binary: "cat"
-      options: {}
-      cmd: []
-      envPrefix: {}
-      raw: "cat < in.txt"
-    target: "in.txt"
+      type: redirect
+      source: cat < in.txt
+      children:
+        command:
+          type: command
+          source: cat < in.txt
+          commandName: cat
+          options: {}
+          positionals: []
+          envPrefix: {}
+      op: <
+      target: in.txt

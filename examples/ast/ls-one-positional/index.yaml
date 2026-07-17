@@ -1,0 +1,16 @@
+tool_call:
+  tool_name: Bash
+  tool_input:
+    command: ls /tmp
+ast:
+  type: bash
+  source: ls /tmp
+  children:
+    command:
+      type: command
+      source: ls /tmp
+      commandName: ls
+      options: {}
+      positionals:
+        - /tmp
+      envPrefix: {}

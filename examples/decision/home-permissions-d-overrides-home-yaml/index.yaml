@@ -1,0 +1,24 @@
+description: "layered: a rule in home permissions.d overrides a rule in home permissions.yaml"
+input:
+  tool_name: Bash
+  tool_input:
+    command: ls
+  cwd: /home/user/project
+rules:
+  bash:
+    echo:
+      decide: allow
+home_rules:
+  bash:
+    ls:
+      decide: allow
+      reason: allowed by home yaml
+home_dir_files:
+  override.yaml:
+    bash:
+      ls:
+        decide: deny
+        reason: denied by home permissions.d
+expected:
+  decision: deny
+  reason: denied by home permissions.d

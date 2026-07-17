@@ -20,6 +20,8 @@ It converts each tool call into an abstract syntax tree (AST), threads a simulat
 - [REPL](REPL.md) - Interactive REPL for testing commands against your `permissions.yaml`.
 - [MCP server](MCP-SERVER.md) - MCP server that lets Claude explain permission decisions in natural language.
 - [Development](DEVELOPMENT.md) - Instructions on cloning, building, and running the plugin locally.
+- [Testing](TESTING.md) - Unit tests and smoke tests.
+- [Publishing](PUBLISHING.md) - Packaging, marketplace release, and CI.
 
 ## License
 

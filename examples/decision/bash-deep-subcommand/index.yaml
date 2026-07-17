@@ -1,0 +1,15 @@
+description: "bash: docker compose up 3-level hierarchy"
+source_e2e: e2e/bash/bash-deep-subcommand/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: docker compose up
+  cwd: /home/user/project
+rules:
+  bash:
+    docker:
+      compose:
+        up:
+          decide: allow
+expected:
+  decision: allow

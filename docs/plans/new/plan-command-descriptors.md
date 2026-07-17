@@ -2,7 +2,7 @@
 
 ## Overview
 
-Introduce command descriptor files that define the argument semantics (flag arity, positional kinds) for shell commands. Descriptors are declared in YAML files placed by the user: global descriptors go under `~/.claude/permissions.d/commands/`, and project-level descriptors go under `.claude/permissions.d/commands/`. There are no built-in descriptors shipped with the plugin — if no descriptor exists for a command, all flags default to arity 0. Multiple commands per file, multiple files per layer. The parser looks up the descriptor for a command at parse time so it can correctly consume value-taking flag arguments without any inline config in rules.
+Introduce command descriptor files that define the argument semantics (flag arity, positional kinds) for shell commands. Descriptors are declared in YAML files placed by the user: global descriptors go under `~/.claude/permissions.d/commands/`, and project-level descriptors go under `.claude/permissions.d/commands/`. There are no built-in descriptors shipped with the plugin: if no descriptor exists for a command, all flags default to arity 0. Multiple commands per file, multiple files per layer. The parser looks up the descriptor for a command at parse time so it can correctly consume value-taking flag arguments without any inline config in rules.
 
 ## Examples
 
@@ -231,7 +231,7 @@ Each command gets its own file: `kubectl.yaml`, `git.yaml`, `gh.yaml`, `helm.yam
 
 ## Notes
 
-- The layering order (global user < project) mirrors the permissions file layering, keeping the mental model consistent. There is no built-in layer — users are responsible for defining descriptors for any commands they care about.
+- The layering order (global user < project) mirrors the permissions file layering, keeping the mental model consistent. There is no built-in layer: users are responsible for defining descriptors for any commands they care about.
 - Flags not listed in any descriptor default to arity 0. This is the safe default -- an unlisted flag never accidentally consumes the next token as its value.
 - Positional `kind` and flag `kind` fields are stored in the descriptor for future use (path-aware `cmd` matching). They are not currently written to the AST.
 - The pipe alias syntax (`r|recursive`) is only for grouping short and long forms of the same flag. The parser expands aliases into a flat lookup map at load time.

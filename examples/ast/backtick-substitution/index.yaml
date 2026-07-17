@@ -1,21 +1,28 @@
 tool_call:
-  tool_name: "Bash"
+  tool_name: Bash
   tool_input:
-    command: "rm `cat list`"
+    command: rm `cat list`
 ast:
-  type: "bash"
-  raw: "rm `cat list`"
-  ast:
-    type: "command"
-    binary: "rm"
-    options: {}
-    cmd: "`cat list`"
-    envPrefix: {}
-    raw: "rm `cat list`"
-    substitutions:
-      - type: "command"
-        binary: "cat"
-        options: {}
-        cmd: "list"
-        envPrefix: {}
-        raw: "cat list"
+  type: bash
+  source: rm `cat list`
+  children:
+    command:
+      type: command
+      source: rm `cat list`
+      children:
+        substitution:
+          type: substitution
+          source: "`cat list`"
+          children:
+            command:
+              type: command
+              source: cat list
+              commandName: cat
+              options: {}
+              positionals:
+                - list
+              envPrefix: {}
+      commandName: rm
+      options: {}
+      positionals: []
+      envPrefix: {}

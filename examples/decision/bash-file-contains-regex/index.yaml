@@ -1,0 +1,17 @@
+description: "bash file contains: /regex/ should match file contents (CONFIGURATION.md Matching file contents)"
+input:
+  tool_name: Bash
+  tool_input:
+    command: kubectl delete pod mypod
+  cwd: /home/user/project
+rules:
+  bash:
+    kubectl:
+      - file:
+          fixtures/kubeconfig-sandbox.yaml:
+            contains: "/current-context: (?!prod)/"
+        decide: allow
+        reason: Non-production context detected
+expected:
+  decision: allow
+  reason: Non-production context detected

@@ -1,8 +1,7 @@
 # Permission Analyzer MCP Server
 
-The permission analyzer is an MCP server that Claude Code registers as a local tool. When you ask Claude why a command is being blocked or allowed, Claude calls the `analyze_permission` tool and explains the result in natural language.
+This doc explains the MCP server that lets Claude analyze and explain permission decisions.
 
----
 
 - [What it does](#what-it-does)
 - [Installation](#installation)
@@ -12,7 +11,6 @@ The permission analyzer is an MCP server that Claude Code registers as a local t
 - [How project_dir is resolved](#how-project_dir-is-resolved)
 - [Rebuilding the bundle](#rebuilding-the-bundle)
 
----
 
 ## What it does
 
@@ -32,7 +30,7 @@ When you install the plugin via `/plugin install`, Claude Code reads `plugin/.mc
 {
     "mcpServers": {
         "permissions-analyzer": {
-            "command": "bun",
+            "command": "node",
             "args": ["${CLAUDE_PLUGIN_ROOT}/dist/mcp-server.js"],
             "type": "stdio"
         }
@@ -115,7 +113,7 @@ Examples you can ask Claude:
 
 - "Analyze `read /etc/shadow`" -- checks your `read:` rules against that path
 - "What happens with `webfetch https://api.github.com`?" -- checks your `webfetch:` rules against that host
-- "Would `tool mcp__github__delete_repo` be allowed?" -- checks your tool-name rules
+- "Would `tool mcp__github__delete_repo` be allowed?" -- checks your generic tool rules
 
 ## How project_dir is resolved
 

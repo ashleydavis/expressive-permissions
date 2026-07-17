@@ -1,32 +1,37 @@
 tool_call:
-  tool_name: "Bash"
+  tool_name: Bash
   tool_input:
-    command: "if test -f f; then echo yes; else echo no; fi"
+    command: if test -f f; then echo yes; else echo no; fi
 ast:
-  type: "bash"
-  raw: "if test -f f; then echo yes; else echo no; fi"
-  ast:
-    type: "if_statement"
-    condition:
-      type: "command"
-      binary: "test"
-      options:
-        f: true
-      cmd: "f"
-      envPrefix: {}
-      raw: "test -f f"
-    thenBranch:
-      type: "command"
-      binary: "echo"
-      options: {}
-      cmd: "yes"
-      envPrefix: {}
-      raw: "echo yes"
-    raw: "if test -f f; then echo yes; else echo no; fi"
-    elseBranch:
-      type: "command"
-      binary: "echo"
-      options: {}
-      cmd: "no"
-      envPrefix: {}
-      raw: "echo no"
+  type: bash
+  source: if test -f f; then echo yes; else echo no; fi
+  children:
+    command:
+      type: if_statement
+      source: if test -f f; then echo yes; else echo no; fi
+      children:
+        condition:
+          type: command
+          source: test -f f
+          commandName: test
+          options:
+            f: true
+          positionals:
+            - f
+          envPrefix: {}
+        thenBranch:
+          type: command
+          source: echo yes
+          commandName: echo
+          options: {}
+          positionals:
+            - yes
+          envPrefix: {}
+        elseBranch:
+          type: command
+          source: echo no
+          commandName: echo
+          options: {}
+          positionals:
+            - no
+          envPrefix: {}

@@ -1,0 +1,17 @@
+description: "bash: cwd-in ./ resolves to project dir and matches cwd at project root"
+input:
+  tool_name: Bash
+  tool_input:
+    command: bun install
+  cwd: ${PROJECT_DIR}
+rules:
+  bash:
+    bun:
+      install:
+        cwd-in:
+          - "./"
+        decide: allow
+        reason: bun install at project root
+expected:
+  decision: allow
+  reason: bun install at project root

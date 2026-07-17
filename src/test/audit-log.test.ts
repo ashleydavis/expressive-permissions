@@ -391,16 +391,20 @@ test("formatTextEntry no_rule_match shows NOMATCH with nodeType and cmd", () => 
         timestamp: "2025-06-15T10:23:01.000+10:00",
         nodeType: "command",
         cmd: "ls -la",
+        cwd: "/project",
+        env: {},
     };
     expect(formatTextEntry(entry)).toBe('10:23:01  NOMATCH  command   "ls -la"');
 });
 
-test("formatTextEntry no_rule_match for read leaf shows file path", () => {
+test("formatTextEntry no_rule_match for read node shows file path", () => {
     const entry: INoRuleMatchEntry = {
         type: "no_rule_match",
         timestamp: "2025-06-15T10:23:01.000+10:00",
         nodeType: "read",
         cmd: "/tmp/x.txt",
+        cwd: "/project",
+        env: {},
     };
     expect(formatTextEntry(entry)).toBe('10:23:01  NOMATCH  read      "/tmp/x.txt"');
 });

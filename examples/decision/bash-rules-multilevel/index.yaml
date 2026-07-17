@@ -1,0 +1,23 @@
+description: "bash rules: three-level nesting, innermost deny propagates"
+source_e2e: e2e/bash/bash-rules-multilevel/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: AWS_REGION=us-east-1 AWS_PROFILE=prod aws ec2 delete-vpc --vpc-id vpc-123
+  cwd: /home/user/project
+rules:
+  bash:
+    aws:
+      - env:
+          AWS_PROFILE: /^(?!sandbox$)/
+        rules:
+          - env:
+              AWS_REGION: us-east-1
+            rules:
+              - cmd: "* delete-*"
+                decide: deny
+                reason: Destructive delete blocked in us-east-1
+          - decide: ask
+expected:
+  decision: deny
+  reason: Destructive delete blocked in us-east-1

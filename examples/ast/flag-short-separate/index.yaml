@@ -4,13 +4,15 @@ tool_call:
     command: rm -r -f /tmp
 ast:
   type: bash
-  raw: rm -r -f /tmp
-  ast:
-    type: command
-    binary: rm
-    options:
-      r: true
-      f: true
-    cmd: /tmp
-    envPrefix: {}
-    raw: rm -r -f /tmp
+  source: rm -r -f /tmp
+  children:
+    command:
+      type: command
+      source: rm -r -f /tmp
+      commandName: rm
+      options:
+        r: true
+        f: true
+      positionals:
+        - /tmp
+      envPrefix: {}

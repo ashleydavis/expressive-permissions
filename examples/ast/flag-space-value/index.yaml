@@ -4,15 +4,17 @@ tool_call:
     command: git commit -m wip
 ast:
   type: bash
-  raw: git commit -m wip
-  ast:
-    type: command
-    binary: git
-    options:
-      m: wip
-    cmd: commit
-    envPrefix: {}
-    raw: git commit -m wip
+  source: git commit -m wip
+  children:
+    command:
+      type: command
+      source: git commit -m wip
+      commandName: git
+      options:
+        m: wip
+      positionals:
+        - commit
+      envPrefix: {}
 descriptors:
   git:
     description: Git

@@ -1,0 +1,13 @@
+description: "bash: case clause bodies are walked; a deny in any clause body denies the whole command"
+input:
+  tool_name: Bash
+  tool_input:
+    command: "case $1 in start) rm -rf /tmp/data;; *) echo ok;; esac"
+  cwd: /home/user/project
+rules:
+  bash:
+    rm:
+      decide: deny
+      reason: rm is not allowed
+expected:
+  decision: deny

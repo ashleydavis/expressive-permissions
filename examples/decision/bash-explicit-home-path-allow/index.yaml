@@ -1,0 +1,15 @@
+description: "bash: ${{HOME}} token expands in cwd/path matchers"
+input:
+  tool_name: Bash
+  tool_input:
+    command: npm install
+  cwd: ${PROJECT_DIR}/../home/app
+rules: {}
+expected:
+  decision: allow
+home_dir_files:
+  bash-explicit-home-path.yaml:
+    bash:
+      npm:
+        path: ${{HOME}}/**
+        decide: allow

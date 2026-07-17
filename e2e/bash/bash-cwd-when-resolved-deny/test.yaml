@@ -1,0 +1,18 @@
+description: "bash: cwd rule matches when cwd tracking is resolved"
+
+input:
+  tool_name: Bash
+  tool_input:
+    command: rm sensitive.txt
+  cwd: /home/user/project
+
+rules:
+  bash:
+    rm:
+      cwd: /home/user/**
+      decide: deny
+      reason: deny in known dir
+
+expected:
+  decision: deny
+  reason: deny in known dir

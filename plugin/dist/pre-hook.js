@@ -7209,7 +7209,7 @@ var require_scan = __commonJS((exports, module) => {
     let code;
     let token = { value: "", depth: 0, isGlob: false };
     const eos = () => index >= length;
-    const peek2 = () => str.charCodeAt(index + 1);
+    const peek = () => str.charCodeAt(index + 1);
     const advance = () => {
       prev = code;
       return str.charCodeAt(++index);
@@ -7285,7 +7285,7 @@ var require_scan = __commonJS((exports, module) => {
       }
       if (opts.noext !== true) {
         const isExtglobChar = code === CHAR_PLUS || code === CHAR_AT || code === CHAR_ASTERISK || code === CHAR_QUESTION_MARK || code === CHAR_EXCLAMATION_MARK;
-        if (isExtglobChar === true && peek2() === CHAR_LEFT_PARENTHESES) {
+        if (isExtglobChar === true && peek() === CHAR_LEFT_PARENTHESES) {
           isGlob = token.isGlob = true;
           isExtglob = token.isExtglob = true;
           finished = true;
@@ -7771,20 +7771,20 @@ var require_parse = __commonJS((exports, module) => {
     let prev = bos;
     let value;
     const eos = () => state.index === len - 1;
-    const peek2 = state.peek = (n = 1) => input[state.index + n];
+    const peek = state.peek = (n = 1) => input[state.index + n];
     const advance = state.advance = () => input[++state.index] || "";
     const remaining = () => input.slice(state.index + 1);
-    const consume2 = (value2 = "", num = 0) => {
+    const consume = (value2 = "", num = 0) => {
       state.consumed += value2;
       state.index += num;
     };
     const append = (token) => {
       state.output += token.output != null ? token.output : token.value;
-      consume2(token.value);
+      consume(token.value);
     };
     const negate = () => {
       let count = 1;
-      while (peek2() === "!" && (peek2(2) !== "(" || peek2(3) === "?")) {
+      while (peek() === "!" && (peek(2) !== "(" || peek(3) === "?")) {
         advance();
         state.start++;
         count++;
@@ -7934,7 +7934,7 @@ var require_parse = __commonJS((exports, module) => {
         continue;
       }
       if (value === "\\") {
-        const next = peek2();
+        const next = peek();
         if (next === "/" && opts.bash !== true) {
           continue;
         }
@@ -7987,7 +7987,7 @@ var require_parse = __commonJS((exports, module) => {
             }
           }
         }
-        if (value === "[" && peek2() !== ":" || value === "-" && peek2() === "]") {
+        if (value === "[" && peek() !== ":" || value === "-" && peek() === "]") {
           value = `\\${value}`;
         }
         if (value === "]" && (prev.value === "[" || prev.value === "[^")) {
@@ -8175,12 +8175,12 @@ var require_parse = __commonJS((exports, module) => {
       }
       if (value === "?") {
         const isGroup = prev && prev.value === "(";
-        if (!isGroup && opts.noextglob !== true && peek2() === "(" && peek2(2) !== "?") {
+        if (!isGroup && opts.noextglob !== true && peek() === "(" && peek(2) !== "?") {
           extglobOpen("qmark", value);
           continue;
         }
         if (prev && prev.type === "paren") {
-          const next = peek2();
+          const next = peek();
           let output = value;
           if (prev.value === "(" && !/[!=<:]/.test(next) || next === "<" && !/<([!=]|\w+>)/.test(remaining())) {
             output = `\\${value}`;
@@ -8196,8 +8196,8 @@ var require_parse = __commonJS((exports, module) => {
         continue;
       }
       if (value === "!") {
-        if (opts.noextglob !== true && peek2() === "(") {
-          if (peek2(2) !== "?" || !/[!=<:]/.test(peek2(3))) {
+        if (opts.noextglob !== true && peek() === "(") {
+          if (peek(2) !== "?" || !/[!=<:]/.test(peek(3))) {
             extglobOpen("negate", value);
             continue;
           }
@@ -8208,7 +8208,7 @@ var require_parse = __commonJS((exports, module) => {
         }
       }
       if (value === "+") {
-        if (opts.noextglob !== true && peek2() === "(" && peek2(2) !== "?") {
+        if (opts.noextglob !== true && peek() === "(" && peek(2) !== "?") {
           extglobOpen("plus", value);
           continue;
         }
@@ -8224,7 +8224,7 @@ var require_parse = __commonJS((exports, module) => {
         continue;
       }
       if (value === "@") {
-        if (opts.noextglob !== true && peek2() === "(" && peek2(2) !== "?") {
+        if (opts.noextglob !== true && peek() === "(" && peek(2) !== "?") {
           push({ type: "at", extglob: true, value, output: "" });
           continue;
         }
@@ -8250,7 +8250,7 @@ var require_parse = __commonJS((exports, module) => {
         prev.output = star;
         state.backtrack = true;
         state.globstar = true;
-        consume2(value);
+        consume(value);
         continue;
       }
       let rest = remaining();
@@ -8260,7 +8260,7 @@ var require_parse = __commonJS((exports, module) => {
       }
       if (prev.type === "star") {
         if (opts.noglobstar === true) {
-          consume2(value);
+          consume(value);
           continue;
         }
         const prior = prev.prev;
@@ -8283,7 +8283,7 @@ var require_parse = __commonJS((exports, module) => {
             break;
           }
           rest = rest.slice(3);
-          consume2("/**", 3);
+          consume("/**", 3);
         }
         if (prior.type === "bos" && eos()) {
           prev.type = "globstar";
@@ -8291,7 +8291,7 @@ var require_parse = __commonJS((exports, module) => {
           prev.output = globstar(opts);
           state.output = prev.output;
           state.globstar = true;
-          consume2(value);
+          consume(value);
           continue;
         }
         if (prior.type === "slash" && prior.prev.type !== "bos" && !afterStar && eos()) {
@@ -8302,7 +8302,7 @@ var require_parse = __commonJS((exports, module) => {
           prev.value += value;
           state.globstar = true;
           state.output += prior.output + prev.output;
-          consume2(value);
+          consume(value);
           continue;
         }
         if (prior.type === "slash" && prior.prev.type !== "bos" && rest[0] === "/") {
@@ -8314,7 +8314,7 @@ var require_parse = __commonJS((exports, module) => {
           prev.value += value;
           state.output += prior.output + prev.output;
           state.globstar = true;
-          consume2(value + advance());
+          consume(value + advance());
           push({ type: "slash", value: "/", output: "" });
           continue;
         }
@@ -8324,7 +8324,7 @@ var require_parse = __commonJS((exports, module) => {
           prev.output = `(?:^|${SLASH_LITERAL}|${globstar(opts)}${SLASH_LITERAL})`;
           state.output = prev.output;
           state.globstar = true;
-          consume2(value + advance());
+          consume(value + advance());
           push({ type: "slash", value: "/", output: "" });
           continue;
         }
@@ -8334,7 +8334,7 @@ var require_parse = __commonJS((exports, module) => {
         prev.value += value;
         state.output += prev.output;
         state.globstar = true;
-        consume2(value);
+        consume(value);
         continue;
       }
       const token = { type: "star", value, output: star };
@@ -8362,7 +8362,7 @@ var require_parse = __commonJS((exports, module) => {
           state.output += nodot;
           prev.output += nodot;
         }
-        if (peek2() !== "*") {
+        if (peek() !== "*") {
           state.output += ONE_CHAR;
           prev.output += ONE_CHAR;
         }
@@ -8626,1103 +8626,10 @@ var require_picomatch2 = __commonJS((exports, module) => {
   module.exports = picomatch;
 });
 
-// src/load-commands.ts
-import { readdir, readFile, stat } from "fs/promises";
-import { join } from "path";
-
-// node_modules/yaml/dist/index.js
-var composer = require_composer();
-var Document = require_Document();
-var Schema = require_Schema();
-var errors = require_errors();
-var Alias = require_Alias();
-var identity = require_identity();
-var Pair = require_Pair();
-var Scalar = require_Scalar();
-var YAMLMap = require_YAMLMap();
-var YAMLSeq = require_YAMLSeq();
-var cst = require_cst();
-var lexer = require_lexer();
-var lineCounter = require_line_counter();
-var parser = require_parser();
-var publicApi = require_public_api();
-var visit = require_visit();
-var $Composer = composer.Composer;
-var $Document = Document.Document;
-var $Schema = Schema.Schema;
-var $YAMLError = errors.YAMLError;
-var $YAMLParseError = errors.YAMLParseError;
-var $YAMLWarning = errors.YAMLWarning;
-var $Alias = Alias.Alias;
-var $isAlias = identity.isAlias;
-var $isCollection = identity.isCollection;
-var $isDocument = identity.isDocument;
-var $isMap = identity.isMap;
-var $isNode = identity.isNode;
-var $isPair = identity.isPair;
-var $isScalar = identity.isScalar;
-var $isSeq = identity.isSeq;
-var $Pair = Pair.Pair;
-var $Scalar = Scalar.Scalar;
-var $YAMLMap = YAMLMap.YAMLMap;
-var $YAMLSeq = YAMLSeq.YAMLSeq;
-var $Lexer = lexer.Lexer;
-var $LineCounter = lineCounter.LineCounter;
-var $Parser = parser.Parser;
-var $parse = publicApi.parse;
-var $parseAllDocuments = publicApi.parseAllDocuments;
-var $parseDocument = publicApi.parseDocument;
-var $stringify = publicApi.stringify;
-var $visit = visit.visit;
-var $visitAsync = visit.visitAsync;
-
-// src/load-commands.ts
-function normaliseFlagDescriptor(raw) {
-  return {
-    arity: raw.arity ?? 0,
-    kind: raw.kind ?? "string",
-    description: raw.description ?? ""
-  };
-}
-function normalisePositionalDescriptor(raw) {
-  return {
-    kind: raw.kind ?? "string",
-    description: raw.description ?? "",
-    variadic: raw.variadic ?? false
-  };
-}
-function normaliseCommandDescriptor(raw) {
-  const flags = {};
-  if (raw.flags !== undefined) {
-    for (const [aliasGroup, rawFlag] of Object.entries(raw.flags)) {
-      flags[aliasGroup] = normaliseFlagDescriptor(rawFlag);
-    }
-  }
-  const positionals = (raw.positionals ?? []).map(normalisePositionalDescriptor);
-  const result = {
-    description: raw.description ?? "",
-    positionals,
-    flags
-  };
-  if (raw.cmds !== undefined) {
-    const cmds = {};
-    for (const [subCommandName, rawSubCommand] of Object.entries(raw.cmds)) {
-      cmds[subCommandName] = normaliseCommandDescriptor(rawSubCommand);
-    }
-    result.cmds = cmds;
-  }
-  return result;
-}
-async function isYamlFile(dirPath, entryName) {
-  if (entryName.startsWith(".")) {
-    return false;
-  }
-  if (!entryName.endsWith(".yaml") && !entryName.endsWith(".yml")) {
-    return false;
-  }
-  const fileStat = await stat(join(dirPath, entryName));
-  return fileStat.isFile();
-}
-async function mergeDescriptorsFromDir(dirPath, target) {
-  let entries;
-  try {
-    entries = await readdir(dirPath);
-  } catch {
-    return;
-  }
-  const yamlNames = [];
-  for (const entryName of entries) {
-    if (await isYamlFile(dirPath, entryName)) {
-      yamlNames.push(entryName);
-    }
-  }
-  yamlNames.sort();
-  for (const yamlName of yamlNames) {
-    const filePath = join(dirPath, yamlName);
-    const content = await readFile(filePath, "utf-8");
-    const parsed = $parse(content);
-    if (parsed === null || typeof parsed !== "object") {
-      continue;
-    }
-    for (const [commandName, rawDescriptor] of Object.entries(parsed)) {
-      if (rawDescriptor === null || typeof rawDescriptor !== "object") {
-        continue;
-      }
-      target.set(commandName, normaliseCommandDescriptor(rawDescriptor));
-    }
-  }
-}
-async function loadCommandDescriptors(homeDir, projectDir) {
-  const descriptors = new Map;
-  const homeCommandsDir = join(homeDir, ".claude", "permissions.d", "commands");
-  await mergeDescriptorsFromDir(homeCommandsDir, descriptors);
-  const projectCommandsDir = join(projectDir, ".claude", "permissions.d", "commands");
-  await mergeDescriptorsFromDir(projectCommandsDir, descriptors);
-  return descriptors;
-}
-function resolveFlagArity(descriptor, flagName) {
-  for (const [aliasGroup, flagDescriptor] of Object.entries(descriptor.flags)) {
-    const aliases = aliasGroup.split("|");
-    if (aliases.includes(flagName)) {
-      return flagDescriptor.arity;
-    }
-  }
-  return 0;
-}
-
-// src/parse-bash.ts
-var OPERATORS = ["&&", "||", "2>&", ";;", ">>", "&>", "2>", "|", ";", ">", "<", "(", ")", "&"];
-var REDIRECT_OPS = new Set([">>", ">", "<", "2>", "&>", "2>&"]);
-var DONE_TERMINATOR = new Set(["done"]);
-var THEN_TERMINATOR = new Set(["then"]);
-var IF_BODY_TERMINATORS = new Set(["elif", "else", "fi"]);
-var FI_TERMINATOR = new Set(["fi"]);
-var DO_TERMINATOR = new Set(["do"]);
-var CLOSE_PAREN_TERMINATOR = new Set([")"]);
-var CLOSE_BRACE_TERMINATOR = new Set(["}"]);
-var CASE_CLAUSE_TERMINATORS = new Set([";;", "esac"]);
-function isEnvAssignment(value) {
-  return /^[A-Za-z_][A-Za-z0-9_]*=/.test(value);
-}
-function lex(input) {
-  const tokens = [];
-  let pos = 0;
-  while (pos < input.length) {
-    if (input[pos] === `
-` || input[pos] === "\r") {
-      const sepStart = pos;
-      pos++;
-      tokens.push({ kind: "op", value: ";", start: sepStart, end: pos });
-      continue;
-    }
-    if (/\s/.test(input[pos])) {
-      pos++;
-      continue;
-    }
-    if (input[pos] === "#") {
-      while (pos < input.length && input[pos] !== `
-` && input[pos] !== "\r") {
-        pos++;
-      }
-      continue;
-    }
-    let opMatched = false;
-    for (const op of OPERATORS) {
-      if (input.startsWith(op, pos)) {
-        const opStart = pos;
-        pos += op.length;
-        const value = op === "&" ? ";" : op;
-        tokens.push({ kind: "op", value, start: opStart, end: pos });
-        opMatched = true;
-        break;
-      }
-    }
-    if (opMatched) {
-      continue;
-    }
-    const wordStart = pos;
-    let wordValue = "";
-    while (pos < input.length) {
-      if (/\s/.test(input[pos])) {
-        break;
-      }
-      let isOpStart = false;
-      for (const op of OPERATORS) {
-        if (input.startsWith(op, pos)) {
-          isOpStart = true;
-          break;
-        }
-      }
-      if (isOpStart) {
-        break;
-      }
-      if (input[pos] === "'") {
-        pos++;
-        while (pos < input.length && input[pos] !== "'") {
-          wordValue += input[pos++];
-        }
-        if (pos < input.length) {
-          pos++;
-        }
-        continue;
-      }
-      if (input[pos] === '"') {
-        pos++;
-        while (pos < input.length && input[pos] !== '"') {
-          if (input[pos] === "\\" && pos + 1 < input.length) {
-            pos++;
-            wordValue += input[pos++];
-          } else {
-            wordValue += input[pos++];
-          }
-        }
-        if (pos < input.length) {
-          pos++;
-        }
-        continue;
-      }
-      if (input[pos] === "\\" && pos + 1 < input.length) {
-        pos++;
-        wordValue += input[pos++];
-        continue;
-      }
-      if (input[pos] === "$" && pos + 1 < input.length && input[pos + 1] === "(") {
-        let depth = 0;
-        while (pos < input.length) {
-          if (input[pos] === "(") {
-            depth++;
-          } else if (input[pos] === ")") {
-            depth--;
-            if (depth === 0) {
-              wordValue += input[pos++];
-              break;
-            }
-          }
-          wordValue += input[pos++];
-        }
-        continue;
-      }
-      if (input[pos] === "`") {
-        wordValue += input[pos++];
-        while (pos < input.length && input[pos] !== "`") {
-          wordValue += input[pos++];
-        }
-        if (pos < input.length) {
-          wordValue += input[pos++];
-        }
-        continue;
-      }
-      wordValue += input[pos++];
-    }
-    if (wordValue.length > 0) {
-      tokens.push({ kind: "word", value: wordValue, start: wordStart, end: pos });
-    }
-  }
-  return tokens;
-}
-var EMPTY_DESCRIPTOR = {
-  description: "",
-  positionals: [],
-  flags: {}
-};
-function findSubCommandName(argTokens, descriptor) {
-  let index = 0;
-  while (index < argTokens.length) {
-    const token = argTokens[index];
-    if (token.startsWith("--")) {
-      const rest = token.substring(2);
-      const eqIdx = rest.indexOf("=");
-      if (eqIdx !== -1) {
-        index++;
-        continue;
-      }
-      const flagArity = resolveFlagArity(descriptor, rest);
-      if (flagArity === 1) {
-        index += 2;
-      } else {
-        index++;
-      }
-    } else if (token.startsWith("-") && token.length > 1) {
-      const rest = token.substring(1);
-      const eqIdx = rest.indexOf("=");
-      if (eqIdx !== -1) {
-        index++;
-        continue;
-      }
-      if (rest.length === 1) {
-        const flagArity = resolveFlagArity(descriptor, rest);
-        if (flagArity === 1) {
-          index += 2;
-        } else {
-          index++;
-        }
-      } else {
-        index++;
-      }
-    } else {
-      return token;
-    }
-  }
-  return null;
-}
-function mergeSubCommandDescriptor(descriptor, subCommandName) {
-  if (descriptor.cmds === undefined) {
-    return descriptor;
-  }
-  const subDescriptor = descriptor.cmds[subCommandName];
-  if (subDescriptor === undefined) {
-    return descriptor;
-  }
-  return {
-    ...descriptor,
-    flags: { ...descriptor.flags, ...subDescriptor.flags }
-  };
-}
-function parseArgv(argTokens, descriptor) {
-  const subCommandName = findSubCommandName(argTokens, descriptor);
-  const effectiveDescriptor = subCommandName !== null ? mergeSubCommandDescriptor(descriptor, subCommandName) : descriptor;
-  const options = {};
-  const positionals = [];
-  let index = 0;
-  while (index < argTokens.length) {
-    const token = argTokens[index];
-    if (token.startsWith("--")) {
-      const rest = token.substring(2);
-      const eqIdx = rest.indexOf("=");
-      if (eqIdx !== -1) {
-        options[rest.substring(0, eqIdx)] = rest.substring(eqIdx + 1);
-      } else {
-        const flagArity = resolveFlagArity(effectiveDescriptor, rest);
-        if (flagArity === 1) {
-          const next = argTokens[index + 1];
-          if (next !== undefined) {
-            options[rest] = next;
-            index++;
-          } else {
-            options[rest] = true;
-          }
-        } else {
-          options[rest] = true;
-        }
-      }
-    } else if (token.startsWith("-") && token.length > 1) {
-      const rest = token.substring(1);
-      const eqIdx = rest.indexOf("=");
-      if (eqIdx !== -1) {
-        options[rest.substring(0, eqIdx)] = rest.substring(eqIdx + 1);
-      } else if (rest.length === 1) {
-        const flagArity = resolveFlagArity(effectiveDescriptor, rest);
-        if (flagArity === 1) {
-          const next = argTokens[index + 1];
-          if (next !== undefined) {
-            options[rest] = next;
-            index++;
-          } else {
-            options[rest] = true;
-          }
-        } else {
-          options[rest] = true;
-        }
-      } else {
-        for (const ch of rest) {
-          options[ch] = true;
-        }
-      }
-    } else {
-      positionals.push(token);
-    }
-    index++;
-  }
-  const cmd = positionals.length === 1 ? positionals[0] : positionals;
-  return { options, cmd };
-}
-function peek(state) {
-  if (state.pos >= state.tokens.length) {
-    return null;
-  }
-  return state.tokens[state.pos];
-}
-function consume(state) {
-  return state.tokens[state.pos++];
-}
-function wrapRedirectNodes(command, redirects) {
-  let node = command;
-  for (const redirect of redirects) {
-    const redirectNode = {
-      type: "redirect",
-      op: redirect.op,
-      command: node,
-      target: redirect.target
-    };
-    node = redirectNode;
-  }
-  return node;
-}
-function parseCommand(state, descriptors) {
-  const envPrefix = {};
-  const redirects = [];
-  const argTokens = [];
-  let binary = "";
-  let firstTokenStart = -1;
-  let lastTokenEnd = -1;
-  function trackToken(token) {
-    if (firstTokenStart === -1) {
-      firstTokenStart = token.start;
-    }
-    lastTokenEnd = token.end;
-  }
-  while (peek(state)?.kind === "word" && isEnvAssignment(peek(state).value)) {
-    const token = consume(state);
-    trackToken(token);
-    const eqIdx = token.value.indexOf("=");
-    envPrefix[token.value.substring(0, eqIdx)] = token.value.substring(eqIdx + 1);
-  }
-  if (peek(state)?.kind === "word") {
-    const token = consume(state);
-    trackToken(token);
-    binary = token.value;
-  }
-  while (peek(state) !== null) {
-    const current = peek(state);
-    if (current.kind === "op") {
-      if (REDIRECT_OPS.has(current.value)) {
-        const opToken = consume(state);
-        trackToken(opToken);
-        if (peek(state)?.kind === "word") {
-          const targetToken = consume(state);
-          trackToken(targetToken);
-          redirects.push({ op: opToken.value, target: targetToken.value });
-        }
-      } else {
-        break;
-      }
-    } else {
-      const argToken = consume(state);
-      trackToken(argToken);
-      argTokens.push(argToken.value);
-    }
-  }
-  const raw = firstTokenStart !== -1 ? state.raw.substring(firstTokenStart, lastTokenEnd) : "";
-  const descriptor = descriptors.get(binary) ?? EMPTY_DESCRIPTOR;
-  const argv = parseArgv(argTokens, descriptor);
-  const substitutionSources = [binary, ...argTokens, ...redirects.map((redirect) => redirect.target), ...Object.values(envPrefix)];
-  const substitutions = [];
-  for (const source of substitutionSources) {
-    for (const inner of extractSubstitutions(source)) {
-      substitutions.push(parseBash(inner, descriptors));
-    }
-  }
-  const command = {
-    type: "command",
-    binary,
-    options: argv.options,
-    cmd: argv.cmd,
-    envPrefix,
-    raw
-  };
-  if (substitutions.length > 0) {
-    command.substitutions = substitutions;
-  }
-  return wrapRedirectNodes(command, redirects);
-}
-function extractSubstitutions(text) {
-  const results = [];
-  let pos = 0;
-  while (pos < text.length) {
-    if (text[pos] === "$" && text[pos + 1] === "(") {
-      if (text[pos + 2] === "(") {
-        let depth2 = 0;
-        let scan2 = pos + 1;
-        while (scan2 < text.length) {
-          if (text[scan2] === "(") {
-            depth2++;
-          } else if (text[scan2] === ")") {
-            depth2--;
-            if (depth2 === 0) {
-              break;
-            }
-          }
-          scan2++;
-        }
-        pos = scan2 + 1;
-        continue;
-      }
-      let depth = 0;
-      let scan = pos + 1;
-      while (scan < text.length) {
-        if (text[scan] === "(") {
-          depth++;
-        } else if (text[scan] === ")") {
-          depth--;
-          if (depth === 0) {
-            break;
-          }
-        }
-        scan++;
-      }
-      results.push(text.substring(pos + 2, scan));
-      pos = scan + 1;
-      continue;
-    }
-    if (text[pos] === "`") {
-      let scan = pos + 1;
-      while (scan < text.length && text[scan] !== "`") {
-        scan++;
-      }
-      results.push(text.substring(pos + 1, scan));
-      pos = scan + 1;
-      continue;
-    }
-    pos++;
-  }
-  return results;
-}
-function parseStatement(state, descriptors) {
-  const next = peek(state);
-  if (next !== null && next.kind === "word" && next.value === "for") {
-    return parseForLoop(state, descriptors);
-  }
-  if (next !== null && next.kind === "word" && (next.value === "while" || next.value === "until")) {
-    return parseWhileLoop(state, descriptors);
-  }
-  if (next !== null && next.kind === "word" && next.value === "if") {
-    return parseIfStatement(state, descriptors);
-  }
-  if (next !== null && next.kind === "word" && next.value === "case") {
-    return parseCaseStatement(state, descriptors);
-  }
-  if (next !== null && next.kind === "op" && next.value === "(") {
-    return parseSubshellGroup(state, descriptors);
-  }
-  if (next !== null && next.kind === "word" && next.value === "{") {
-    return parseBraceGroup(state, descriptors);
-  }
-  return parseCommand(state, descriptors);
-}
-function parseWhileLoop(state, descriptors) {
-  const keywordToken = consume(state);
-  const startPos = keywordToken.start;
-  const until = keywordToken.value === "until";
-  const condition = parseSequenceUntil(state, descriptors, DO_TERMINATOR);
-  if (peek(state)?.value !== "do") {
-    return {
-      type: "while_loop",
-      until,
-      condition,
-      body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, raw: "" },
-      raw: state.raw.substring(startPos, peek(state)?.start ?? state.raw.length)
-    };
-  }
-  consume(state);
-  const body = parseSequenceUntilDone(state, descriptors);
-  let endPos = state.raw.length;
-  if (peek(state)?.value === "done") {
-    endPos = consume(state).end;
-  }
-  const whileLoop = {
-    type: "while_loop",
-    until,
-    condition,
-    body,
-    raw: state.raw.substring(startPos, endPos)
-  };
-  return whileLoop;
-}
-function parseSubshellGroup(state, descriptors) {
-  const openToken = consume(state);
-  const startPos = openToken.start;
-  const body = parseSequenceUntil(state, descriptors, CLOSE_PAREN_TERMINATOR);
-  let endPos = state.raw.length;
-  if (peek(state)?.value === ")") {
-    endPos = consume(state).end;
-  }
-  const group = {
-    type: "group",
-    style: "subshell",
-    body,
-    raw: state.raw.substring(startPos, endPos)
-  };
-  return group;
-}
-function parseBraceGroup(state, descriptors) {
-  const openToken = consume(state);
-  const startPos = openToken.start;
-  const body = parseSequenceUntil(state, descriptors, CLOSE_BRACE_TERMINATOR);
-  let endPos = state.raw.length;
-  if (peek(state)?.value === "}") {
-    endPos = consume(state).end;
-  }
-  const group = {
-    type: "group",
-    style: "brace",
-    body,
-    raw: state.raw.substring(startPos, endPos)
-  };
-  return group;
-}
-function parseCaseStatement(state, descriptors) {
-  const caseToken = consume(state);
-  const startPos = caseToken.start;
-  let word = "";
-  if (peek(state)?.kind === "word" && peek(state).value !== "in") {
-    word = consume(state).value;
-  }
-  if (peek(state)?.value === "in") {
-    consume(state);
-  }
-  skipSeparators(state);
-  const clauses = [];
-  while (peek(state) !== null && peek(state).value !== "esac") {
-    const clauseStartPos = state.pos;
-    if (peek(state)?.value === "(") {
-      consume(state);
-    }
-    const patterns = [];
-    if (peek(state)?.kind === "word") {
-      patterns.push(consume(state).value);
-    }
-    while (peek(state)?.value === "|") {
-      consume(state);
-      if (peek(state)?.kind === "word") {
-        patterns.push(consume(state).value);
-      }
-    }
-    if (peek(state)?.value === ")") {
-      consume(state);
-    }
-    const body = parseSequenceUntil(state, descriptors, CASE_CLAUSE_TERMINATORS);
-    clauses.push({ patterns, body });
-    if (peek(state)?.value === ";;") {
-      consume(state);
-    }
-    skipSeparators(state);
-    if (state.pos === clauseStartPos) {
-      break;
-    }
-  }
-  let endPos = state.raw.length;
-  if (peek(state)?.value === "esac") {
-    endPos = consume(state).end;
-  }
-  const caseStatement = {
-    type: "case_statement",
-    word,
-    clauses,
-    raw: state.raw.substring(startPos, endPos)
-  };
-  return caseStatement;
-}
-function parseForLoop(state, descriptors) {
-  const forToken = consume(state);
-  const startPos = forToken.start;
-  if (peek(state) === null || peek(state).kind !== "word") {
-    return {
-      type: "for_loop",
-      variable: "",
-      items: [],
-      body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, raw: "" },
-      raw: state.raw.substring(startPos, forToken.end)
-    };
-  }
-  const variable = consume(state).value;
-  if (peek(state)?.value === "in") {
-    consume(state);
-  }
-  const items = [];
-  while (peek(state) !== null && peek(state).kind === "word" && peek(state).value !== "do") {
-    items.push(consume(state).value);
-  }
-  skipSeparators(state);
-  if (peek(state)?.value !== "do") {
-    return {
-      type: "for_loop",
-      variable,
-      items,
-      body: { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, raw: "" },
-      raw: state.raw.substring(startPos, peek(state)?.start ?? state.raw.length)
-    };
-  }
-  consume(state);
-  const body = parseSequenceUntilDone(state, descriptors);
-  if (peek(state)?.value !== "done") {
-    return {
-      type: "for_loop",
-      variable,
-      items,
-      body,
-      raw: state.raw.substring(startPos, state.raw.length)
-    };
-  }
-  const doneToken = consume(state);
-  const forLoop = {
-    type: "for_loop",
-    variable,
-    items,
-    body,
-    raw: state.raw.substring(startPos, doneToken.end)
-  };
-  return forLoop;
-}
-function skipSeparators(state) {
-  while (peek(state)?.value === ";") {
-    consume(state);
-  }
-}
-function parseSequenceUntil(state, descriptors, terminators) {
-  skipSeparators(state);
-  let left = parseAnd(state, descriptors);
-  while (peek(state)?.value === ";") {
-    skipSeparators(state);
-    const next = peek(state);
-    if (next === null || terminators.has(next.value)) {
-      break;
-    }
-    const right = parseAnd(state, descriptors);
-    left = { type: "binop", op: ";", left, right };
-  }
-  return left;
-}
-function parseSequenceUntilDone(state, descriptors) {
-  return parseSequenceUntil(state, descriptors, DONE_TERMINATOR);
-}
-function parseIfStatement(state, descriptors) {
-  const ifToken = consume(state);
-  const clauses = [];
-  const node = parseIfClause(state, descriptors, ifToken.start, clauses);
-  let endPos = state.raw.length;
-  if (peek(state)?.value === "fi") {
-    endPos = consume(state).end;
-  }
-  for (const clause of clauses) {
-    clause.node.raw = state.raw.substring(clause.start, endPos);
-  }
-  return node;
-}
-function parseIfClause(state, descriptors, clauseStart, clauses) {
-  const condition = parseSequenceUntil(state, descriptors, THEN_TERMINATOR);
-  if (peek(state)?.value === "then") {
-    consume(state);
-  }
-  const thenBranch = parseSequenceUntil(state, descriptors, IF_BODY_TERMINATORS);
-  let elseBranch = undefined;
-  const next = peek(state);
-  if (next?.value === "elif") {
-    const elifToken = consume(state);
-    elseBranch = parseIfClause(state, descriptors, elifToken.start, clauses);
-  } else if (next?.value === "else") {
-    consume(state);
-    elseBranch = parseSequenceUntil(state, descriptors, FI_TERMINATOR);
-  }
-  const node = {
-    type: "if_statement",
-    condition,
-    thenBranch,
-    raw: ""
-  };
-  if (elseBranch !== undefined) {
-    node.elseBranch = elseBranch;
-  }
-  clauses.push({ node, start: clauseStart });
-  return node;
-}
-function parsePipe(state, descriptors) {
-  let left = parseStatement(state, descriptors);
-  while (peek(state)?.value === "|") {
-    consume(state);
-    const right = parseStatement(state, descriptors);
-    left = { type: "binop", op: "|", left, right };
-  }
-  return left;
-}
-function parseOr(state, descriptors) {
-  let left = parsePipe(state, descriptors);
-  while (peek(state)?.value === "||") {
-    consume(state);
-    const right = parsePipe(state, descriptors);
-    left = { type: "binop", op: "||", left, right };
-  }
-  return left;
-}
-function parseAnd(state, descriptors) {
-  let left = parseOr(state, descriptors);
-  while (peek(state)?.value === "&&") {
-    consume(state);
-    const right = parseOr(state, descriptors);
-    left = { type: "binop", op: "&&", left, right };
-  }
-  return left;
-}
-var NO_TERMINATORS = new Set;
-function parseSequence(state, descriptors) {
-  return parseSequenceUntil(state, descriptors, NO_TERMINATORS);
-}
-function parseBash(raw, descriptors) {
-  const trimmed = raw.trim();
-  if (trimmed.length === 0) {
-    return { type: "command", binary: "", options: {}, cmd: [], envPrefix: {}, raw: "" };
-  }
-  const tokens = lex(raw);
-  const state = { tokens, pos: 0, raw };
-  return parseSequence(state, descriptors);
-}
-
-// src/build-ast.ts
-var XARGS_VALUE_FLAGS = new Set(["n", "P", "I", "i", "L", "l", "s", "a", "d", "E", "e"]);
-var XARGS_VALUE_LONG_FLAGS = new Set([
-  "max-args",
-  "max-procs",
-  "replace",
-  "max-lines",
-  "max-chars",
-  "arg-file",
-  "delimiter",
-  "eof"
-]);
-function parseXargsCommand(raw, descriptors) {
-  const tokens = lex(raw);
-  const options = {};
-  const emptyCommand = {
-    type: "command",
-    binary: "",
-    options: {},
-    cmd: [],
-    envPrefix: {},
-    raw: ""
-  };
-  let index = 1;
-  while (index < tokens.length && tokens[index].kind === "word") {
-    const token = tokens[index];
-    if (token.value === "--") {
-      index++;
-      break;
-    }
-    if (!token.value.startsWith("-")) {
-      break;
-    }
-    if (token.value.startsWith("--")) {
-      const longPart = token.value.substring(2);
-      const eqIdx = longPart.indexOf("=");
-      if (eqIdx !== -1) {
-        options[longPart.substring(0, eqIdx)] = longPart.substring(eqIdx + 1);
-        index++;
-      } else if (XARGS_VALUE_LONG_FLAGS.has(longPart)) {
-        const nextValue = index + 1 < tokens.length ? tokens[index + 1].value : "";
-        options[longPart] = nextValue;
-        index += 2;
-      } else {
-        options[longPart] = true;
-        index++;
-      }
-    } else {
-      const rest = token.value.substring(1);
-      if (XARGS_VALUE_FLAGS.has(rest[0])) {
-        if (rest.length > 1) {
-          options[rest[0]] = rest.substring(1);
-          index++;
-        } else {
-          const nextValue = index + 1 < tokens.length ? tokens[index + 1].value : "";
-          options[rest] = nextValue;
-          index += 2;
-        }
-      } else {
-        for (const ch of rest) {
-          options[ch] = true;
-        }
-        index++;
-      }
-    }
-  }
-  while (index < tokens.length && tokens[index].kind === "op") {
-    index++;
-    if (index < tokens.length && tokens[index].kind === "word") {
-      index++;
-    }
-  }
-  if (index >= tokens.length) {
-    return { options, child: emptyCommand };
-  }
-  const subcmdStart = tokens[index].start;
-  const subcmdRaw = raw.substring(subcmdStart);
-  const child = parseBash(subcmdRaw, descriptors);
-  return { options, child };
-}
-function transformXargsNodes(node, descriptors) {
-  if (node.type === "command") {
-    if (node.binary === "xargs") {
-      const { options, child } = parseXargsCommand(node.raw, descriptors);
-      const xargsNode = {
-        type: "xargs",
-        options,
-        child,
-        raw: node.raw
-      };
-      return xargsNode;
-    }
-    if (node.substitutions !== undefined && node.substitutions.length > 0) {
-      const transformed = {
-        ...node,
-        substitutions: node.substitutions.map((substitution) => transformXargsNodes(substitution, descriptors))
-      };
-      return transformed;
-    }
-    return node;
-  }
-  if (node.type === "redirect") {
-    return {
-      ...node,
-      command: transformXargsNodes(node.command, descriptors)
-    };
-  }
-  if (node.type === "binop") {
-    return {
-      ...node,
-      left: transformXargsNodes(node.left, descriptors),
-      right: transformXargsNodes(node.right, descriptors)
-    };
-  }
-  if (node.type === "for_loop") {
-    return {
-      ...node,
-      body: transformXargsNodes(node.body, descriptors)
-    };
-  }
-  if (node.type === "while_loop") {
-    return {
-      ...node,
-      condition: transformXargsNodes(node.condition, descriptors),
-      body: transformXargsNodes(node.body, descriptors)
-    };
-  }
-  if (node.type === "group") {
-    return {
-      ...node,
-      body: transformXargsNodes(node.body, descriptors)
-    };
-  }
-  if (node.type === "case_statement") {
-    return {
-      ...node,
-      clauses: node.clauses.map((clause) => ({
-        ...clause,
-        body: transformXargsNodes(clause.body, descriptors)
-      }))
-    };
-  }
-  if (node.type === "if_statement") {
-    const transformed = {
-      ...node,
-      condition: transformXargsNodes(node.condition, descriptors),
-      thenBranch: transformXargsNodes(node.thenBranch, descriptors)
-    };
-    if (node.elseBranch !== undefined) {
-      transformed.elseBranch = transformXargsNodes(node.elseBranch, descriptors);
-    }
-    return transformed;
-  }
-  return node;
-}
-function expandToken(token, vars) {
-  return token.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (match, braced, unbraced) => {
-    const varName = braced || unbraced;
-    return vars[varName] !== undefined ? vars[varName] : match;
-  });
-}
-function expandCommandOptions(node, vars) {
-  const expandedOptions = {};
-  for (const [key, value] of Object.entries(node.options)) {
-    expandedOptions[key] = typeof value === "string" ? expandToken(value, vars) : value;
-  }
-  let expandedCmd;
-  if (typeof node.cmd === "string") {
-    expandedCmd = expandToken(node.cmd, vars);
-  } else {
-    expandedCmd = node.cmd.map((positional) => expandToken(positional, vars));
-  }
-  return {
-    ...node,
-    binary: expandToken(node.binary, vars),
-    options: expandedOptions,
-    cmd: expandedCmd
-  };
-}
-function describeNode(node) {
-  switch (node.type) {
-    case "command":
-      return node.raw;
-    case "xargs":
-      return node.raw;
-    case "redirect":
-      return describeNode(node.command);
-    case "binop":
-      return `${describeNode(node.left)} ${node.op} ${describeNode(node.right)}`;
-    case "for_loop":
-      return node.raw;
-    case "while_loop":
-      return node.raw;
-    case "group":
-      return node.raw;
-    case "case_statement":
-      return node.raw;
-    case "if_statement":
-      return node.raw;
-    case "bash":
-      return node.raw;
-    case "read":
-      return node.file_path;
-    case "write":
-      return node.file_path;
-    case "edit":
-      return node.file_path;
-    case "multiedit":
-      return node.file_path;
-    case "other":
-      return node.tool_name;
-  }
-}
-function buildAst(call, descriptors) {
-  switch (call.tool_name) {
-    case "Bash":
-    case "Shell": {
-      const command = call.tool_input.command;
-      return {
-        type: "bash",
-        raw: command,
-        ast: transformXargsNodes(parseBash(command, descriptors), descriptors)
-      };
-    }
-    case "Read": {
-      const node = {
-        type: "read",
-        file_path: call.tool_input.file_path
-      };
-      if (call.tool_input.offset !== undefined) {
-        node.offset = call.tool_input.offset;
-      }
-      if (call.tool_input.limit !== undefined) {
-        node.limit = call.tool_input.limit;
-      }
-      return node;
-    }
-    case "Write": {
-      return {
-        type: "write",
-        file_path: call.tool_input.file_path,
-        content: call.tool_input.content
-      };
-    }
-    case "Edit": {
-      const node = {
-        type: "edit",
-        file_path: call.tool_input.file_path,
-        old_string: call.tool_input.old_string,
-        new_string: call.tool_input.new_string
-      };
-      if (call.tool_input.replace_all !== undefined) {
-        node.replace_all = call.tool_input.replace_all;
-      }
-      return node;
-    }
-    case "MultiEdit": {
-      return {
-        type: "multiedit",
-        file_path: call.tool_input.file_path,
-        edits: call.tool_input.edits
-      };
-    }
-    default: {
-      return {
-        type: "other",
-        tool_name: call.tool_name,
-        tool_input: call.tool_input
-      };
-    }
-  }
-}
-
 // src/audit-log.ts
 import { appendFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "fs";
 import { access, mkdir, writeFile } from "fs/promises";
-import { join as join2 } from "path";
+import { join } from "path";
 function toLocalISOString(date) {
   const offsetMinutes = -date.getTimezoneOffset();
   const sign = offsetMinutes >= 0 ? "+" : "-";
@@ -9739,13 +8646,13 @@ function toLocalISOString(date) {
   return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${ms}${sign}${offsetHours}:${offsetMins}`;
 }
 function resolveLogBaseDir(projectDir) {
-  return join2(projectDir, ".claude", "permissions-log");
+  return join(projectDir, ".claude", "permissions-log");
 }
 var logDirGitignoreContents = `*
 !.gitignore
 `;
 async function ensureLogDirIgnored(logBaseDir) {
-  const gitignorePath = join2(logBaseDir, ".gitignore");
+  const gitignorePath = join(logBaseDir, ".gitignore");
   try {
     await access(gitignorePath);
     return;
@@ -9758,14 +8665,14 @@ function resolveJsonLogPath(baseDir, now) {
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
   const hour = String(now.getHours()).padStart(2, "0");
-  return join2(baseDir, `${year}-${month}`, day, `${hour}.json`);
+  return join(baseDir, `${year}-${month}`, day, `${hour}.json`);
 }
 function resolveTextLogPath(baseDir, now) {
   const year = now.getFullYear().toString();
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
   const hour = String(now.getHours()).padStart(2, "0");
-  return join2(baseDir, `${year}-${month}`, day, `${hour}.log`);
+  return join(baseDir, `${year}-${month}`, day, `${hour}.log`);
 }
 function formatTextEntry(entry) {
   const time = entry.timestamp.slice(11, 19);
@@ -9841,10 +8748,23 @@ function cleanupOldMonths(baseDir, now) {
     const entryMonth = parseInt(match[2], 10) - 1;
     const entryMonthKey = entryYear * 12 + entryMonth;
     if (entryMonthKey < currentMonthKey - 2) {
-      rmSync(join2(baseDir, entry), { recursive: true, force: true });
+      rmSync(join(baseDir, entry), { recursive: true, force: true });
     }
   }
 }
+class CapturingAuditLogger {
+  _entries = [];
+  log(entry) {
+    this._entries.push(entry);
+  }
+  getEntries() {
+    return [...this._entries];
+  }
+  reset() {
+    this._entries = [];
+  }
+}
+
 class FileAuditLogger {
   baseDir;
   now;
@@ -9854,7 +8774,7 @@ class FileAuditLogger {
   }
   log(entry) {
     const jsonPath = resolveJsonLogPath(this.baseDir, this.now);
-    mkdirSync(join2(jsonPath, ".."), { recursive: true });
+    mkdirSync(join(jsonPath, ".."), { recursive: true });
     appendFileSync(jsonPath, JSON.stringify(entry) + `
 `);
     const textPath = resolveTextLogPath(this.baseDir, this.now);
@@ -9879,385 +8799,3479 @@ function logConfigLoad(logger, displayPath, ruleCount) {
   });
 }
 
-// src/interpret.ts
-var ASK = { action: "ask" };
-function isLeaf(node) {
-  return node.type !== "binop" && node.type !== "bash" && node.type !== "for_loop" && node.type !== "while_loop" && node.type !== "xargs" && node.type !== "if_statement" && node.type !== "group" && node.type !== "case_statement" && node.type !== "redirect";
+// src/decision.ts
+async function decideNode(ast, rules, context, logger) {
+  const evaluation = await ast.evaluate(rules.rules, context, logger);
+  return evaluation.decision;
 }
-function aggregateChildren(childIAnnotations) {
-  for (const annotation of childIAnnotations) {
-    if (annotation.decision.action === "deny") {
-      return annotation;
+async function decide(ast, rules, context, logger) {
+  return decideNode(ast, rules, context, logger);
+}
+
+// src/load.ts
+import { readFile as readFile2, readdir, stat } from "fs/promises";
+import { join as join2 } from "path";
+
+// node_modules/yaml/dist/index.js
+var composer = require_composer();
+var Document = require_Document();
+var Schema = require_Schema();
+var errors = require_errors();
+var Alias = require_Alias();
+var identity = require_identity();
+var Pair = require_Pair();
+var Scalar = require_Scalar();
+var YAMLMap = require_YAMLMap();
+var YAMLSeq = require_YAMLSeq();
+var cst = require_cst();
+var lexer = require_lexer();
+var lineCounter = require_line_counter();
+var parser = require_parser();
+var publicApi = require_public_api();
+var visit = require_visit();
+var $Composer = composer.Composer;
+var $Document = Document.Document;
+var $Schema = Schema.Schema;
+var $YAMLError = errors.YAMLError;
+var $YAMLParseError = errors.YAMLParseError;
+var $YAMLWarning = errors.YAMLWarning;
+var $Alias = Alias.Alias;
+var $isAlias = identity.isAlias;
+var $isCollection = identity.isCollection;
+var $isDocument = identity.isDocument;
+var $isMap = identity.isMap;
+var $isNode = identity.isNode;
+var $isPair = identity.isPair;
+var $isScalar = identity.isScalar;
+var $isSeq = identity.isSeq;
+var $Pair = Pair.Pair;
+var $Scalar = Scalar.Scalar;
+var $YAMLMap = YAMLMap.YAMLMap;
+var $YAMLSeq = YAMLSeq.YAMLSeq;
+var $Lexer = lexer.Lexer;
+var $LineCounter = lineCounter.LineCounter;
+var $Parser = parser.Parser;
+var $parse = publicApi.parse;
+var $parseAllDocuments = publicApi.parseAllDocuments;
+var $parseDocument = publicApi.parseDocument;
+var $stringify = publicApi.stringify;
+var $visit = visit.visit;
+var $visitAsync = visit.visitAsync;
+
+// src/yaml-source.ts
+function lineOfOffset(source, offset) {
+  let line = 1;
+  for (let index = 0;index < offset; index++) {
+    if (source[index] === `
+`) {
+      line++;
     }
   }
-  if (childIAnnotations.every((annotation) => annotation.decision.action === "allow")) {
-    return childIAnnotations[childIAnnotations.length - 1];
-  }
-  const askIAnnotations = childIAnnotations.filter((annotation) => annotation.decision.action === "ask");
-  if (askIAnnotations.length > 0) {
-    return askIAnnotations[askIAnnotations.length - 1];
-  }
-  return { decision: ASK };
+  return line;
 }
-function combine(childrenIAnnotation, ownRuleIAnnotation) {
-  if (ownRuleIAnnotation.decision.action === "abstain") {
-    return childrenIAnnotation;
-  }
-  return ownRuleIAnnotation;
-}
-function recordLeafEvaluation(leafEvaluations, node, annotation, allRulesAbstained) {
-  const cmd = describeNode(node);
-  if (allRulesAbstained) {
-    leafEvaluations.push({
-      cmd,
-      decision: "NOMATCH",
-      source: "no-rule-match"
-    });
-    return;
-  }
-  const action = annotation.decision.action;
-  let source = "matched-rule";
-  if (action === "deny") {
-    source = "deny-rule";
-  }
-  leafEvaluations.push({
-    cmd,
-    decision: action.toUpperCase(),
-    ruleFile: annotation.ruleFile,
-    ruleLine: annotation.ruleLine,
-    reason: annotation.decision.reason,
-    source
-  });
-}
-function walkChildren(node, env, call, logger, registry, leafEvaluations) {
-  if (node.type === "bash") {
-    const childResult = interpret(node.ast, env, call, logger, registry, leafEvaluations);
-    return {
-      childIAnnotations: [childResult.annotation],
-      envOut: childResult.envOut
-    };
-  }
-  if (node.type === "xargs") {
-    const childResult = interpret(node.child, env, call, logger, registry, leafEvaluations);
-    return {
-      childIAnnotations: [childResult.annotation],
-      envOut: childResult.envOut
-    };
-  }
-  if (node.type === "redirect") {
-    const childResult = interpret(node.command, env, call, logger, registry, leafEvaluations);
-    return {
-      childIAnnotations: [childResult.annotation],
-      envOut: childResult.envOut
-    };
-  }
-  if (node.type === "for_loop") {
-    const childIAnnotations = [];
-    for (const item of node.items) {
-      const iterEnv = {
-        ...env,
-        env: { ...env.env, [node.variable]: item }
+function annotateLines(node, jsValue, source, displayFile) {
+  if ($isMap(node) && jsValue !== null && typeof jsValue === "object" && !Array.isArray(jsValue)) {
+    const jsObject = jsValue;
+    if ("decide" in jsObject && node.range) {
+      jsObject["sourceLocation"] = {
+        file: displayFile,
+        line: lineOfOffset(source, node.range[0])
       };
-      const bodyResult = interpret(node.body, iterEnv, call, logger, registry, leafEvaluations);
-      childIAnnotations.push(bodyResult.annotation);
     }
-    if (childIAnnotations.length === 0) {
-      childIAnnotations.push({ decision: { action: "abstain" } });
-    }
-    return {
-      childIAnnotations,
-      envOut: env
-    };
-  }
-  if (node.type === "while_loop") {
-    const conditionResult = interpret(node.condition, env, call, logger, registry, leafEvaluations);
-    const bodyResult = interpret(node.body, conditionResult.envOut, call, logger, registry, leafEvaluations);
-    return {
-      childIAnnotations: [conditionResult.annotation, bodyResult.annotation],
-      envOut: conditionResult.envOut
-    };
-  }
-  if (node.type === "group") {
-    const bodyResult = interpret(node.body, env, call, logger, registry, leafEvaluations);
-    return {
-      childIAnnotations: [bodyResult.annotation],
-      envOut: node.style === "brace" ? bodyResult.envOut : env
-    };
-  }
-  if (node.type === "case_statement") {
-    const childIAnnotations = [];
-    for (const clause of node.clauses) {
-      const clauseResult = interpret(clause.body, env, call, logger, registry, leafEvaluations);
-      childIAnnotations.push(clauseResult.annotation);
-    }
-    if (childIAnnotations.length === 0) {
-      childIAnnotations.push({ decision: { action: "abstain" } });
-    }
-    return {
-      childIAnnotations,
-      envOut: env
-    };
-  }
-  if (node.type === "if_statement") {
-    const conditionResult = interpret(node.condition, env, call, logger, registry, leafEvaluations);
-    const childIAnnotations = [conditionResult.annotation];
-    const thenResult = interpret(node.thenBranch, conditionResult.envOut, call, logger, registry, leafEvaluations);
-    childIAnnotations.push(thenResult.annotation);
-    if (node.elseBranch !== undefined) {
-      const elseResult = interpret(node.elseBranch, conditionResult.envOut, call, logger, registry, leafEvaluations);
-      childIAnnotations.push(elseResult.annotation);
-    }
-    return {
-      childIAnnotations,
-      envOut: conditionResult.envOut
-    };
-  }
-  const binop = node;
-  if (binop.op === ";" || binop.op === "&&") {
-    const leftResult2 = interpret(binop.left, env, call, logger, registry, leafEvaluations);
-    const rightResult2 = interpret(binop.right, leftResult2.envOut, call, logger, registry, leafEvaluations);
-    return {
-      childIAnnotations: [leftResult2.annotation, rightResult2.annotation],
-      envOut: rightResult2.envOut
-    };
-  }
-  const leftResult = interpret(binop.left, env, call, logger, registry, leafEvaluations);
-  const rightResult = interpret(binop.right, env, call, logger, registry, leafEvaluations);
-  return {
-    childIAnnotations: [leftResult.annotation, rightResult.annotation],
-    envOut: env
-  };
-}
-function interpret(node, env, call, logger, registry, leafEvaluations) {
-  if (isLeaf(node)) {
-    const rulesResult2 = registry.runRules(node, env, call, logger);
-    const envOut2 = rulesResult2.envUpdate(env);
-    let annotation2 = rulesResult2.annotation;
-    const allRulesAbstained = annotation2.decision.action === "abstain";
-    recordLeafEvaluation(leafEvaluations, node, annotation2, allRulesAbstained);
-    if (allRulesAbstained) {
-      logger.log({
-        type: "no_rule_match",
-        timestamp: toLocalISOString(new Date),
-        nodeType: node.type,
-        cmd: describeNode(node)
-      });
-      annotation2 = { decision: ASK };
-    }
-    if (node.type === "command" && node.substitutions !== undefined && node.substitutions.length > 0) {
-      const substitutionAnnotations = [annotation2];
-      for (const substitution of node.substitutions) {
-        const substitutionResult = interpret(substitution, env, call, logger, registry, leafEvaluations);
-        substitutionAnnotations.push(substitutionResult.annotation);
+    for (const pair of node.items) {
+      if (!$isPair(pair) || !$isScalar(pair.key)) {
+        continue;
       }
-      annotation2 = aggregateChildren(substitutionAnnotations);
+      const key = String(pair.key.value);
+      if (key in jsObject) {
+        annotateLines(pair.value, jsObject[key], source, displayFile);
+      }
     }
-    return { annotation: annotation2, envOut: envOut2 };
+  } else if ($isSeq(node) && Array.isArray(jsValue)) {
+    for (let index = 0;index < node.items.length; index++) {
+      annotateLines(node.items[index], jsValue[index], source, displayFile);
+    }
   }
-  const childrenResult = walkChildren(node, env, call, logger, registry, leafEvaluations);
-  const childrenIAnnotation = aggregateChildren(childrenResult.childIAnnotations);
-  if (childrenIAnnotation.decision.action === "deny") {
-    const denyReason = childrenIAnnotation.decision.reason;
-    logger.log({
-      type: "aggregation",
-      timestamp: toLocalISOString(new Date),
-      cmd: describeNode(node),
-      decision: "deny",
-      reason: denyReason
-    });
-    return { annotation: childrenIAnnotation, envOut: childrenResult.envOut };
-  }
-  const rulesResult = registry.runRules(node, env, call, logger);
-  const envOut = rulesResult.envUpdate(childrenResult.envOut);
-  const annotation = combine(childrenIAnnotation, rulesResult.annotation);
-  const combinedReason = annotation.decision.reason;
-  logger.log({
-    type: "aggregation",
-    timestamp: toLocalISOString(new Date),
-    cmd: describeNode(node),
-    decision: annotation.decision.action,
-    reason: combinedReason
-  });
-  return { annotation, envOut };
 }
-function decide(call, logger, registry, descriptors) {
-  const timestamp = toLocalISOString(new Date);
-  logger.log({
-    type: "tool_request",
-    timestamp,
-    tool: call.tool_name,
-    input: call.tool_input,
-    cwd: call.cwd
-  });
-  const root = buildAst(call, descriptors);
-  const env0 = {
-    cwd: call.cwd,
-    cwdResolved: true,
-    env: {}
-  };
-  const leafEvaluations = [];
-  const result = interpret(root, env0, call, logger, registry, leafEvaluations);
-  let decision = result.annotation.decision;
-  if (decision.action === "abstain") {
-    decision = ASK;
+function parsePermissionsYaml(content, displayFile) {
+  const doc = $parseDocument(content);
+  if (doc.errors.length > 0) {
+    throw doc.errors[0];
   }
-  const finalReason = decision.reason;
-  logger.log({
-    type: "final_decision",
-    timestamp: toLocalISOString(new Date),
-    tool: call.tool_name,
-    cmd: describeNode(root),
-    decision: decision.action,
-    reason: finalReason
-  });
-  return { decision, root, leafEvaluations };
+  if (!doc.contents) {
+    return {};
+  }
+  const config = doc.toJS();
+  annotateLines(doc.contents, config, content, displayFile);
+  return config;
 }
 
-// src/pending-prompt-log.ts
-import { mkdir as mkdir2, readdir as readdir2, stat as stat2, unlink, writeFile as writeFile2 } from "fs/promises";
-import { join as join3 } from "path";
-
-// src/rules/builtin/cd.ts
+// src/rules/bash-rule.ts
+var import_picomatch = __toESM(require_picomatch2(), 1);
+import { readFile } from "fs/promises";
 import { resolve } from "path";
 
-// src/types.ts
-var REDIRECT_OUT_OPS = new Set([">", ">>", "2>", "&>"]);
-var REDIRECT_IN_OPS = new Set(["<"]);
-function isRedirectFdMerge(node) {
-  if (node.op === "2>&") {
-    return true;
+// src/ast-nodes/ast-node.ts
+function decisionRank(action) {
+  if (action === "deny") {
+    return 3;
   }
-  return /^\d$/.test(node.target);
-}
-function findInnerCommand(node) {
-  let current = node;
-  while (current.type === "redirect") {
-    current = current.command;
+  if (action === "ask") {
+    return 2;
   }
-  return current;
+  if (action === "allow") {
+    return 1;
+  }
+  return 0;
 }
-var ABSTAIN = { decision: { action: "abstain" } };
-var RANK = {
-  abstain: 0,
-  allow: 1,
-  ask: 2,
-  deny: 3
-};
-function rank(decision) {
-  return RANK[decision.action] ?? 0;
+function pickStrictest(decisions) {
+  if (decisions.length === 0) {
+    return;
+  }
+  let strictestRank = -1;
+  for (const decision of decisions) {
+    const rank = decisionRank(decision.action);
+    if (rank > strictestRank) {
+      strictestRank = rank;
+    }
+  }
+  let strictestAction = "";
+  const reasons = [];
+  for (const decision of decisions) {
+    if (decisionRank(decision.action) !== strictestRank) {
+      continue;
+    }
+    strictestAction = decision.action;
+    if (decision.reason && !reasons.includes(decision.reason)) {
+      reasons.push(decision.reason);
+    }
+  }
+  if (reasons.length === 0) {
+    return { action: strictestAction };
+  }
+  return { action: strictestAction, reason: reasons.join("; ") };
 }
 
-// src/rules/builtin/cd.ts
-function getCdTarget(cmd) {
-  if (typeof cmd === "string") {
-    return cmd;
+class AstNode {
+  type;
+  source;
+  children;
+  constructor(type, source, children) {
+    this.type = type;
+    this.source = source;
+    this.children = children;
   }
-  if (cmd.length === 0) {
-    return "";
+  async evaluate(rules, context, logger) {
+    const childDecisions = [];
+    const ownDecisions = [];
+    let workingContext = context;
+    if (this.children) {
+      let childNodes;
+      if ("_" in this.children) {
+        const positionalChildren = this.children._;
+        if (!Array.isArray(positionalChildren)) {
+          throw new Error("AST children `_` must be an array of positional children");
+        }
+        if (Object.keys(this.children).length > 1) {
+          throw new Error("AST children cannot combine `_` positional children with named children");
+        }
+        childNodes = positionalChildren;
+      } else {
+        childNodes = Object.values(this.children);
+      }
+      for (const childNode of childNodes) {
+        const childResult = await childNode.evaluate(rules, workingContext, logger);
+        workingContext = childResult.context;
+        if (childResult.decision) {
+          childDecisions.push(childResult.decision);
+        }
+      }
+    }
+    for (const rule of rules) {
+      const evaluation = await rule.evaluate(this, workingContext);
+      workingContext = evaluation.context;
+      if (evaluation.decision) {
+        ownDecisions.push(evaluation.decision);
+        logger.log({
+          type: "rule_match",
+          timestamp: toLocalISOString(new Date),
+          ruleFile: rule.sourceLocation?.file,
+          ruleLine: rule.sourceLocation?.line,
+          decision: evaluation.decision.action,
+          reason: evaluation.decision.reason,
+          cmd: this.source,
+          cwd: workingContext.cwd,
+          env: { ...workingContext.env }
+        });
+        if (evaluation.decision.action === "deny") {
+          break;
+        }
+      }
+    }
+    if (!this.children) {
+      const ownDecision = pickStrictest(ownDecisions);
+      if (!ownDecision) {
+        logger.log({
+          type: "no_rule_match",
+          timestamp: toLocalISOString(new Date),
+          nodeType: this.type,
+          cmd: this.source,
+          cwd: workingContext.cwd,
+          env: { ...workingContext.env }
+        });
+        return {
+          decision: { action: "ask" },
+          context: workingContext
+        };
+      }
+      return {
+        decision: ownDecision,
+        context: workingContext
+      };
+    }
+    const childDecision = pickStrictest(childDecisions);
+    if (childDecision && childDecision.action === "deny") {
+      logger.log({
+        type: "aggregation",
+        timestamp: toLocalISOString(new Date),
+        cmd: this.source,
+        decision: childDecision.action,
+        reason: childDecision.reason
+      });
+      return { decision: childDecision, context: workingContext };
+    }
+    const combinedDecision = pickStrictest(ownDecisions) || childDecision;
+    if (combinedDecision) {
+      logger.log({
+        type: "aggregation",
+        timestamp: toLocalISOString(new Date),
+        cmd: this.source,
+        decision: combinedDecision.action,
+        reason: combinedDecision.reason
+      });
+    }
+    return {
+      decision: combinedDecision,
+      context: workingContext
+    };
   }
-  return cmd[0];
 }
-function isUnresolvable(target) {
-  if (target === "" || target === "-") {
+
+// src/rules/bash-rule.ts
+class BashRule {
+  commandName;
+  decision;
+  reason;
+  requiredEnv;
+  requiredCwd;
+  requiredCwdInPatterns;
+  subcommandPath;
+  requiredCmdPatterns;
+  requiredCmdInPatterns;
+  requiredOptions;
+  requiredOptionsIn;
+  requiredOptionPatterns;
+  requiredFile;
+  not;
+  children;
+  catchAll;
+  sourceLocation;
+  constructor(commandName, decision, reason, requiredEnv, requiredCwd, sourceLocation) {
+    this.commandName = commandName;
+    this.decision = decision;
+    this.reason = reason;
+    this.requiredEnv = requiredEnv;
+    this.requiredCwd = requiredCwd;
+    this.sourceLocation = sourceLocation;
+  }
+  evaluateCommand(ast) {
+    if (ast.type !== "command") {
+      return;
+    }
+    const commandNode = ast;
+    if (this.commandName !== commandNode.commandName) {
+      return;
+    }
+    return commandNode;
+  }
+  evaluateSubcommandPath(commandNode) {
+    if (!this.subcommandPath) {
+      return true;
+    }
+    if (commandNode.positionals.length < this.subcommandPath.length) {
+      return false;
+    }
+    for (let pathIndex = 0;pathIndex < this.subcommandPath.length; pathIndex++) {
+      if (commandNode.positionals[pathIndex] !== this.subcommandPath[pathIndex]) {
+        return false;
+      }
+    }
     return true;
   }
-  if (target.includes("$")) {
+  evaluateRequiredEnv(commandNode, context) {
+    if (!this.requiredEnv) {
+      return true;
+    }
+    for (const [varName, expectedValue] of Object.entries(this.requiredEnv)) {
+      let actualValue = context.env[varName];
+      if (commandNode.envPrefix[varName] !== undefined) {
+        actualValue = commandNode.envPrefix[varName];
+      }
+      if (!actualValue) {
+        return false;
+      }
+      let envMatched = false;
+      if (expectedValue.length >= 2 && expectedValue.startsWith("/") && expectedValue.endsWith("/")) {
+        envMatched = new RegExp(expectedValue.slice(1, -1)).test(actualValue);
+      } else {
+        envMatched = import_picomatch.default(expectedValue, { dot: true })(actualValue);
+      }
+      if (!envMatched) {
+        return false;
+      }
+    }
     return true;
+  }
+  evaluateEnvVarMap(envVarMap, commandNode, context) {
+    if (!envVarMap) {
+      return true;
+    }
+    for (const [varName, expectedValue] of Object.entries(envVarMap)) {
+      let actualValue = context.env[varName];
+      if (commandNode.envPrefix[varName] !== undefined) {
+        actualValue = commandNode.envPrefix[varName];
+      }
+      if (!actualValue) {
+        return false;
+      }
+      let envMatched = false;
+      if (expectedValue.length >= 2 && expectedValue.startsWith("/") && expectedValue.endsWith("/")) {
+        envMatched = new RegExp(expectedValue.slice(1, -1)).test(actualValue);
+      } else {
+        envMatched = import_picomatch.default(expectedValue, { dot: true })(actualValue);
+      }
+      if (!envMatched) {
+        return false;
+      }
+    }
+    return true;
+  }
+  evaluateFileContains(content, containsPattern) {
+    if (containsPattern.startsWith("/") && containsPattern.endsWith("/")) {
+      return new RegExp(containsPattern.slice(1, -1)).test(content);
+    }
+    if (containsPattern.includes("*") || containsPattern.includes("?") || containsPattern.includes("{")) {
+      return import_picomatch.default(containsPattern, { dot: true })(content);
+    }
+    return content.includes(containsPattern);
+  }
+  async evaluateFile(path, fileMatch, context, missingFileResult) {
+    let filePath = path;
+    if (filePath.startsWith("~/")) {
+      const homeDir = process.env["HOME"];
+      if (homeDir) {
+        filePath = `${homeDir}/${filePath.slice(2)}`;
+      }
+    }
+    if (!filePath.startsWith("/")) {
+      const projectDir = process.env["CLAUDE_PROJECT_DIR"] ?? context.cwd;
+      filePath = resolve(projectDir, filePath);
+    }
+    let content;
+    try {
+      content = await readFile(filePath, "utf8");
+    } catch {
+      return missingFileResult;
+    }
+    if (fileMatch === true) {
+      return true;
+    }
+    const containsPattern = fileMatch.contains;
+    if (containsPattern === undefined) {
+      return true;
+    }
+    return this.evaluateFileContains(content, containsPattern);
+  }
+  async evaluateFiles(requiredFile, context, missingFileResult) {
+    if (!requiredFile) {
+      return true;
+    }
+    for (const [path, fileMatch] of Object.entries(requiredFile)) {
+      if (!await this.evaluateFile(path, fileMatch, context, missingFileResult)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  async evaluateNot(commandNode, context) {
+    if (!this.not) {
+      return false;
+    }
+    if (!await this.evaluateFiles(this.not.file, context, true)) {
+      return false;
+    }
+    if (!this.evaluateEnvVarMap(this.not.env, commandNode, context)) {
+      return false;
+    }
+    const notCmdInPatterns = this.not["cmd-in"];
+    if (notCmdInPatterns && !this.evaluateCmdInPatterns(notCmdInPatterns, commandNode, context)) {
+      return false;
+    }
+    const notOptions = this.not.options;
+    if (notOptions) {
+      for (const optionName of notOptions) {
+        if (!this.evaluateFlagAliasPresent(optionName, commandNode)) {
+          return false;
+        }
+      }
+    }
+    const notOptionsIn = this.not["options-in"];
+    if (notOptionsIn) {
+      let anyOptionPresent = false;
+      for (const optionName of notOptionsIn) {
+        if (this.evaluateFlagAliasPresent(optionName, commandNode)) {
+          anyOptionPresent = true;
+          break;
+        }
+      }
+      if (!anyOptionPresent) {
+        return false;
+      }
+    }
+    return true;
+  }
+  evaluateCmdInPatterns(cmdInPatterns, commandNode, context) {
+    for (const cmdInPattern of cmdInPatterns) {
+      for (const positional of commandNode.positionals) {
+        if (this.matchCmdInPattern(cmdInPattern, positional, context)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+  matchCmdInPattern(cmdInPattern, positional, context) {
+    if (cmdInPattern.length >= 2 && cmdInPattern.startsWith("/") && cmdInPattern.endsWith("/")) {
+      return new RegExp(cmdInPattern.slice(1, -1)).test(positional);
+    }
+    let positionalArg = positional;
+    let cmdGlob = cmdInPattern;
+    if (cmdInPattern.startsWith("./") || cmdInPattern.startsWith("/")) {
+      positionalArg = resolve(context.cwd, positional);
+    }
+    if (cmdInPattern.startsWith("./")) {
+      cmdGlob = resolve(process.env["CLAUDE_PROJECT_DIR"] ?? context.cwd, cmdInPattern);
+    }
+    return import_picomatch.default(cmdGlob, { dot: true })(positionalArg);
+  }
+  evaluateRequiredCwd(context) {
+    if (!this.requiredCwd) {
+      return true;
+    }
+    if (context.cwdResolved === false) {
+      return false;
+    }
+    return import_picomatch.default(this.requiredCwd, { dot: true })(resolve(context.cwd));
+  }
+  evaluateRequiredCwdInPatterns(context) {
+    if (!this.requiredCwdInPatterns) {
+      return true;
+    }
+    if (context.cwdResolved === false) {
+      return false;
+    }
+    for (const cwdInPattern of this.requiredCwdInPatterns) {
+      let cwdGlob = cwdInPattern;
+      if (cwdInPattern.startsWith("./")) {
+        cwdGlob = resolve(process.env["CLAUDE_PROJECT_DIR"] ?? context.cwd, cwdInPattern);
+      }
+      if (import_picomatch.default(cwdGlob, { dot: true })(resolve(context.cwd))) {
+        return true;
+      }
+    }
+    return false;
+  }
+  evaluateRequiredCmdPatterns(commandNode, context) {
+    if (!this.requiredCmdPatterns) {
+      return true;
+    }
+    const cmdOffset = this.subcommandPath ? this.subcommandPath.length : 0;
+    for (let patternIndex = 0;patternIndex < this.requiredCmdPatterns.length; patternIndex++) {
+      const positional = commandNode.positionals[cmdOffset + patternIndex];
+      if (!positional) {
+        return false;
+      }
+      const cmdPattern = this.requiredCmdPatterns[patternIndex];
+      let positionalArg = positional;
+      let cmdGlob = cmdPattern;
+      if (!(cmdPattern.length >= 2 && cmdPattern.startsWith("/") && cmdPattern.endsWith("/")) && (cmdPattern.startsWith("./") || cmdPattern.startsWith("/"))) {
+        positionalArg = resolve(context.cwd, positional);
+      }
+      if (cmdPattern.startsWith("./")) {
+        cmdGlob = resolve(process.env["CLAUDE_PROJECT_DIR"] ?? context.cwd, cmdPattern);
+      }
+      let cmdMatched = false;
+      if (cmdPattern.length >= 2 && cmdPattern.startsWith("/") && cmdPattern.endsWith("/")) {
+        cmdMatched = new RegExp(cmdPattern.slice(1, -1)).test(positionalArg);
+      } else {
+        cmdMatched = import_picomatch.default(cmdGlob, { dot: true })(positionalArg);
+      }
+      if (!cmdMatched) {
+        return false;
+      }
+    }
+    return true;
+  }
+  expandEnvVarsInArg(arg, envPrefix, contextEnv) {
+    return arg.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (fullMatch, bracedName, bareName) => {
+      const variableName = bracedName !== undefined ? bracedName : bareName;
+      let replacement = contextEnv[variableName];
+      if (envPrefix[variableName] !== undefined) {
+        replacement = envPrefix[variableName];
+      }
+      return replacement !== undefined ? replacement : fullMatch;
+    });
+  }
+  expandEnvVarsInArgs(args, envPrefix, contextEnv) {
+    return args.map((arg) => {
+      return this.expandEnvVarsInArg(arg, envPrefix, contextEnv);
+    });
+  }
+  evaluateRequiredCmdInPatterns(commandNode, context) {
+    if (!this.requiredCmdInPatterns) {
+      return true;
+    }
+    const cmdOffset = this.subcommandPath ? this.subcommandPath.length : 0;
+    const positionals = this.expandEnvVarsInArgs(commandNode.positionals.slice(cmdOffset), commandNode.envPrefix, context.env);
+    for (const cmdInPattern of this.requiredCmdInPatterns) {
+      for (const positional of positionals) {
+        if (this.matchCmdInPattern(cmdInPattern, positional, context)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+  evaluateFlagAliasPresent(aliasExpr, commandNode) {
+    for (const alias of aliasExpr.split("|")) {
+      if (alias in commandNode.options) {
+        return true;
+      }
+    }
+    return false;
+  }
+  evaluateRequiredOptions(commandNode) {
+    if (!this.requiredOptions) {
+      return true;
+    }
+    for (const requiredOption of this.requiredOptions) {
+      if (!this.evaluateFlagAliasPresent(requiredOption, commandNode)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  evaluateRequiredOptionsIn(commandNode) {
+    if (!this.requiredOptionsIn) {
+      return true;
+    }
+    for (const requiredOption of this.requiredOptionsIn) {
+      if (this.evaluateFlagAliasPresent(requiredOption, commandNode)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  evaluateRequiredOptionPatterns(commandNode) {
+    if (!this.requiredOptionPatterns) {
+      return true;
+    }
+    for (const [flagName, pattern] of Object.entries(this.requiredOptionPatterns)) {
+      const flagValue = commandNode.options[flagName];
+      if (typeof flagValue !== "string") {
+        return false;
+      }
+      let optionMatched = false;
+      if (pattern.length >= 2 && pattern.startsWith("/") && pattern.endsWith("/")) {
+        optionMatched = new RegExp(pattern.slice(1, -1)).test(flagValue);
+      } else {
+        optionMatched = import_picomatch.default(pattern, { dot: true })(flagValue);
+      }
+      if (!optionMatched) {
+        return false;
+      }
+    }
+    return true;
+  }
+  async evaluate(ast, context) {
+    const commandNode = this.evaluateCommand(ast);
+    if (!commandNode) {
+      return { context };
+    }
+    if (!this.evaluateSubcommandPath(commandNode)) {
+      return { context };
+    }
+    if (!this.evaluateRequiredEnv(commandNode, context)) {
+      return { context };
+    }
+    if (!this.evaluateRequiredCwd(context)) {
+      return { context };
+    }
+    if (!this.evaluateRequiredCwdInPatterns(context)) {
+      return { context };
+    }
+    if (!this.evaluateRequiredCmdPatterns(commandNode, context)) {
+      return { context };
+    }
+    if (!this.evaluateRequiredCmdInPatterns(commandNode, context)) {
+      return { context };
+    }
+    if (!this.evaluateRequiredOptions(commandNode)) {
+      return { context };
+    }
+    if (!this.evaluateRequiredOptionsIn(commandNode)) {
+      return { context };
+    }
+    if (!this.evaluateRequiredOptionPatterns(commandNode)) {
+      return { context };
+    }
+    if (!await this.evaluateFiles(this.requiredFile, context, false)) {
+      return { context };
+    }
+    if (await this.evaluateNot(commandNode, context)) {
+      return { context };
+    }
+    if (this.children || this.catchAll) {
+      const childDecisions = [];
+      let workingContext = context;
+      if (this.children) {
+        for (const child of this.children) {
+          const childEvaluation = await child.evaluate(ast, workingContext);
+          workingContext = childEvaluation.context;
+          if (childEvaluation.decision) {
+            childDecisions.push(childEvaluation.decision);
+          }
+        }
+      }
+      const childDecision = pickStrictest(childDecisions);
+      if (childDecision) {
+        return {
+          decision: childDecision,
+          context: workingContext
+        };
+      }
+      if (this.catchAll) {
+        return this.catchAll.evaluate(ast, workingContext);
+      }
+      return {
+        context: workingContext
+      };
+    }
+    return {
+      decision: {
+        action: this.decision,
+        reason: this.reason
+      },
+      context
+    };
+  }
+}
+
+// src/rules/bash-rule-factory.ts
+var COMMAND_RULE_FIELDS = new Set([
+  "decide",
+  "reason",
+  "cwd",
+  "cwd-in",
+  "path",
+  "env",
+  "cmd",
+  "cmd-in",
+  "options",
+  "options-in",
+  "file",
+  "sourceLocation",
+  "not"
+]);
+var KNOWN_FIELDS = new Set([
+  ...COMMAND_RULE_FIELDS,
+  "rules"
+]);
+var NOT_KNOWN_FIELDS = new Set([
+  "env",
+  "file",
+  "cmd-in",
+  "options",
+  "options-in"
+]);
+
+class BashRuleFactory {
+  load(bashConfig) {
+    if (!bashConfig || typeof bashConfig !== "object" || Array.isArray(bashConfig)) {
+      throw new Error("permissions.yaml: bash must be an object");
+    }
+    const rules = [];
+    for (const [commandName, value] of Object.entries(bashConfig)) {
+      const entries = Array.isArray(value) ? value : [value];
+      const children = [];
+      let catchAll;
+      let hasSubcommandEntry = false;
+      for (let entryIndex = 0;entryIndex < entries.length; entryIndex++) {
+        const entry = entries[entryIndex];
+        if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+          throw new Error(`permissions.yaml: bash.${commandName} must contain only rule objects`);
+        }
+        const loadedRules = this.loadBashEntry(entry, commandName, []);
+        const isLast = entryIndex === entries.length - 1;
+        if (isLast && typeof entry.decide === "string" && hasSubcommandEntry) {
+          catchAll = loadedRules[loadedRules.length - 1];
+        } else {
+          children.push(...loadedRules);
+          if (typeof entry.decide !== "string") {
+            hasSubcommandEntry = true;
+          }
+        }
+      }
+      if (!catchAll) {
+        rules.push(...children);
+      } else {
+        const listRule = new BashRule(commandName, "", undefined, undefined, undefined, undefined);
+        listRule.children = children;
+        listRule.catchAll = catchAll;
+        rules.push(listRule);
+      }
+    }
+    return rules;
+  }
+  loadBashEntry(bashEntry, commandName, subcommandPath) {
+    if (!bashEntry || typeof bashEntry !== "object" || Array.isArray(bashEntry)) {
+      throw new Error(`permissions.yaml: bash.${commandName} must contain only rule objects`);
+    }
+    if (typeof bashEntry.decide === "string") {
+      return [this.loadCommandRule(bashEntry, commandName, subcommandPath, bashEntry.decide)];
+    }
+    return this.loadSubcommandsOrRules(bashEntry, commandName, subcommandPath);
+  }
+  expandProjectDirToken(pattern) {
+    let expanded = pattern;
+    const projectDirToken = "${{PROJECT_DIR}}";
+    if (expanded.includes(projectDirToken)) {
+      const projectDir = process.env["CLAUDE_PROJECT_DIR"];
+      if (projectDir) {
+        expanded = expanded.split(projectDirToken).join(projectDir);
+      }
+    }
+    const homeToken = "${{HOME}}";
+    if (expanded.includes(homeToken)) {
+      const homeDir = process.env["HOME"];
+      if (homeDir) {
+        expanded = expanded.split(homeToken).join(homeDir);
+      }
+    }
+    return expanded;
+  }
+  expandTildePath(filePath) {
+    if (!filePath.startsWith("~/")) {
+      return filePath;
+    }
+    const homeDir = process.env["HOME"];
+    if (!homeDir) {
+      return filePath;
+    }
+    return `${homeDir}/${filePath.slice(2)}`;
+  }
+  loadCommandRule(bashEntry, commandName, subcommandPath, decide2) {
+    for (const entryKey of Object.keys(bashEntry)) {
+      if (!COMMAND_RULE_FIELDS.has(entryKey)) {
+        throw new Error(`permissions.yaml: bash.${commandName} unknown field '${entryKey}'`);
+      }
+    }
+    const reason = bashEntry.reason;
+    if (reason && typeof reason !== "string") {
+      throw new Error(`permissions.yaml: bash.${commandName} reason must be a string`);
+    }
+    const requiredEnv = this.loadRequiredEnv(commandName, bashEntry.env);
+    const cwdField = bashEntry.cwd !== undefined ? bashEntry.cwd : bashEntry.path;
+    let requiredCwd;
+    if (cwdField) {
+      if (typeof cwdField !== "string") {
+        throw new Error(`permissions.yaml: bash.${commandName} cwd must be a string`);
+      }
+      requiredCwd = this.expandProjectDirToken(cwdField);
+    }
+    const cwdInField = bashEntry["cwd-in"];
+    let requiredCwdInPatterns;
+    if (cwdInField) {
+      if (!Array.isArray(cwdInField)) {
+        throw new Error(`permissions.yaml: bash.${commandName} cwd-in must be an array`);
+      }
+      requiredCwdInPatterns = [];
+      for (const cwdInPattern of cwdInField) {
+        if (typeof cwdInPattern !== "string") {
+          throw new Error(`permissions.yaml: bash.${commandName} cwd-in must contain only strings`);
+        }
+        requiredCwdInPatterns.push(cwdInPattern);
+      }
+    }
+    const cmdField = bashEntry.cmd;
+    let requiredCmdPatterns;
+    if (cmdField) {
+      if (typeof cmdField === "string") {
+        requiredCmdPatterns = cmdField.trim().split(/\s+/).map((cmdPattern) => this.expandProjectDirToken(cmdPattern));
+      } else if (Array.isArray(cmdField)) {
+        requiredCmdPatterns = [];
+        for (const cmdPattern of cmdField) {
+          if (typeof cmdPattern !== "string") {
+            throw new Error(`permissions.yaml: bash.${commandName} cmd must contain only strings`);
+          }
+          requiredCmdPatterns.push(cmdPattern);
+        }
+      } else {
+        throw new Error(`permissions.yaml: bash.${commandName} cmd must be a string or array`);
+      }
+    }
+    const cmdInField = bashEntry["cmd-in"];
+    let requiredCmdInPatterns;
+    if (cmdInField) {
+      if (!Array.isArray(cmdInField)) {
+        throw new Error(`permissions.yaml: bash.${commandName} cmd-in must be an array`);
+      }
+      requiredCmdInPatterns = [];
+      for (const cmdInPattern of cmdInField) {
+        if (typeof cmdInPattern !== "string") {
+          throw new Error(`permissions.yaml: bash.${commandName} cmd-in must contain only strings`);
+        }
+        requiredCmdInPatterns.push(this.expandProjectDirToken(cmdInPattern));
+      }
+    }
+    const optionsField = bashEntry.options;
+    let requiredOptions;
+    let requiredOptionPatterns;
+    if (optionsField) {
+      if (Array.isArray(optionsField)) {
+        requiredOptions = [];
+        for (const optionName of optionsField) {
+          if (typeof optionName !== "string") {
+            throw new Error(`permissions.yaml: bash.${commandName} options must contain only strings`);
+          }
+          requiredOptions.push(optionName);
+        }
+      } else if (!optionsField || typeof optionsField !== "object") {
+        throw new Error(`permissions.yaml: bash.${commandName} options must be an array or object`);
+      } else {
+        requiredOptionPatterns = {};
+        for (const [flagName, pattern] of Object.entries(optionsField)) {
+          if (typeof pattern === "boolean") {
+            if (pattern) {
+              if (!requiredOptions) {
+                requiredOptions = [];
+              }
+              requiredOptions.push(flagName);
+            } else {
+              throw new Error(`permissions.yaml: bash.${commandName} options.${flagName} must be true when boolean`);
+            }
+          } else if (typeof pattern === "string") {
+            if (!requiredOptionPatterns) {
+              requiredOptionPatterns = {};
+            }
+            requiredOptionPatterns[flagName] = pattern;
+          } else {
+            throw new Error(`permissions.yaml: bash.${commandName} options.${flagName} must be a string or true`);
+          }
+        }
+      }
+    }
+    const sourceLocation = bashEntry.sourceLocation;
+    const rule = new BashRule(commandName, decide2, reason, requiredEnv, requiredCwd, sourceLocation);
+    if (subcommandPath.length > 0) {
+      rule.subcommandPath = subcommandPath;
+    }
+    if (requiredCwdInPatterns) {
+      rule.requiredCwdInPatterns = requiredCwdInPatterns;
+    }
+    if (requiredCmdPatterns) {
+      rule.requiredCmdPatterns = requiredCmdPatterns;
+    }
+    if (requiredCmdInPatterns) {
+      rule.requiredCmdInPatterns = requiredCmdInPatterns;
+    }
+    if (requiredOptions) {
+      rule.requiredOptions = requiredOptions;
+    }
+    if (requiredOptionPatterns) {
+      rule.requiredOptionPatterns = requiredOptionPatterns;
+    }
+    const optionsInField = bashEntry["options-in"];
+    let requiredOptionsIn;
+    if (optionsInField) {
+      if (!Array.isArray(optionsInField)) {
+        throw new Error(`permissions.yaml: bash.${commandName} options-in must be an array`);
+      }
+      requiredOptionsIn = [];
+      for (const optionName of optionsInField) {
+        if (typeof optionName !== "string") {
+          throw new Error(`permissions.yaml: bash.${commandName} options-in must contain only strings`);
+        }
+        requiredOptionsIn.push(optionName);
+      }
+    }
+    if (requiredOptionsIn) {
+      rule.requiredOptionsIn = requiredOptionsIn;
+    }
+    const requiredFile = this.loadFileField(commandName, bashEntry.file);
+    if (requiredFile) {
+      rule.requiredFile = requiredFile;
+    }
+    const notField = bashEntry.not;
+    if (notField) {
+      rule.not = this.loadNotFields(commandName, notField);
+    }
+    return rule;
+  }
+  loadSubcommandsOrRules(bashEntry, commandName, subcommandPath) {
+    const loadedRules = [];
+    const hasSubcommandKey = this.entryHasSubcommandKey(bashEntry);
+    for (const [entryKey, entryValue] of Object.entries(bashEntry)) {
+      if (this.isKnownRuleField(entryKey, entryValue)) {
+        if (hasSubcommandKey) {
+          throw new Error(`permissions.yaml: bash.${commandName} unknown field '${entryKey}'`);
+        }
+        if (entryKey === "rules") {
+          loadedRules.push(...this.loadIntermediateRulesEntry(bashEntry, commandName, subcommandPath));
+        }
+        continue;
+      }
+      loadedRules.push(...this.loadNestedSubcommandEntry(commandName, subcommandPath, entryKey, entryValue));
+    }
+    return loadedRules;
+  }
+  entryHasSubcommandKey(bashEntry) {
+    for (const [entryKey, entryValue] of Object.entries(bashEntry)) {
+      if (this.isKnownRuleField(entryKey, entryValue)) {
+        continue;
+      }
+      if (entryValue && typeof entryValue === "object") {
+        return true;
+      }
+    }
+    return false;
+  }
+  isKnownRuleField(entryKey, entryValue) {
+    if (!KNOWN_FIELDS.has(entryKey)) {
+      return false;
+    }
+    if (entryKey === "env") {
+      return this.isEnvMatcherMap(entryValue);
+    }
+    if (entryKey === "options") {
+      return this.isOptionsMatcher(entryValue);
+    }
+    return true;
+  }
+  isEnvMatcherMap(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return false;
+    }
+    if ("decide" in value || "rules" in value || "not" in value) {
+      return false;
+    }
+    for (const envValue of Object.values(value)) {
+      if (typeof envValue !== "string") {
+        return false;
+      }
+    }
+    return true;
+  }
+  isOptionsMatcher(value) {
+    if (Array.isArray(value)) {
+      return true;
+    }
+    if (!value || typeof value !== "object") {
+      return false;
+    }
+    if ("decide" in value || "rules" in value || "not" in value) {
+      return false;
+    }
+    for (const optionValue of Object.values(value)) {
+      if (typeof optionValue !== "string") {
+        return false;
+      }
+    }
+    return true;
+  }
+  loadIntermediateRulesEntry(bashEntry, commandName, subcommandPath) {
+    const rulesList = bashEntry.rules;
+    if (!Array.isArray(rulesList)) {
+      throw new Error(`permissions.yaml: bash.${commandName} rules must be an array`);
+    }
+    const guardEntry = {};
+    for (const [entryKey, entryValue] of Object.entries(bashEntry)) {
+      if (entryKey === "rules") {
+        continue;
+      }
+      guardEntry[entryKey] = entryValue;
+    }
+    const branchRule = this.loadCommandRule(guardEntry, commandName, subcommandPath, "");
+    const children = [];
+    let catchAll;
+    for (let entryIndex = 0;entryIndex < rulesList.length; entryIndex++) {
+      const ruleEntry = rulesList[entryIndex];
+      if (ruleEntry === null || typeof ruleEntry !== "object" || Array.isArray(ruleEntry)) {
+        throw new Error(`permissions.yaml: bash.${commandName} rules must contain only rule objects`);
+      }
+      const loadedRules = this.loadBashEntry(ruleEntry, commandName, subcommandPath);
+      const isLast = entryIndex === rulesList.length - 1;
+      if (isLast && typeof ruleEntry.decide === "string" && children.length > 0) {
+        catchAll = loadedRules[loadedRules.length - 1];
+      } else {
+        children.push(...loadedRules);
+      }
+    }
+    branchRule.children = children;
+    if (catchAll) {
+      branchRule.catchAll = catchAll;
+    }
+    return [branchRule];
+  }
+  loadNestedSubcommandEntry(commandName, subcommandPath, subcommandKey, entryValue) {
+    if (!entryValue || typeof entryValue !== "object") {
+      throw new Error(`permissions.yaml: bash.${commandName} unknown field '${subcommandKey}'`);
+    }
+    const subEntries = Array.isArray(entryValue) ? entryValue : [entryValue];
+    const loadedRules = [];
+    for (const subEntry of subEntries) {
+      if (typeof subEntry === "string") {
+        throw new Error(`permissions.yaml: bash.${commandName} unknown field '${subcommandKey}'`);
+      }
+      loadedRules.push(...this.loadBashEntry(subEntry, commandName, subcommandPath.concat(subcommandKey)));
+    }
+    return loadedRules;
+  }
+  loadNotFields(commandName, notField) {
+    if (!notField || typeof notField !== "object" || Array.isArray(notField)) {
+      throw new Error(`permissions.yaml: bash.${commandName} not must be an object`);
+    }
+    for (const notKey of Object.keys(notField)) {
+      if (!NOT_KNOWN_FIELDS.has(notKey)) {
+        throw new Error(`permissions.yaml: bash.${commandName} not unknown field '${notKey}'`);
+      }
+    }
+    const parsedNot = {};
+    const env = this.loadRequiredEnv(commandName, notField.env);
+    if (env) {
+      parsedNot.env = env;
+    }
+    const file = this.loadFileField(commandName, notField.file);
+    if (file) {
+      parsedNot.file = file;
+    }
+    const cmdInField = notField["cmd-in"];
+    if (cmdInField) {
+      if (!Array.isArray(cmdInField)) {
+        throw new Error(`permissions.yaml: bash.${commandName} not cmd-in must be an array`);
+      }
+      const cmdInPatterns = [];
+      for (const cmdInPattern of cmdInField) {
+        if (typeof cmdInPattern !== "string") {
+          throw new Error(`permissions.yaml: bash.${commandName} not cmd-in must contain only strings`);
+        }
+        cmdInPatterns.push(this.expandProjectDirToken(cmdInPattern));
+      }
+      parsedNot["cmd-in"] = cmdInPatterns;
+    }
+    const optionsField = notField.options;
+    if (optionsField) {
+      if (!Array.isArray(optionsField)) {
+        throw new Error(`permissions.yaml: bash.${commandName} not options must be an array`);
+      }
+      const optionNames = [];
+      for (const optionName of optionsField) {
+        if (typeof optionName !== "string") {
+          throw new Error(`permissions.yaml: bash.${commandName} not options must contain only strings`);
+        }
+        optionNames.push(optionName);
+      }
+      parsedNot.options = optionNames;
+    }
+    const optionsInField = notField["options-in"];
+    if (optionsInField) {
+      if (!Array.isArray(optionsInField)) {
+        throw new Error(`permissions.yaml: bash.${commandName} not options-in must be an array`);
+      }
+      const optionsInPatterns = [];
+      for (const optionName of optionsInField) {
+        if (typeof optionName !== "string") {
+          throw new Error(`permissions.yaml: bash.${commandName} not options-in must contain only strings`);
+        }
+        optionsInPatterns.push(optionName);
+      }
+      parsedNot["options-in"] = optionsInPatterns;
+    }
+    return parsedNot;
+  }
+  loadRequiredEnv(commandName, envVarMap) {
+    if (!envVarMap) {
+      return;
+    }
+    if (!envVarMap || typeof envVarMap !== "object" || Array.isArray(envVarMap)) {
+      throw new Error(`permissions.yaml: bash.${commandName} env must be an object`);
+    }
+    const parsedEnv = {};
+    for (const [varName, envValue] of Object.entries(envVarMap)) {
+      if (typeof envValue !== "string") {
+        throw new Error(`permissions.yaml: bash.${commandName} env.${varName} must be a string`);
+      }
+      parsedEnv[varName] = envValue;
+    }
+    return parsedEnv;
+  }
+  loadFileField(commandName, fileField) {
+    if (!fileField) {
+      return;
+    }
+    if (!fileField || typeof fileField !== "object" || Array.isArray(fileField)) {
+      throw new Error(`permissions.yaml: bash.${commandName} file must be an object`);
+    }
+    const parsedFile = {};
+    for (const [filePath, fileMatch] of Object.entries(fileField)) {
+      if (typeof filePath !== "string") {
+        throw new Error(`permissions.yaml: bash.${commandName} file keys must be strings`);
+      }
+      const expandedPath = this.expandTildePath(this.expandProjectDirToken(filePath));
+      if (fileMatch === true) {
+        parsedFile[expandedPath] = {};
+        continue;
+      }
+      if (!fileMatch || typeof fileMatch !== "object" || Array.isArray(fileMatch)) {
+        throw new Error(`permissions.yaml: bash.${commandName} file.${filePath} must be an object or true`);
+      }
+      const containsValue = fileMatch.contains;
+      if (containsValue !== undefined && typeof containsValue !== "string") {
+        throw new Error(`permissions.yaml: bash.${commandName} file.${filePath}.contains must be a string`);
+      }
+      parsedFile[expandedPath] = containsValue !== undefined ? { contains: containsValue } : {};
+    }
+    return parsedFile;
+  }
+}
+
+// src/rules/builtin/cd-rule.ts
+import { resolve as resolve2 } from "path";
+
+class CdRule {
+  async evaluate(ast, context) {
+    if (ast.type !== "command") {
+      return { context };
+    }
+    const commandNode = ast;
+    if (commandNode.commandName !== "cd") {
+      return { context };
+    }
+    if (commandNode.positionals.length === 0) {
+      return { context };
+    }
+    const target = commandNode.positionals[0];
+    if (target.includes("$")) {
+      return {
+        context: {
+          cwd: context.cwd,
+          cwdResolved: false,
+          env: context.env
+        }
+      };
+    }
+    const newCwd = resolve2(context.cwd, target);
+    return {
+      context: {
+        cwd: newCwd,
+        env: context.env
+      }
+    };
+  }
+}
+
+// src/rules/builtin/empty-command-rule.ts
+class EmptyCommandRule {
+  async evaluate(ast, context) {
+    if (ast.type !== "command") {
+      return { context };
+    }
+    const commandNode = ast;
+    if (commandNode.commandName !== "") {
+      return { context };
+    }
+    if (Object.keys(commandNode.envPrefix).length === 0) {
+      return { context };
+    }
+    return {
+      decision: {
+        action: "allow"
+      },
+      context: {
+        cwd: context.cwd,
+        env: { ...context.env, ...commandNode.envPrefix }
+      }
+    };
+  }
+}
+
+// src/rules/builtin/export-rule.ts
+class ExportRule {
+  async evaluate(ast, context) {
+    if (ast.type !== "command") {
+      return { context };
+    }
+    const commandNode = ast;
+    if (commandNode.commandName !== "export") {
+      return { context };
+    }
+    let hasKeyValueToken = false;
+    const updates = {};
+    for (const token of commandNode.positionals) {
+      const eqIndex = token.indexOf("=");
+      if (eqIndex > 0) {
+        hasKeyValueToken = true;
+        updates[token.slice(0, eqIndex)] = token.slice(eqIndex + 1);
+      }
+    }
+    if (!hasKeyValueToken) {
+      return { context };
+    }
+    return {
+      decision: {
+        action: "allow",
+        reason: "set environment variable"
+      },
+      context: {
+        cwd: context.cwd,
+        env: { ...context.env, ...updates }
+      }
+    };
+  }
+}
+
+// src/rules/builtin/index.ts
+var builtinRules = [
+  new CdRule,
+  new EmptyCommandRule,
+  new ExportRule
+];
+
+// src/rules/file-tool-rule.ts
+var import_picomatch2 = __toESM(require_picomatch2(), 1);
+class FileToolRule {
+  toolType;
+  pathIn;
+  decision;
+  reason;
+  requiredCwd;
+  children;
+  catchAll;
+  sourceLocation;
+  constructor(toolType, pathIn, decision, reason, sourceLocation) {
+    this.toolType = toolType;
+    this.pathIn = pathIn;
+    this.decision = decision;
+    this.reason = reason;
+    this.sourceLocation = sourceLocation;
+  }
+  evaluateRequiredCwd(context) {
+    if (!this.requiredCwd) {
+      return true;
+    }
+    if (context.cwdResolved === false) {
+      return false;
+    }
+    return import_picomatch2.default(this.requiredCwd, { dot: true })(context.cwd);
+  }
+  async evaluate(ast, context) {
+    if (ast.type !== this.toolType) {
+      return { context };
+    }
+    if (!this.evaluateRequiredCwd(context)) {
+      return { context };
+    }
+    const fileNode = ast;
+    if (this.pathIn.length > 0) {
+      let matched = false;
+      for (const pathEntry of this.pathIn) {
+        if (import_picomatch2.default(pathEntry, { dot: true })(fileNode.file_path)) {
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        return { context };
+      }
+    }
+    if (this.children || this.catchAll) {
+      const childDecisions = [];
+      let workingContext = context;
+      if (this.children) {
+        for (const child of this.children) {
+          const childEvaluation = await child.evaluate(ast, workingContext);
+          workingContext = childEvaluation.context;
+          if (childEvaluation.decision) {
+            childDecisions.push(childEvaluation.decision);
+          }
+        }
+      }
+      const childDecision = pickStrictest(childDecisions);
+      if (childDecision) {
+        return {
+          decision: childDecision,
+          context: workingContext
+        };
+      }
+      if (this.catchAll) {
+        return this.catchAll.evaluate(ast, workingContext);
+      }
+      return {
+        context: workingContext
+      };
+    }
+    const decision = {
+      action: this.decision
+    };
+    if (this.reason !== undefined) {
+      decision.reason = this.reason;
+    }
+    return {
+      decision,
+      context
+    };
+  }
+}
+
+// src/rules/file-tool-rule-factory.ts
+var FILE_TOOL_DECIDE_FIELDS = new Set([
+  "decide",
+  "reason",
+  "path",
+  "path-in",
+  "cwd",
+  "sourceLocation"
+]);
+var FILE_TOOL_KNOWN_FIELDS = new Set([
+  ...FILE_TOOL_DECIDE_FIELDS,
+  "rules"
+]);
+
+class FileToolRuleFactory {
+  toolType;
+  constructor(toolType) {
+    this.toolType = toolType;
+  }
+  load(fileToolConfig) {
+    if (!fileToolConfig || typeof fileToolConfig !== "object") {
+      throw new Error(`permissions.yaml: ${this.toolType} must be an object or array`);
+    }
+    const entries = Array.isArray(fileToolConfig) ? fileToolConfig : [fileToolConfig];
+    const children = [];
+    let catchAll;
+    let hasConstrainedEntry = false;
+    for (let entryIndex = 0;entryIndex < entries.length; entryIndex++) {
+      const entry = entries[entryIndex];
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        throw new Error(`permissions.yaml: ${this.toolType} must contain only rule objects`);
+      }
+      const loadedRules = this.loadFileToolEntry(entry, undefined);
+      const isLast = entryIndex === entries.length - 1;
+      if (isLast && typeof entry.decide === "string" && hasConstrainedEntry) {
+        catchAll = loadedRules[loadedRules.length - 1];
+      } else {
+        children.push(...loadedRules);
+        if (typeof entry.decide !== "string" || entry.path !== undefined || entry["path-in"] !== undefined) {
+          hasConstrainedEntry = true;
+        }
+      }
+    }
+    if (!catchAll) {
+      return children;
+    }
+    const listRule = new FileToolRule(this.toolType, [], "", undefined, undefined);
+    listRule.children = children;
+    listRule.catchAll = catchAll;
+    return [listRule];
+  }
+  loadFileToolEntry(fileToolEntry, parentCwd) {
+    if (typeof fileToolEntry.decide === "string") {
+      return [this.loadDecideRule(fileToolEntry, parentCwd)];
+    }
+    if (fileToolEntry.rules) {
+      return this.loadSubrules(fileToolEntry, parentCwd);
+    }
+    throw new Error(`permissions.yaml: ${this.toolType} entry must have decide or rules`);
+  }
+  loadSubrules(fileToolEntry, parentCwd) {
+    const rulesList = fileToolEntry.rules;
+    if (!Array.isArray(rulesList)) {
+      throw new Error(`permissions.yaml: ${this.toolType} rules must be an array`);
+    }
+    for (const entryKey of Object.keys(fileToolEntry)) {
+      if (!FILE_TOOL_KNOWN_FIELDS.has(entryKey)) {
+        throw new Error(`permissions.yaml: ${this.toolType} unknown field '${entryKey}'`);
+      }
+    }
+    const entryCwd = this.loadCwd(fileToolEntry.cwd);
+    const effectiveCwd = entryCwd ? entryCwd : parentCwd;
+    const children = [];
+    let catchAll;
+    for (let entryIndex = 0;entryIndex < rulesList.length; entryIndex++) {
+      const ruleEntry = rulesList[entryIndex];
+      if (!ruleEntry || typeof ruleEntry !== "object" || Array.isArray(ruleEntry)) {
+        throw new Error(`permissions.yaml: ${this.toolType} rules must contain only rule objects`);
+      }
+      const loadedRules = this.loadFileToolEntry(ruleEntry, effectiveCwd);
+      const isLast = entryIndex === rulesList.length - 1;
+      if (isLast && typeof ruleEntry.decide === "string" && children.length > 0) {
+        catchAll = loadedRules[loadedRules.length - 1];
+      } else {
+        children.push(...loadedRules);
+      }
+    }
+    if (!catchAll && children.length <= 1) {
+      return children;
+    }
+    const listRule = new FileToolRule(this.toolType, [], "", undefined, undefined);
+    if (effectiveCwd) {
+      listRule.requiredCwd = effectiveCwd;
+    }
+    listRule.children = children;
+    if (catchAll) {
+      listRule.catchAll = catchAll;
+    }
+    return [listRule];
+  }
+  loadDecideRule(fileToolEntry, parentCwd) {
+    for (const entryKey of Object.keys(fileToolEntry)) {
+      if (!FILE_TOOL_DECIDE_FIELDS.has(entryKey)) {
+        throw new Error(`permissions.yaml: ${this.toolType} unknown field '${entryKey}'`);
+      }
+    }
+    const decide2 = fileToolEntry.decide;
+    if (typeof decide2 !== "string") {
+      throw new Error(`permissions.yaml: ${this.toolType} must have a decide field`);
+    }
+    const reason = fileToolEntry.reason;
+    if (reason !== undefined && typeof reason !== "string") {
+      throw new Error(`permissions.yaml: ${this.toolType} reason must be a string`);
+    }
+    const path = fileToolEntry.path;
+    const pathInValue = fileToolEntry["path-in"];
+    let pathIn = [];
+    if (path !== undefined && typeof path !== "string") {
+      throw new Error(`permissions.yaml: ${this.toolType} path must be a string`);
+    }
+    if (pathInValue !== undefined) {
+      if (!Array.isArray(pathInValue)) {
+        throw new Error(`permissions.yaml: ${this.toolType} path-in must be an array`);
+      }
+      for (const pathEntry of pathInValue) {
+        if (typeof pathEntry !== "string") {
+          throw new Error(`permissions.yaml: ${this.toolType} path-in entries must be strings`);
+        }
+        pathIn.push(this.expandProjectDirToken(pathEntry));
+      }
+    } else if (typeof path === "string") {
+      pathIn = [this.expandProjectDirToken(path)];
+    }
+    const sourceLocation = fileToolEntry.sourceLocation;
+    const rule = new FileToolRule(this.toolType, pathIn, decide2, reason, sourceLocation);
+    const entryCwd = this.loadCwd(fileToolEntry.cwd);
+    const effectiveCwd = entryCwd ? entryCwd : parentCwd;
+    if (effectiveCwd) {
+      rule.requiredCwd = effectiveCwd;
+    }
+    return rule;
+  }
+  loadCwd(cwdField) {
+    if (!cwdField) {
+      return;
+    }
+    if (typeof cwdField !== "string") {
+      throw new Error(`permissions.yaml: ${this.toolType} cwd must be a string`);
+    }
+    return this.expandProjectDirToken(cwdField);
+  }
+  expandProjectDirToken(pattern) {
+    let expanded = pattern;
+    const projectDirToken = "${{PROJECT_DIR}}";
+    if (expanded.includes(projectDirToken)) {
+      const projectDir = process.env["CLAUDE_PROJECT_DIR"];
+      if (projectDir) {
+        expanded = expanded.split(projectDirToken).join(projectDir);
+      }
+    }
+    const homeToken = "${{HOME}}";
+    if (expanded.includes(homeToken)) {
+      const homeDir = process.env["HOME"];
+      if (homeDir) {
+        expanded = expanded.split(homeToken).join(homeDir);
+      }
+    }
+    return expanded;
+  }
+}
+
+// src/rules/generic-tool-rule.ts
+var import_picomatch3 = __toESM(require_picomatch2(), 1);
+
+class GenericToolRule {
+  pattern;
+  toolIn;
+  decision;
+  reason;
+  sourceLocation;
+  constructor(pattern, decision, reason, toolIn, sourceLocation) {
+    if (pattern === undefined && toolIn === undefined) {
+      throw new Error("GenericToolRule must have either pattern or toolIn");
+    }
+    this.decision = decision;
+    this.pattern = pattern;
+    this.reason = reason;
+    this.toolIn = toolIn;
+    this.sourceLocation = sourceLocation;
+  }
+  async evaluate(ast, context) {
+    let matched = false;
+    if (ast.type === "tool") {
+      const toolNode = ast;
+      if (this.toolIn !== undefined) {
+        for (const entry of this.toolIn) {
+          if (import_picomatch3.default(entry)(toolNode.tool_name)) {
+            matched = true;
+            break;
+          }
+        }
+      } else if (this.pattern !== undefined) {
+        matched = import_picomatch3.default(this.pattern)(toolNode.tool_name);
+      }
+    } else if (this.toolIn !== undefined) {
+      for (const entry of this.toolIn) {
+        if (entry.toLowerCase() === ast.type) {
+          matched = true;
+          break;
+        }
+      }
+    } else if (this.pattern !== undefined) {
+      matched = this.pattern.toLowerCase() === ast.type;
+    }
+    if (!matched) {
+      return { context };
+    }
+    const decision = {
+      action: this.decision
+    };
+    if (this.reason !== undefined) {
+      decision.reason = this.reason;
+    }
+    return {
+      decision,
+      context
+    };
+  }
+}
+
+// src/rules/generic-tool-rule-factory.ts
+class GenericToolRuleFactory {
+  configKey;
+  constructor(configKey) {
+    this.configKey = configKey;
+  }
+  load(genericToolConfig) {
+    if (!genericToolConfig || typeof genericToolConfig !== "object" || Array.isArray(genericToolConfig)) {
+      throw new Error(`permissions.yaml: ${this.configKey} must be an object`);
+    }
+    const decide2 = genericToolConfig.decide;
+    if (typeof decide2 !== "string") {
+      throw new Error(`permissions.yaml: ${this.configKey} must have a decide field`);
+    }
+    const reason = genericToolConfig.reason;
+    if (reason !== undefined && typeof reason !== "string") {
+      throw new Error(`permissions.yaml: ${this.configKey} reason must be a string`);
+    }
+    const toolInField = genericToolConfig["tool-in"];
+    const sourceLocation = genericToolConfig.sourceLocation;
+    if (toolInField !== undefined) {
+      if (!Array.isArray(toolInField)) {
+        throw new Error(`permissions.yaml: ${this.configKey} tool-in must be an array`);
+      }
+      const toolIn = [];
+      for (const item of toolInField) {
+        if (typeof item !== "string") {
+          throw new Error(`permissions.yaml: ${this.configKey} tool-in entries must be strings`);
+        }
+        toolIn.push(item);
+      }
+      return [new GenericToolRule(undefined, decide2, reason, toolIn, sourceLocation)];
+    }
+    const toolField = genericToolConfig.tool;
+    let pattern = this.configKey;
+    if (toolField !== undefined) {
+      if (typeof toolField !== "string") {
+        throw new Error(`permissions.yaml: ${this.configKey} tool must be a string`);
+      }
+      pattern = toolField;
+    }
+    return [new GenericToolRule(pattern, decide2, reason, undefined, sourceLocation)];
+  }
+}
+
+// src/rules/grep-rule.ts
+class GrepRule {
+  decision;
+  reason;
+  sourceLocation;
+  constructor(decision, reason, sourceLocation) {
+    this.decision = decision;
+    this.reason = reason;
+    this.sourceLocation = sourceLocation;
+  }
+  async evaluate(ast, context) {
+    if (ast.type !== "grep") {
+      return { context };
+    }
+    const decision = {
+      action: this.decision
+    };
+    if (this.reason !== undefined) {
+      decision.reason = this.reason;
+    }
+    return {
+      decision,
+      context
+    };
+  }
+}
+
+// src/rules/grep-rule-factory.ts
+class GrepRuleFactory {
+  load(grepConfig) {
+    if (!grepConfig || typeof grepConfig !== "object" || Array.isArray(grepConfig)) {
+      throw new Error("permissions.yaml: Grep must be an object");
+    }
+    const decide2 = grepConfig.decide;
+    if (typeof decide2 !== "string") {
+      throw new Error("permissions.yaml: Grep must have a decide field");
+    }
+    const reason = grepConfig.reason;
+    if (reason !== undefined && typeof reason !== "string") {
+      throw new Error("permissions.yaml: Grep reason must be a string");
+    }
+    const sourceLocation = grepConfig.sourceLocation;
+    return [new GrepRule(decide2, reason, sourceLocation)];
+  }
+}
+
+// src/rules/redirect-rule.ts
+var import_picomatch4 = __toESM(require_picomatch2(), 1);
+import { resolve as resolve3 } from "path";
+var REDIRECT_OUT_OPS = new Set([">", ">>", "2>", "&>"]);
+var REDIRECT_IN_OPS = new Set(["<"]);
+var REDIRECT_OUT_DECIDE_FIELDS = new Set([
+  "decide",
+  "reason",
+  "path",
+  "path-in",
+  "sourceLocation"
+]);
+
+class RedirectOutOrderedRule {
+  entries;
+  sourceLocation;
+  constructor(entries, sourceLocation) {
+    this.entries = entries;
+    this.sourceLocation = sourceLocation;
+  }
+  matchesEntry(redirectNode, entry, context) {
+    if (!REDIRECT_OUT_OPS.has(redirectNode.op)) {
+      return false;
+    }
+    if (entry.pathIn.length > 0) {
+      let target = redirectNode.target;
+      if (!target.startsWith("/")) {
+        target = resolve3(context.cwd, target);
+      }
+      for (const pathPattern of entry.pathIn) {
+        let pattern = pathPattern;
+        if (pathPattern.startsWith("./")) {
+          pattern = context.cwd + "/" + pathPattern.slice(2);
+        }
+        if (import_picomatch4.default(pattern, { dot: true })(target)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    return true;
+  }
+  async evaluate(ast, context) {
+    if (ast.type !== "redirect") {
+      return { context };
+    }
+    const redirectNode = ast;
+    for (const entry of this.entries) {
+      if (!this.matchesEntry(redirectNode, entry, context)) {
+        continue;
+      }
+      const decision = {
+        action: entry.decision
+      };
+      if (entry.reason !== undefined) {
+        decision.reason = entry.reason;
+      }
+      return {
+        decision,
+        context
+      };
+    }
+    return { context };
+  }
+}
+var REDIRECT_IN_DECIDE_FIELDS = new Set([
+  "decide",
+  "reason",
+  "path",
+  "path-in",
+  "sourceLocation"
+]);
+
+class RedirectInOrderedRule {
+  entries;
+  sourceLocation;
+  constructor(entries, sourceLocation) {
+    this.entries = entries;
+    this.sourceLocation = sourceLocation;
+  }
+  matchesEntry(redirectNode, entry, context) {
+    if (!REDIRECT_IN_OPS.has(redirectNode.op)) {
+      return false;
+    }
+    if (entry.pathIn.length > 0) {
+      let target = redirectNode.target;
+      if (!target.startsWith("/")) {
+        target = resolve3(context.cwd, target);
+      }
+      for (const pathPattern of entry.pathIn) {
+        let pattern = pathPattern;
+        if (pathPattern.startsWith("./")) {
+          pattern = context.cwd + "/" + pathPattern.slice(2);
+        }
+        if (import_picomatch4.default(pattern, { dot: true })(target)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    return true;
+  }
+  async evaluate(ast, context) {
+    if (ast.type !== "redirect") {
+      return { context };
+    }
+    const redirectNode = ast;
+    for (const entry of this.entries) {
+      if (!this.matchesEntry(redirectNode, entry, context)) {
+        continue;
+      }
+      const decision = {
+        action: entry.decision
+      };
+      if (entry.reason !== undefined) {
+        decision.reason = entry.reason;
+      }
+      return {
+        decision,
+        context
+      };
+    }
+    return { context };
+  }
+}
+
+class RedirectRuleFactory {
+  load(redirectConfig) {
+    if (!redirectConfig || typeof redirectConfig !== "object" || Array.isArray(redirectConfig)) {
+      throw new Error("permissions.yaml: redirect must be an object");
+    }
+    const rules = [];
+    if (redirectConfig.out !== undefined) {
+      rules.push(this.loadRedirectOutOrderedRule(redirectConfig.out));
+    }
+    if (redirectConfig.in !== undefined) {
+      rules.push(this.loadRedirectInOrderedRule(redirectConfig.in));
+    }
+    return rules;
+  }
+  loadRedirectOutOrderedRule(redirectOutConfig) {
+    const entries = Array.isArray(redirectOutConfig) ? redirectOutConfig : [redirectOutConfig];
+    const loadedEntries = [];
+    for (const entry of entries) {
+      loadedEntries.push(this.loadRedirectOutEntry(entry));
+    }
+    const sourceLocation = entries.length > 0 ? this.loadSourceLocation(entries[0]) : undefined;
+    return new RedirectOutOrderedRule(loadedEntries, sourceLocation);
+  }
+  loadRedirectInOrderedRule(redirectInConfig) {
+    const entries = Array.isArray(redirectInConfig) ? redirectInConfig : [redirectInConfig];
+    const loadedEntries = [];
+    for (const entry of entries) {
+      loadedEntries.push(this.loadRedirectInEntry(entry));
+    }
+    const sourceLocation = entries.length > 0 ? this.loadSourceLocation(entries[0]) : undefined;
+    return new RedirectInOrderedRule(loadedEntries, sourceLocation);
+  }
+  loadRedirectOutEntry(redirectEntry) {
+    if (!redirectEntry || typeof redirectEntry !== "object" || Array.isArray(redirectEntry)) {
+      throw new Error("permissions.yaml: redirect.out must contain only rule objects");
+    }
+    for (const entryKey of Object.keys(redirectEntry)) {
+      if (!REDIRECT_OUT_DECIDE_FIELDS.has(entryKey)) {
+        throw new Error(`permissions.yaml: redirect.out unknown field '${entryKey}'`);
+      }
+    }
+    const decide2 = redirectEntry.decide;
+    if (typeof decide2 !== "string") {
+      throw new Error("permissions.yaml: redirect.out must have a decide field");
+    }
+    const reason = redirectEntry.reason;
+    if (reason !== undefined && typeof reason !== "string") {
+      throw new Error("permissions.yaml: redirect.out reason must be a string");
+    }
+    const path = redirectEntry.path;
+    const pathInValue = redirectEntry["path-in"];
+    let pathIn = [];
+    if (path !== undefined && typeof path !== "string") {
+      throw new Error("permissions.yaml: redirect.out path must be a string");
+    }
+    if (pathInValue !== undefined) {
+      if (!Array.isArray(pathInValue)) {
+        throw new Error("permissions.yaml: redirect.out path-in must be an array");
+      }
+      for (const pathEntry of pathInValue) {
+        if (typeof pathEntry !== "string") {
+          throw new Error("permissions.yaml: redirect.out path-in entries must be strings");
+        }
+      }
+      pathIn = pathInValue;
+    } else if (typeof path === "string") {
+      pathIn = [path];
+    }
+    return {
+      pathIn,
+      decision: decide2,
+      reason,
+      sourceLocation: this.loadSourceLocation(redirectEntry)
+    };
+  }
+  loadRedirectInEntry(redirectEntry) {
+    if (!redirectEntry || typeof redirectEntry !== "object" || Array.isArray(redirectEntry)) {
+      throw new Error("permissions.yaml: redirect.in must contain only rule objects");
+    }
+    for (const entryKey of Object.keys(redirectEntry)) {
+      if (!REDIRECT_IN_DECIDE_FIELDS.has(entryKey)) {
+        throw new Error(`permissions.yaml: redirect.in unknown field '${entryKey}'`);
+      }
+    }
+    const decide2 = redirectEntry.decide;
+    if (typeof decide2 !== "string") {
+      throw new Error("permissions.yaml: redirect.in must have a decide field");
+    }
+    const reason = redirectEntry.reason;
+    if (reason !== undefined && typeof reason !== "string") {
+      throw new Error("permissions.yaml: redirect.in reason must be a string");
+    }
+    const path = redirectEntry.path;
+    const pathInValue = redirectEntry["path-in"];
+    let pathIn = [];
+    if (path !== undefined && typeof path !== "string") {
+      throw new Error("permissions.yaml: redirect.in path must be a string");
+    }
+    if (pathInValue !== undefined) {
+      if (!Array.isArray(pathInValue)) {
+        throw new Error("permissions.yaml: redirect.in path-in must be an array");
+      }
+      for (const pathEntry of pathInValue) {
+        if (typeof pathEntry !== "string") {
+          throw new Error("permissions.yaml: redirect.in path-in entries must be strings");
+        }
+      }
+      pathIn = pathInValue;
+    } else if (typeof path === "string") {
+      pathIn = [path];
+    }
+    return {
+      pathIn,
+      decision: decide2,
+      reason,
+      sourceLocation: this.loadSourceLocation(redirectEntry)
+    };
+  }
+  loadSourceLocation(entry) {
+    return entry.sourceLocation;
+  }
+}
+
+// src/rules/webfetch-rule.ts
+class WebFetchRule {
+  hostIn;
+  decision;
+  reason;
+  sourceLocation;
+  constructor(hostIn, decision, reason, sourceLocation) {
+    this.hostIn = hostIn;
+    this.decision = decision;
+    this.reason = reason;
+    this.sourceLocation = sourceLocation;
+  }
+  async evaluate(ast, context) {
+    if (ast.type !== "webfetch") {
+      return { context };
+    }
+    if (this.hostIn.length > 0) {
+      const webfetchNode = ast;
+      let hostname = "";
+      try {
+        hostname = new URL(webfetchNode.url).hostname;
+      } catch {
+        hostname = "";
+      }
+      let matched = false;
+      for (const hostEntry of this.hostIn) {
+        if (hostname === hostEntry) {
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        return { context };
+      }
+    }
+    const decision = {
+      action: this.decision
+    };
+    if (this.reason !== undefined) {
+      decision.reason = this.reason;
+    }
+    return {
+      decision,
+      context
+    };
+  }
+}
+
+// src/rules/webfetch-rule-factory.ts
+class WebFetchRuleFactory {
+  load(webFetchConfig) {
+    if (!webFetchConfig || typeof webFetchConfig !== "object" || Array.isArray(webFetchConfig)) {
+      throw new Error("permissions.yaml: webfetch must be an object");
+    }
+    const decide2 = webFetchConfig.decide;
+    const host = webFetchConfig.host;
+    const hostInValue = webFetchConfig["host-in"];
+    if (typeof decide2 !== "string") {
+      throw new Error("permissions.yaml: webfetch must have a decide field");
+    }
+    const reason = webFetchConfig.reason;
+    if (reason !== undefined && typeof reason !== "string") {
+      throw new Error("permissions.yaml: webfetch reason must be a string");
+    }
+    if (host !== undefined && typeof host !== "string") {
+      throw new Error("permissions.yaml: webfetch host must be a string");
+    }
+    const sourceLocation = webFetchConfig.sourceLocation;
+    if (hostInValue !== undefined) {
+      if (!Array.isArray(hostInValue)) {
+        throw new Error("permissions.yaml: webfetch host-in must be an array");
+      }
+      for (const hostEntry of hostInValue) {
+        if (typeof hostEntry !== "string") {
+          throw new Error("permissions.yaml: webfetch host-in entries must be strings");
+        }
+      }
+      return [new WebFetchRule(hostInValue, decide2, reason, sourceLocation)];
+    }
+    if (typeof host === "string") {
+      return [new WebFetchRule([host], decide2, reason, sourceLocation)];
+    }
+    return [new WebFetchRule([], decide2, reason, sourceLocation)];
+  }
+}
+
+// src/load.ts
+var sectionFactories = {
+  bash: new BashRuleFactory,
+  read: new FileToolRuleFactory("read"),
+  write: new FileToolRuleFactory("write"),
+  edit: new FileToolRuleFactory("edit"),
+  multi_edit: new FileToolRuleFactory("multiedit"),
+  webfetch: new WebFetchRuleFactory,
+  grep: new GrepRuleFactory,
+  redirect: new RedirectRuleFactory
+};
+function loadSection(permissionsConfig, sectionKey, factory) {
+  const sectionConfig = permissionsConfig[sectionKey];
+  if (!sectionConfig) {
+    return [];
+  }
+  return factory.load(sectionConfig);
+}
+async function loadConfigFile(configPath) {
+  let content;
+  try {
+    content = await readFile2(configPath, "utf-8");
+  } catch (readError) {
+    const errorCode = readError.code;
+    if (errorCode === "ENOENT") {
+      return [];
+    }
+    throw readError;
+  }
+  const permissionsConfig = parsePermissionsYaml(content, configPath);
+  if (permissionsConfig === null || typeof permissionsConfig !== "object" || Array.isArray(permissionsConfig)) {
+    throw new Error("permissions.yaml: root must be an object");
+  }
+  const configRules = [];
+  for (const sectionKey of Object.keys(permissionsConfig)) {
+    configRules.push(...loadSection(permissionsConfig, sectionKey, sectionFactories[sectionKey.toLowerCase()] || new GenericToolRuleFactory(sectionKey)));
+  }
+  return configRules;
+}
+async function loadPermissionsDir(permissionsDir, displayPrefix, logger) {
+  const configFileNames = [];
+  try {
+    const dirEntries = await readdir(permissionsDir);
+    for (const entryName of dirEntries) {
+      if (entryName.startsWith(".")) {
+        continue;
+      }
+      if (!entryName.endsWith(".yaml") && !entryName.endsWith(".yml")) {
+        continue;
+      }
+      const entryPath = join2(permissionsDir, entryName);
+      const entryStat = await stat(entryPath);
+      if (entryStat.isFile()) {
+        configFileNames.push(entryName);
+      }
+    }
+  } catch (readError) {
+    const errorCode = readError.code;
+    if (errorCode !== "ENOENT") {
+      throw readError;
+    }
+  }
+  configFileNames.sort();
+  const dirRules = [];
+  for (const configFileName of configFileNames) {
+    const configFileRules = await loadConfigFile(join2(permissionsDir, configFileName));
+    logConfigLoad(logger, `${displayPrefix}/${configFileName}`, configFileRules.length);
+    dirRules.push(...configFileRules);
+  }
+  return dirRules;
+}
+async function load(projectDir, homeDir, logger) {
+  const rules = [...builtinRules];
+  const homeMainRules = await loadConfigFile(join2(homeDir, ".claude", "permissions.yaml"));
+  logConfigLoad(logger, "~/.claude/permissions.yaml", homeMainRules.length);
+  rules.push(...homeMainRules);
+  const homePermissionsDir = join2(homeDir, ".claude", "permissions.d");
+  rules.push(...await loadPermissionsDir(homePermissionsDir, "~/.claude/permissions.d", logger));
+  const projectMainRules = await loadConfigFile(join2(projectDir, ".claude", "permissions.yaml"));
+  logConfigLoad(logger, ".claude/permissions.yaml", projectMainRules.length);
+  rules.push(...projectMainRules);
+  rules.push(...await loadPermissionsDir(join2(projectDir, ".claude", "permissions.d"), ".claude/permissions.d", logger));
+  return { rules };
+}
+
+// src/load-commands.ts
+import { readdir as readdir2, readFile as readFile3, stat as stat2 } from "fs/promises";
+import { join as join3 } from "path";
+function normaliseFlagDescriptor(raw) {
+  return {
+    arity: raw.arity ?? 0,
+    kind: raw.kind ?? "string",
+    description: raw.description ?? ""
+  };
+}
+function normalisePositionalDescriptor(raw) {
+  return {
+    kind: raw.kind ?? "string",
+    description: raw.description ?? "",
+    variadic: raw.variadic ?? false
+  };
+}
+function normaliseCommandDescriptor(raw) {
+  const flags = {};
+  if (raw.flags !== undefined) {
+    for (const [aliasGroup, rawFlag] of Object.entries(raw.flags)) {
+      flags[aliasGroup] = normaliseFlagDescriptor(rawFlag);
+    }
+  }
+  const positionals = (raw.positionals ?? []).map(normalisePositionalDescriptor);
+  const result = {
+    description: raw.description ?? "",
+    positionals,
+    flags
+  };
+  if (raw.cmds !== undefined) {
+    const cmds = {};
+    for (const [subCommandName, rawSubCommand] of Object.entries(raw.cmds)) {
+      cmds[subCommandName] = normaliseCommandDescriptor(rawSubCommand);
+    }
+    result.cmds = cmds;
+  }
+  return result;
+}
+async function isYamlFile(dirPath, entryName) {
+  if (entryName.startsWith(".")) {
+    return false;
+  }
+  if (!entryName.endsWith(".yaml") && !entryName.endsWith(".yml")) {
+    return false;
+  }
+  const fileStat = await stat2(join3(dirPath, entryName));
+  return fileStat.isFile();
+}
+async function mergeDescriptorsFromDir(dirPath, target) {
+  let entries;
+  try {
+    entries = await readdir2(dirPath);
+  } catch {
+    return;
+  }
+  const yamlNames = [];
+  for (const entryName of entries) {
+    if (await isYamlFile(dirPath, entryName)) {
+      yamlNames.push(entryName);
+    }
+  }
+  yamlNames.sort();
+  for (const yamlName of yamlNames) {
+    const filePath = join3(dirPath, yamlName);
+    const content = await readFile3(filePath, "utf-8");
+    const parsed = $parse(content);
+    if (parsed === null || typeof parsed !== "object") {
+      continue;
+    }
+    for (const [commandName, rawDescriptor] of Object.entries(parsed)) {
+      if (rawDescriptor === null || typeof rawDescriptor !== "object") {
+        continue;
+      }
+      target.set(commandName, normaliseCommandDescriptor(rawDescriptor));
+    }
+  }
+}
+async function loadCommandDescriptors(homeDir, projectDir) {
+  const descriptors = new Map;
+  const homeCommandsDir = join3(homeDir, ".claude", "permissions.d", "commands");
+  await mergeDescriptorsFromDir(homeCommandsDir, descriptors);
+  const projectCommandsDir = join3(projectDir, ".claude", "permissions.d", "commands");
+  await mergeDescriptorsFromDir(projectCommandsDir, descriptors);
+  return descriptors;
+}
+function resolveFlagArity(descriptor, flagName) {
+  for (const [aliasGroup, flagDescriptor] of Object.entries(descriptor.flags)) {
+    const aliases = aliasGroup.split("|");
+    if (aliases.includes(flagName)) {
+      return flagDescriptor.arity;
+    }
+  }
+  return 0;
+}
+
+// src/ast-nodes/command-ast-node.ts
+class CommandAstNode extends AstNode {
+  type = "command";
+  commandName;
+  options;
+  positionals;
+  envPrefix;
+  constructor(commandName, options, positionals, envPrefix, source) {
+    super("command", source);
+    this.commandName = commandName;
+    this.options = options;
+    this.positionals = positionals;
+    this.envPrefix = envPrefix;
+  }
+}
+
+// src/ast-nodes/bash-ast-node.ts
+class BashAstNode extends AstNode {
+  children;
+  constructor(children, source) {
+    super("bash", source);
+    this.children = children;
+  }
+}
+
+// src/ast-nodes/binop-ast-node.ts
+class BinopAstNode extends AstNode {
+  op;
+  children;
+  constructor(op, children, source) {
+    super("binop", source);
+    this.op = op;
+    this.children = children;
+  }
+}
+
+// src/ast-nodes/redirect-ast-node.ts
+class RedirectAstNode extends AstNode {
+  type = "redirect";
+  op;
+  target;
+  children;
+  constructor(op, target, children, source) {
+    super("redirect", source);
+    this.op = op;
+    this.target = target;
+    this.children = children;
+  }
+}
+
+// src/ast-nodes/brace-group-ast-node.ts
+class BraceGroupAstNode extends AstNode {
+  children;
+  constructor(children, source) {
+    super("brace_group", source);
+    this.children = children;
+  }
+}
+
+// src/ast-nodes/subshell-ast-node.ts
+class SubshellAstNode extends AstNode {
+  children;
+  constructor(children, source) {
+    super("subshell", source);
+    this.children = children;
+  }
+  async evaluate(rules, context, logger) {
+    const result = await super.evaluate(rules, {
+      ...context,
+      env: { ...context.env }
+    }, logger);
+    return {
+      decision: result.decision,
+      context
+    };
+  }
+}
+
+// src/ast-nodes/for-loop-ast-node.ts
+class ForLoopAstNode extends AstNode {
+  children;
+  variable;
+  items;
+  constructor(type, children, variable, items, source) {
+    super(type, source);
+    this.children = children;
+    this.variable = variable;
+    this.items = items;
+  }
+  async evaluate(rules, context, logger) {
+    const decisions = [];
+    const body = this.children?.body;
+    if (body) {
+      for (const item of this.items) {
+        const iterationContext = {
+          ...context,
+          env: {
+            ...context.env,
+            [this.variable]: item
+          }
+        };
+        const iterationResult = await body.evaluate(rules, iterationContext, logger);
+        if (iterationResult.decision) {
+          decisions.push(iterationResult.decision);
+        }
+      }
+    }
+    const combinedDecision = pickStrictest(decisions);
+    if (combinedDecision) {
+      logger.log({
+        type: "aggregation",
+        timestamp: toLocalISOString(new Date),
+        cmd: this.source,
+        decision: combinedDecision.action,
+        reason: combinedDecision.reason
+      });
+    }
+    return {
+      decision: combinedDecision,
+      context
+    };
+  }
+}
+
+// src/ast-nodes/while-loop-ast-node.ts
+class WhileLoopAstNode extends AstNode {
+  until;
+  children;
+  constructor(until, children, source) {
+    super("while_loop", source);
+    this.until = until;
+    this.children = children;
+  }
+}
+
+// src/ast-nodes/if-statement-ast-node.ts
+class IfStatementAstNode extends AstNode {
+  children;
+  constructor(children, source) {
+    super("if_statement", source);
+    this.children = children;
+  }
+}
+
+// src/ast-nodes/case-statement-ast-node.ts
+class CaseStatementAstNode extends AstNode {
+  word;
+  clauses;
+  children;
+  constructor(word, clauses, children, source) {
+    super("case_statement", source);
+    this.word = word;
+    this.clauses = clauses;
+    this.children = children;
+  }
+}
+
+// src/ast-nodes/file-path-tool-ast-node.ts
+class FilePathToolAstNode extends AstNode {
+  file_path;
+  constructor(type, file_path, source) {
+    super(type, source);
+    this.file_path = file_path;
+  }
+}
+
+// src/ast-nodes/grep-ast-node.ts
+class GrepAstNode extends AstNode {
+  pattern;
+  path;
+  constructor(pattern, path, source) {
+    super("grep", source);
+    this.pattern = pattern;
+    this.path = path;
+  }
+}
+
+// src/ast-nodes/substitution-ast-node.ts
+class SubstitutionAstNode extends AstNode {
+  children;
+  constructor(children, source) {
+    super("substitution", source);
+    this.children = children;
+  }
+}
+
+// src/ast-nodes/webfetch-ast-node.ts
+class WebFetchAstNode extends AstNode {
+  type = "webfetch";
+  url;
+  constructor(url, source) {
+    super("webfetch", source);
+    this.url = url;
+  }
+}
+
+// src/ast-nodes/agent-ast-node.ts
+class AgentAstNode extends AstNode {
+  description;
+  prompt;
+  constructor(description, prompt, source) {
+    super("agent", source);
+    this.description = description;
+    this.prompt = prompt;
+  }
+}
+
+// src/ast-nodes/tool-ast-node.ts
+class ToolAstNode extends AstNode {
+  type = "tool";
+  tool_name;
+  tool_input;
+  constructor(tool_name, tool_input, source) {
+    super("tool", source);
+    this.tool_name = tool_name;
+    this.tool_input = tool_input;
+  }
+}
+
+// src/ast-nodes/xargs-ast-node.ts
+class XargsAstNode extends AstNode {
+  options;
+  children;
+  constructor(options, children, source) {
+    super("xargs", source);
+    this.options = options;
+    this.children = children;
+  }
+}
+
+// src/tokenizer.ts
+var REDIRECT_OPERATORS = ["2>&", ">>", "&>", "2>", ">", "<"];
+var BASH_OPERATOR_KINDS = [
+  "&&" /* And */,
+  "||" /* Or */,
+  ";" /* Semicolon */,
+  "|" /* Pipe */,
+  "(" /* OpenParen */,
+  ")" /* CloseParen */,
+  "{" /* OpenBrace */,
+  "}" /* CloseBrace */
+];
+var SHELL_KEYWORD_KINDS = {
+  for: "for" /* For */,
+  in: "in" /* In */,
+  do: "do" /* Do */,
+  done: "done" /* Done */,
+  while: "while" /* While */,
+  until: "until" /* Until */,
+  if: "if" /* If */,
+  then: "then" /* Then */,
+  elif: "elif" /* Elif */,
+  else: "else" /* Else */,
+  fi: "fi" /* Fi */,
+  case: "case" /* Case */,
+  esac: "esac" /* Esac */
+};
+
+class Tokenizer {
+  tokens;
+  position;
+  constructor(input) {
+    this.tokens = Tokenizer.lexInput(input);
+    this.position = 0;
+  }
+  peek() {
+    return this.tokens[this.position];
+  }
+  next() {
+    if (this.tokens[this.position] !== undefined) {
+      this.position++;
+    }
+  }
+  peekNext() {
+    return this.tokens[this.position + 1];
+  }
+  static classifyPlainWord(wordValue) {
+    const keywordKind = SHELL_KEYWORD_KINDS[wordValue];
+    if (keywordKind !== undefined) {
+      return keywordKind;
+    }
+    return "word" /* Word */;
+  }
+  static lexInput(input) {
+    const tokens = [];
+    let pos = 0;
+    let atWordBoundary = true;
+    while (pos < input.length) {
+      if (input[pos] === `
+` || input[pos] === "\r") {
+        const separatorStart = pos;
+        pos++;
+        tokens.push({ kind: ";" /* Semicolon */, value: ";" /* Semicolon */, start: separatorStart, end: pos });
+        atWordBoundary = true;
+        continue;
+      }
+      if (/\s/.test(input[pos])) {
+        atWordBoundary = true;
+        pos++;
+        continue;
+      }
+      if (input[pos] === "#" && atWordBoundary) {
+        while (pos < input.length && input[pos] !== `
+` && input[pos] !== "\r") {
+          pos++;
+        }
+        continue;
+      }
+      let matchedRedirect = undefined;
+      for (const operator of REDIRECT_OPERATORS) {
+        if (input.startsWith(operator, pos)) {
+          matchedRedirect = operator;
+          break;
+        }
+      }
+      if (matchedRedirect !== undefined) {
+        const redirectStart = pos;
+        pos += matchedRedirect.length;
+        tokens.push({ kind: "redirect" /* Redirect */, value: matchedRedirect, start: redirectStart, end: pos });
+        atWordBoundary = true;
+        continue;
+      }
+      let matchedOperator = undefined;
+      for (const kind of BASH_OPERATOR_KINDS) {
+        if (input.startsWith(kind, pos)) {
+          matchedOperator = kind;
+          break;
+        }
+      }
+      if (matchedOperator === undefined && input.startsWith("&", pos)) {
+        matchedOperator = ";" /* Semicolon */;
+      }
+      if (matchedOperator !== undefined) {
+        const operatorStart = pos;
+        const operatorLength = matchedOperator === ";" /* Semicolon */ && input[operatorStart] === "&" ? 1 : matchedOperator.length;
+        pos += operatorLength;
+        tokens.push({ kind: matchedOperator, value: matchedOperator, start: operatorStart, end: pos });
+        atWordBoundary = true;
+        continue;
+      }
+      atWordBoundary = false;
+      const wordStart = pos;
+      let plainStart = pos;
+      let plainValue = "";
+      while (pos < input.length) {
+        if (/\s/.test(input[pos])) {
+          break;
+        }
+        let atRedirect = false;
+        for (const operator of REDIRECT_OPERATORS) {
+          if (input.startsWith(operator, pos)) {
+            atRedirect = true;
+            break;
+          }
+        }
+        let atOperator = false;
+        for (const kind of BASH_OPERATOR_KINDS) {
+          if (input.startsWith(kind, pos)) {
+            atOperator = true;
+            break;
+          }
+        }
+        if (!atOperator && input.startsWith("&", pos)) {
+          atOperator = true;
+        }
+        if (atRedirect || atOperator) {
+          break;
+        }
+        const isDelimiter = input[pos] === "'" || input[pos] === '"' || input[pos] === "`" || input[pos] === "$" && input[pos + 1] === "(";
+        if (isDelimiter && plainValue.length > 0) {
+          tokens.push({ kind: "word" /* Word */, value: plainValue, start: plainStart, end: pos });
+          plainValue = "";
+        }
+        if (input[pos] === "'") {
+          const openStart = pos;
+          pos++;
+          tokens.push({ kind: "'" /* SingleQuote */, value: "'", start: openStart, end: pos });
+          const contentStart = pos;
+          while (pos < input.length && input[pos] !== "'") {
+            pos++;
+          }
+          if (pos > contentStart) {
+            tokens.push({ kind: "word" /* Word */, value: input.slice(contentStart, pos), start: contentStart, end: pos });
+          }
+          if (pos < input.length) {
+            tokens.push({ kind: "'" /* SingleQuote */, value: "'", start: pos, end: pos + 1 });
+            pos++;
+          }
+          plainStart = pos;
+          continue;
+        }
+        if (input[pos] === '"') {
+          const openStart = pos;
+          pos++;
+          tokens.push({ kind: '"' /* DoubleQuote */, value: '"', start: openStart, end: pos });
+          const contentStart = pos;
+          let contentValue = "";
+          while (pos < input.length && input[pos] !== '"') {
+            if (input[pos] === "\\" && pos + 1 < input.length) {
+              pos++;
+              contentValue += input[pos++];
+            } else {
+              contentValue += input[pos++];
+            }
+          }
+          if (pos > contentStart) {
+            tokens.push({ kind: "word" /* Word */, value: contentValue, start: contentStart, end: pos });
+          }
+          if (pos < input.length) {
+            tokens.push({ kind: '"' /* DoubleQuote */, value: '"', start: pos, end: pos + 1 });
+            pos++;
+          }
+          plainStart = pos;
+          continue;
+        }
+        if (input[pos] === "`") {
+          const openStart = pos;
+          pos++;
+          tokens.push({ kind: "`" /* Backtick */, value: "`", start: openStart, end: pos });
+          const contentStart = pos;
+          while (pos < input.length && input[pos] !== "`") {
+            pos++;
+          }
+          if (pos > contentStart) {
+            tokens.push({ kind: "word" /* Word */, value: input.slice(contentStart, pos), start: contentStart, end: pos });
+          }
+          if (pos < input.length) {
+            tokens.push({ kind: "`" /* Backtick */, value: "`", start: pos, end: pos + 1 });
+            pos++;
+          }
+          plainStart = pos;
+          continue;
+        }
+        if (input[pos] === "$" && pos + 1 < input.length && input[pos + 1] === "(") {
+          const openStart = pos;
+          pos += 2;
+          tokens.push({ kind: "$(" /* SubstitutionOpen */, value: "$(", start: openStart, end: pos });
+          const contentStart = pos;
+          let depth = 1;
+          while (pos < input.length && depth > 0) {
+            if (input[pos] === "(") {
+              depth++;
+            } else if (input[pos] === ")") {
+              depth--;
+              if (depth === 0) {
+                break;
+              }
+            }
+            pos++;
+          }
+          if (pos > contentStart) {
+            tokens.push({ kind: "word" /* Word */, value: input.slice(contentStart, pos), start: contentStart, end: pos });
+          }
+          if (pos < input.length) {
+            tokens.push({ kind: ")" /* CloseParen */, value: ")", start: pos, end: pos + 1 });
+            pos++;
+          }
+          plainStart = pos;
+          continue;
+        }
+        if (input[pos] === "\\" && pos + 1 < input.length) {
+          pos++;
+          plainValue += input[pos++];
+          continue;
+        }
+        plainValue += input[pos++];
+      }
+      if (plainValue.length > 0) {
+        const tokenKind = plainStart === wordStart ? Tokenizer.classifyPlainWord(plainValue) : "word" /* Word */;
+        tokens.push({ kind: tokenKind, value: plainValue, start: plainStart, end: pos });
+      } else if (pos === wordStart) {
+        pos++;
+      }
+    }
+    return tokens;
+  }
+}
+
+// src/parse.ts
+function parseEqualsFlag(flagBody, followingTokens) {
+  const equalsIndex = flagBody.indexOf("=");
+  if (equalsIndex !== -1) {
+    return {
+      argument: {
+        options: { [flagBody.slice(0, equalsIndex)]: flagBody.slice(equalsIndex + 1) },
+        positionals: []
+      },
+      remainingTokens: followingTokens
+    };
+  }
+  return {
+    argument: {
+      options: { [flagBody]: true },
+      positionals: []
+    },
+    remainingTokens: followingTokens
+  };
+}
+function parseLongFlag(flagBody, followingTokens, commandDef) {
+  const equalsIndex = flagBody.indexOf("=");
+  if (equalsIndex !== -1) {
+    return parseEqualsFlag(flagBody, followingTokens);
+  }
+  const flagArity = commandDef !== undefined ? resolveFlagArity(commandDef, flagBody) : 0;
+  if (flagArity === 1) {
+    const nextToken = followingTokens[0];
+    if (nextToken !== undefined) {
+      return {
+        argument: {
+          options: { [flagBody]: nextToken },
+          positionals: []
+        },
+        remainingTokens: followingTokens.slice(1)
+      };
+    }
+  }
+  return {
+    argument: {
+      options: { [flagBody]: true },
+      positionals: []
+    },
+    remainingTokens: followingTokens
+  };
+}
+function parseSingleShortFlag(flagChar, followingTokens, commandDef) {
+  const flagArity = commandDef !== undefined ? resolveFlagArity(commandDef, flagChar) : 0;
+  if (flagArity === 1) {
+    const nextToken = followingTokens[0];
+    if (nextToken !== undefined) {
+      return {
+        argument: {
+          options: { [flagChar]: nextToken },
+          positionals: []
+        },
+        remainingTokens: followingTokens.slice(1)
+      };
+    }
+  }
+  return {
+    argument: {
+      options: { [flagChar]: true },
+      positionals: []
+    },
+    remainingTokens: followingTokens
+  };
+}
+function parseShortFlag(rest, followingTokens, commandDef) {
+  const equalsIndex = rest.indexOf("=");
+  if (equalsIndex !== -1) {
+    return parseEqualsFlag(rest, followingTokens);
+  }
+  if (rest.length === 1) {
+    return parseSingleShortFlag(rest, followingTokens, commandDef);
+  }
+  const combinedOptions = {};
+  for (const flagChar of rest) {
+    combinedOptions[flagChar] = true;
+  }
+  return {
+    argument: {
+      options: combinedOptions,
+      positionals: []
+    },
+    remainingTokens: followingTokens
+  };
+}
+function tokenizeCommand(input) {
+  const words = [];
+  let pos = 0;
+  let atWordBoundary = true;
+  while (pos < input.length) {
+    if (/\s/.test(input[pos])) {
+      atWordBoundary = true;
+      pos++;
+      continue;
+    }
+    if (input[pos] === "#" && atWordBoundary) {
+      return words;
+    }
+    atWordBoundary = false;
+    const wordStart = pos;
+    let wordValue = "";
+    while (pos < input.length) {
+      if (/\s/.test(input[pos])) {
+        break;
+      }
+      if (input[pos] === "'") {
+        pos++;
+        while (pos < input.length && input[pos] !== "'") {
+          wordValue += input[pos++];
+        }
+        if (pos < input.length) {
+          pos++;
+        }
+        continue;
+      }
+      if (input[pos] === '"') {
+        pos++;
+        while (pos < input.length && input[pos] !== '"') {
+          if (input[pos] === "\\" && pos + 1 < input.length) {
+            pos++;
+            wordValue += input[pos++];
+          } else {
+            wordValue += input[pos++];
+          }
+        }
+        if (pos < input.length) {
+          pos++;
+        }
+        continue;
+      }
+      if (input[pos] === "\\" && pos + 1 < input.length) {
+        pos++;
+        wordValue += input[pos++];
+        continue;
+      }
+      wordValue += input[pos++];
+    }
+    if (wordValue.length > 0) {
+      words.push(wordValue);
+    } else if (pos === wordStart) {
+      pos++;
+    }
+  }
+  return words;
+}
+function parseArgument(tokens, commandDef) {
+  const token = tokens[0];
+  const remainingTokens = tokens.slice(1);
+  if (token.startsWith("--")) {
+    return parseLongFlag(token.slice(2), remainingTokens, commandDef);
+  }
+  if (token.startsWith("-")) {
+    return parseShortFlag(token.slice(1), remainingTokens, commandDef);
+  }
+  return {
+    argument: {
+      options: {},
+      positionals: [token]
+    },
+    remainingTokens
+  };
+}
+function parseEnvPrefixToken(tokens) {
+  const token = tokens[0];
+  if (token === undefined || !/^[A-Za-z_][A-Za-z0-9_]*=/.test(token)) {
+    return {
+      envAssignment: undefined,
+      remainingTokens: tokens
+    };
+  }
+  const equalsIndex = token.indexOf("=");
+  return {
+    envAssignment: {
+      key: token.slice(0, equalsIndex),
+      value: token.slice(equalsIndex + 1)
+    },
+    remainingTokens: tokens.slice(1)
+  };
+}
+function parseEnvPrefix(tokens) {
+  const envPrefix = {};
+  let remainingTokens = tokens;
+  while (true) {
+    const parseResult = parseEnvPrefixToken(remainingTokens);
+    if (parseResult.envAssignment === undefined) {
+      return {
+        envPrefix,
+        remainingTokens
+      };
+    }
+    envPrefix[parseResult.envAssignment.key] = parseResult.envAssignment.value;
+    remainingTokens = parseResult.remainingTokens;
+  }
+}
+function parseArguments(tokens, commandDef) {
+  let effectiveCommandDef = commandDef;
+  if (commandDef?.cmds) {
+    let scanTokens = tokens;
+    let subCommandName;
+    while (scanTokens.length > 0) {
+      const scanResult = parseArgument(scanTokens, commandDef);
+      if (scanResult.argument.positionals.length > 0) {
+        subCommandName = scanResult.argument.positionals[0];
+        break;
+      }
+      scanTokens = scanResult.remainingTokens;
+    }
+    if (subCommandName) {
+      const subCommandDef = commandDef.cmds[subCommandName];
+      if (subCommandDef) {
+        effectiveCommandDef = {
+          ...commandDef,
+          flags: { ...commandDef.flags, ...subCommandDef.flags }
+        };
+      }
+    }
+  }
+  const options = {};
+  const positionals = [];
+  let remainingTokens = tokens;
+  while (remainingTokens.length > 0) {
+    const parseResult = parseArgument(remainingTokens, effectiveCommandDef);
+    Object.assign(options, parseResult.argument.options);
+    positionals.push(...parseResult.argument.positionals);
+    remainingTokens = parseResult.remainingTokens;
+  }
+  return {
+    options,
+    positionals
+  };
+}
+function skipSemicolonSeparators(tokenizer) {
+  while (tokenizer.peek()?.kind === ";" /* Semicolon */) {
+    tokenizer.next();
+  }
+}
+function isTerminatorKind(kind, terminators) {
+  for (const terminator of terminators) {
+    if (kind === terminator) {
+      return true;
+    }
   }
   return false;
 }
-var cdRule = function cdRule2(node, env, _call) {
-  if (node.type !== "command" || node.binary !== "cd") {
-    return ABSTAIN;
+function parseSequenceUntil(tokenizer, source, commandRegistry, terminators) {
+  skipSemicolonSeparators(tokenizer);
+  if (tokenizer.peek() === undefined) {
+    return parseBashCommand("", commandRegistry);
   }
-  const target = getCdTarget(node.cmd);
-  if (isUnresolvable(target)) {
-    return {
-      decision: { action: "abstain" },
-      env: { ...env, cwdResolved: false }
-    };
+  const firstToken = tokenizer.peek();
+  if (firstToken !== undefined && terminators.length > 0 && isTerminatorKind(firstToken.kind, terminators)) {
+    return parseBashCommand("", commandRegistry);
   }
-  const newCwd = resolve(env.cwd, target);
-  return {
-    decision: { action: "abstain" },
-    env: { ...env, cwd: newCwd, cwdResolved: true }
-  };
-};
-
-// src/rules/builtin/env-prefix.ts
-var envPrefixRule = function envPrefixRule2(node, env, _call) {
-  if (node.type !== "command") {
-    return ABSTAIN;
+  let left = parseAndExpr(tokenizer, source, commandRegistry);
+  while (tokenizer.peek()?.kind === ";" /* Semicolon */) {
+    tokenizer.next();
+    skipSemicolonSeparators(tokenizer);
+    const nextToken = tokenizer.peek();
+    if (nextToken === undefined || terminators.length > 0 && isTerminatorKind(nextToken.kind, terminators)) {
+      break;
+    }
+    const right = parseAndExpr(tokenizer, source, commandRegistry);
+    left = makeBinopNode(";" /* Semicolon */, left, right);
   }
-  if (node.binary === "") {
-    return ABSTAIN;
+  return left;
+}
+function parseForLoop(tokenizer, source, commandRegistry) {
+  const forToken = tokenizer.peek();
+  const loopStart = forToken?.start ?? source.length;
+  tokenizer.next();
+  let variable = "";
+  const variableToken = tokenizer.peek();
+  if (variableToken !== undefined && isWordTokenKind(variableToken.kind)) {
+    variable = readShellWord(tokenizer, commandRegistry).value;
   }
-  if (Object.keys(node.envPrefix).length === 0) {
-    return ABSTAIN;
+  if (tokenizer.peek()?.kind === "in" /* In */) {
+    tokenizer.next();
   }
-  const scopedEnv = {
-    ...env,
-    env: { ...env.env, ...node.envPrefix }
-  };
-  return {
-    decision: { action: "abstain" },
-    scopedEnv
-  };
-};
-
-// src/rules/builtin/env-set.ts
-var envSetRule = function envSetRule2(node, env, _call) {
-  if (node.type !== "command") {
-    return ABSTAIN;
-  }
-  if (node.binary !== "") {
-    return ABSTAIN;
-  }
-  if (Object.keys(node.envPrefix).length === 0) {
-    return ABSTAIN;
-  }
-  const updatedEnv = {
-    ...env,
-    env: { ...env.env, ...node.envPrefix }
-  };
-  return {
-    decision: { action: "allow", reason: "set environment variable" },
-    env: updatedEnv
-  };
-};
-
-// src/rules/builtin/export.ts
-var exportRule = function exportRule2(node, env, _call) {
-  if (node.type !== "command" || node.binary !== "export") {
-    return ABSTAIN;
-  }
-  const positionals = Array.isArray(node.cmd) ? node.cmd : node.cmd ? [node.cmd] : [];
-  const updates = {};
-  for (const token of positionals) {
-    const eqIndex = token.indexOf("=");
-    if (eqIndex > 0) {
-      updates[token.slice(0, eqIndex)] = token.slice(eqIndex + 1);
+  const items = [];
+  while (true) {
+    const token = tokenizer.peek();
+    if (token === undefined) {
+      break;
+    }
+    if (token.kind === "do" /* Do */) {
+      break;
+    }
+    if (isWordTokenKind(token.kind)) {
+      items.push(readShellWord(tokenizer, commandRegistry).value);
+    } else if (token.kind === ";" /* Semicolon */) {
+      tokenizer.next();
+      skipSemicolonSeparators(tokenizer);
+    } else {
+      break;
     }
   }
-  if (Object.keys(updates).length === 0) {
-    return ABSTAIN;
+  skipSemicolonSeparators(tokenizer);
+  if (tokenizer.peek()?.kind === "do" /* Do */) {
+    tokenizer.next();
   }
-  return {
-    decision: { action: "allow", reason: "set environment variable" },
-    env: { ...env, env: { ...env.env, ...updates } }
-  };
-};
+  const body = parseSequenceUntil(tokenizer, source, commandRegistry, ["done" /* Done */]);
+  let loopEnd = source.length;
+  const doneToken = tokenizer.peek();
+  if (doneToken !== undefined && doneToken.kind === "done" /* Done */) {
+    loopEnd = doneToken.end;
+    tokenizer.next();
+  }
+  return new ForLoopAstNode("for_loop", { body }, variable, items, source.slice(loopStart, loopEnd));
+}
+function parseWhileLoop(tokenizer, source, commandRegistry) {
+  const keywordToken = tokenizer.peek();
+  const loopStart = keywordToken?.start ?? source.length;
+  const isUntilLoop = keywordToken !== undefined && keywordToken.kind === "until" /* Until */;
+  tokenizer.next();
+  const condition = parseSequenceUntil(tokenizer, source, commandRegistry, ["do" /* Do */]);
+  skipSemicolonSeparators(tokenizer);
+  if (tokenizer.peek()?.kind === "do" /* Do */) {
+    tokenizer.next();
+  }
+  const body = parseSequenceUntil(tokenizer, source, commandRegistry, ["done" /* Done */]);
+  let loopEnd = source.length;
+  const doneToken = tokenizer.peek();
+  if (doneToken !== undefined && doneToken.kind === "done" /* Done */) {
+    loopEnd = doneToken.end;
+    tokenizer.next();
+  }
+  return new WhileLoopAstNode(isUntilLoop, { condition, body }, source.slice(loopStart, loopEnd));
+}
+function parseIfStatement(tokenizer, source, commandRegistry) {
+  const ifToken = tokenizer.peek();
+  const statementStart = ifToken?.start ?? source.length;
+  tokenizer.next();
+  const condition = parseSequenceUntil(tokenizer, source, commandRegistry, ["then" /* Then */]);
+  skipSemicolonSeparators(tokenizer);
+  if (tokenizer.peek()?.kind === "then" /* Then */) {
+    tokenizer.next();
+  }
+  const thenBranch = parseSequenceUntil(tokenizer, source, commandRegistry, ["else" /* Else */, "fi" /* Fi */]);
+  let elseBranch = undefined;
+  const nextToken = tokenizer.peek();
+  if (nextToken !== undefined && nextToken.kind === "else" /* Else */) {
+    tokenizer.next();
+    elseBranch = parseSequenceUntil(tokenizer, source, commandRegistry, ["fi" /* Fi */]);
+  }
+  let statementEnd = source.length;
+  const fiToken = tokenizer.peek();
+  if (fiToken !== undefined && fiToken.kind === "fi" /* Fi */) {
+    statementEnd = fiToken.end;
+    tokenizer.next();
+  }
+  const ifStatementNode = new IfStatementAstNode({ condition, thenBranch }, source.slice(statementStart, statementEnd));
+  if (elseBranch !== undefined) {
+    ifStatementNode.children.elseBranch = elseBranch;
+  }
+  return ifStatementNode;
+}
+function isCaseClauseTerminator(tokenizer) {
+  const token = tokenizer.peek();
+  if (token === undefined) {
+    return true;
+  }
+  if (token.kind === "esac" /* Esac */) {
+    return true;
+  }
+  if (token.kind === ";" /* Semicolon */) {
+    const nextToken = tokenizer.peekNext();
+    if (nextToken !== undefined && nextToken.kind === ";" /* Semicolon */) {
+      return true;
+    }
+  }
+  return false;
+}
+function parseSequenceUntilCaseClauseEnd(tokenizer, source, commandRegistry) {
+  skipSemicolonSeparators(tokenizer);
+  if (tokenizer.peek() === undefined) {
+    return parseBashCommand("", commandRegistry);
+  }
+  if (isCaseClauseTerminator(tokenizer)) {
+    return parseBashCommand("", commandRegistry);
+  }
+  let left = parseAndExpr(tokenizer, source, commandRegistry);
+  while (tokenizer.peek()?.kind === ";" /* Semicolon */) {
+    const nextToken = tokenizer.peekNext();
+    if (nextToken !== undefined && nextToken.kind === ";" /* Semicolon */) {
+      break;
+    }
+    if (nextToken !== undefined && nextToken.kind === "esac" /* Esac */) {
+      break;
+    }
+    tokenizer.next();
+    skipSemicolonSeparators(tokenizer);
+    if (isCaseClauseTerminator(tokenizer)) {
+      break;
+    }
+    const right = parseAndExpr(tokenizer, source, commandRegistry);
+    left = makeBinopNode(";" /* Semicolon */, left, right);
+  }
+  return left;
+}
+function parseCaseStatement(tokenizer, source, commandRegistry) {
+  const caseToken = tokenizer.peek();
+  const statementStart = caseToken?.start ?? source.length;
+  tokenizer.next();
+  let word = "";
+  const wordToken = tokenizer.peek();
+  if (wordToken !== undefined && isWordTokenKind(wordToken.kind)) {
+    word = readShellWord(tokenizer, commandRegistry).value;
+  }
+  if (tokenizer.peek()?.kind === "in" /* In */) {
+    tokenizer.next();
+  }
+  skipSemicolonSeparators(tokenizer);
+  const clauses = [];
+  const bodies = [];
+  while (true) {
+    const clauseStartToken = tokenizer.peek();
+    if (clauseStartToken === undefined) {
+      break;
+    }
+    if (clauseStartToken.kind === "esac" /* Esac */) {
+      break;
+    }
+    const clauseStart = clauseStartToken.start;
+    if (tokenizer.peek()?.kind === "(" /* OpenParen */) {
+      tokenizer.next();
+    }
+    const patterns = [];
+    const firstPatternToken = tokenizer.peek();
+    if (firstPatternToken !== undefined && isWordTokenKind(firstPatternToken.kind)) {
+      patterns.push(readShellWord(tokenizer, commandRegistry).value);
+    }
+    while (tokenizer.peek()?.kind === "|" /* Pipe */) {
+      tokenizer.next();
+      const patternToken = tokenizer.peek();
+      if (patternToken !== undefined && isWordTokenKind(patternToken.kind)) {
+        patterns.push(readShellWord(tokenizer, commandRegistry).value);
+      }
+    }
+    if (tokenizer.peek()?.kind === ")" /* CloseParen */) {
+      tokenizer.next();
+    }
+    const body = parseSequenceUntilCaseClauseEnd(tokenizer, source, commandRegistry);
+    clauses.push({ patterns });
+    bodies.push(body);
+    if (tokenizer.peek()?.kind === ";" /* Semicolon */) {
+      tokenizer.next();
+      if (tokenizer.peek()?.kind === ";" /* Semicolon */) {
+        tokenizer.next();
+      }
+    }
+    skipSemicolonSeparators(tokenizer);
+    const afterClauseToken = tokenizer.peek();
+    if (afterClauseToken !== undefined && afterClauseToken.start === clauseStart) {
+      break;
+    }
+  }
+  let statementEnd = source.length;
+  const esacToken = tokenizer.peek();
+  if (esacToken !== undefined && esacToken.kind === "esac" /* Esac */) {
+    statementEnd = esacToken.end;
+    tokenizer.next();
+  }
+  return new CaseStatementAstNode(word, clauses, { _: bodies }, source.slice(statementStart, statementEnd));
+}
+function parseSubshellGroup(tokenizer, source, commandRegistry) {
+  const openToken = tokenizer.peek();
+  const groupStart = openToken?.start ?? source.length;
+  tokenizer.next();
+  const body = parseSequenceUntil(tokenizer, source, commandRegistry, [")" /* CloseParen */]);
+  let groupEnd = source.length;
+  const closeToken = tokenizer.peek();
+  if (closeToken !== undefined && closeToken.kind === ")" /* CloseParen */) {
+    groupEnd = closeToken.end;
+    tokenizer.next();
+  }
+  return new SubshellAstNode({ body }, source.slice(groupStart, groupEnd));
+}
+function parseBraceGroup(tokenizer, source, commandRegistry) {
+  const openToken = tokenizer.peek();
+  const groupStart = openToken?.start ?? source.length;
+  tokenizer.next();
+  const body = parseSequenceUntil(tokenizer, source, commandRegistry, ["}" /* CloseBrace */]);
+  let groupEnd = source.length;
+  const closeToken = tokenizer.peek();
+  if (closeToken !== undefined && closeToken.kind === "}" /* CloseBrace */) {
+    groupEnd = closeToken.end;
+    tokenizer.next();
+  }
+  return new BraceGroupAstNode({ body }, source.slice(groupStart, groupEnd));
+}
+function parseXargsNode(remainingTokens, source, statementStart, statementEnd, atStatementEnd, commandRegistry) {
+  let tokenIndex = 1;
+  const xargsOptionTokens = [];
+  while (tokenIndex < remainingTokens.length) {
+    const token = remainingTokens[tokenIndex];
+    if (token === "--") {
+      tokenIndex++;
+      break;
+    }
+    if (!token.startsWith("-")) {
+      break;
+    }
+    xargsOptionTokens.push(token);
+    tokenIndex++;
+  }
+  const xargsOptions = parseArguments(xargsOptionTokens, undefined).options;
+  const subcommandTokens = remainingTokens.slice(tokenIndex);
+  let child;
+  if (subcommandTokens.length === 0) {
+    child = new CommandAstNode("", {}, [], {}, "");
+  } else {
+    const subcommandEnvPrefix = parseEnvPrefix(subcommandTokens);
+    const subcommandName = subcommandEnvPrefix.remainingTokens[0] ?? "";
+    const subcommandDef = commandRegistry.get(subcommandName);
+    const subcommandArguments = parseArguments(subcommandEnvPrefix.remainingTokens.slice(1), subcommandDef);
+    child = new CommandAstNode(subcommandName, subcommandArguments.options, subcommandArguments.positionals, subcommandEnvPrefix.envPrefix, subcommandTokens.join(" "));
+  }
+  let xargsSource = source.slice(statementStart, statementEnd);
+  if (atStatementEnd) {
+    xargsSource = source.slice(statementStart);
+  }
+  return new XargsAstNode(xargsOptions, { child }, xargsSource);
+}
+function isWordTokenKind(kind) {
+  return kind === "word" /* Word */ || kind === "'" /* SingleQuote */ || kind === '"' /* DoubleQuote */ || kind === "`" /* Backtick */ || kind === "$(" /* SubstitutionOpen */;
+}
+function parseSubstitution(tokenizer, commandRegistry) {
+  const openToken = tokenizer.peek();
+  const openValue = openToken?.value ?? "";
+  const openEnd = openToken?.end;
+  const openKind = openToken?.kind;
+  tokenizer.next();
+  let innerSource = "";
+  let fullSource = openValue;
+  const contentToken = tokenizer.peek();
+  if (contentToken !== undefined && contentToken.kind === "word" /* Word */ && contentToken.start === openEnd) {
+    innerSource = contentToken.value;
+    fullSource += contentToken.value;
+    tokenizer.next();
+  }
+  const expectedClose = openKind === "`" /* Backtick */ ? "`" /* Backtick */ : ")" /* CloseParen */;
+  const closeToken = tokenizer.peek();
+  if (closeToken !== undefined && closeToken.kind === expectedClose) {
+    fullSource += closeToken.value;
+    tokenizer.next();
+  }
+  return new SubstitutionAstNode({ command: parseBashExpression(innerSource, commandRegistry) }, fullSource);
+}
+function readShellWord(tokenizer, commandRegistry) {
+  let value = "";
+  let substitution = undefined;
+  let prevEnd = undefined;
+  while (true) {
+    const token = tokenizer.peek();
+    if (token === undefined || !isWordTokenKind(token.kind)) {
+      break;
+    }
+    if (prevEnd !== undefined && token.start !== prevEnd) {
+      break;
+    }
+    if (token.kind === "word" /* Word */) {
+      value += token.value;
+      prevEnd = token.end;
+      tokenizer.next();
+      continue;
+    }
+    if (token.kind === "'" /* SingleQuote */ || token.kind === '"' /* DoubleQuote */) {
+      const openKind = token.kind;
+      let segmentEnd = token.end;
+      tokenizer.next();
+      const contentToken = tokenizer.peek();
+      if (contentToken !== undefined && contentToken.kind === "word" /* Word */ && contentToken.start === segmentEnd) {
+        value += contentToken.value;
+        segmentEnd = contentToken.end;
+        tokenizer.next();
+      }
+      const closeToken = tokenizer.peek();
+      if (closeToken !== undefined && closeToken.kind === openKind && closeToken.start === segmentEnd) {
+        segmentEnd = closeToken.end;
+        tokenizer.next();
+      }
+      prevEnd = segmentEnd;
+      continue;
+    }
+    const substitutionStart = token.start;
+    substitution = parseSubstitution(tokenizer, commandRegistry);
+    prevEnd = substitutionStart + substitution.source.length;
+  }
+  return { value, substitution, endPos: prevEnd ?? 0 };
+}
+function parseStatement(tokenizer, source, commandRegistry) {
+  const firstToken = tokenizer.peek();
+  if (firstToken !== undefined && firstToken.kind === "for" /* For */) {
+    return parseForLoop(tokenizer, source, commandRegistry);
+  }
+  if (firstToken !== undefined && (firstToken.kind === "while" /* While */ || firstToken.kind === "until" /* Until */)) {
+    return parseWhileLoop(tokenizer, source, commandRegistry);
+  }
+  if (firstToken !== undefined && firstToken.kind === "if" /* If */) {
+    return parseIfStatement(tokenizer, source, commandRegistry);
+  }
+  if (firstToken !== undefined && firstToken.kind === "case" /* Case */) {
+    return parseCaseStatement(tokenizer, source, commandRegistry);
+  }
+  if (firstToken !== undefined && firstToken.kind === "(" /* OpenParen */) {
+    return parseSubshellGroup(tokenizer, source, commandRegistry);
+  }
+  if (firstToken !== undefined && firstToken.kind === "{" /* OpenBrace */) {
+    return parseBraceGroup(tokenizer, source, commandRegistry);
+  }
+  const statementStart = firstToken?.start ?? source.length;
+  const wordValues = [];
+  let statementEnd = statementStart;
+  let substitution = undefined;
+  while (isWordTokenKind(tokenizer.peek()?.kind)) {
+    const wordResult = readShellWord(tokenizer, commandRegistry);
+    statementEnd = wordResult.endPos;
+    if (wordResult.substitution !== undefined) {
+      substitution = wordResult.substitution;
+    }
+    if (wordResult.value.length > 0) {
+      wordValues.push(wordResult.value);
+    }
+  }
+  const envPrefixResult = parseEnvPrefix(wordValues);
+  const commandName = envPrefixResult.remainingTokens[0] ?? "";
+  if (commandName === "xargs") {
+    const atStatementEnd = tokenizer.peek() === undefined;
+    return parseXargsNode(envPrefixResult.remainingTokens, source, statementStart, statementEnd, atStatementEnd, commandRegistry);
+  }
+  const commandDef = commandRegistry.get(commandName);
+  const parsedArguments = parseArguments(envPrefixResult.remainingTokens.slice(1), commandDef);
+  let commandSource = source.slice(statementStart, statementEnd);
+  if (tokenizer.peek() === undefined) {
+    commandSource = source.slice(statementStart);
+  }
+  const commandNode = new CommandAstNode(commandName, parsedArguments.options, parsedArguments.positionals, envPrefixResult.envPrefix, commandSource);
+  if (substitution !== undefined) {
+    commandNode.children = { substitution };
+  }
+  let node = commandNode;
+  while (tokenizer.peek()?.kind === "redirect" /* Redirect */) {
+    const redirectToken = tokenizer.peek();
+    if (redirectToken === undefined) {
+      break;
+    }
+    tokenizer.next();
+    statementEnd = redirectToken.end;
+    let target = "";
+    const targetToken = tokenizer.peek();
+    if (targetToken !== undefined && isWordTokenKind(targetToken.kind)) {
+      const wordResult = readShellWord(tokenizer, commandRegistry);
+      target = wordResult.value;
+      statementEnd = wordResult.endPos;
+    }
+    const redirectNode = new RedirectAstNode(redirectToken.value, target, { command: node }, source.slice(statementStart, statementEnd));
+    node = redirectNode;
+  }
+  if (node !== commandNode) {
+    let fullSource = source.slice(statementStart, statementEnd);
+    if (tokenizer.peek() === undefined) {
+      fullSource = source.slice(statementStart);
+    }
+    commandNode.source = fullSource;
+  }
+  return node;
+}
+function parsePipeExpr(tokenizer, source, commandRegistry) {
+  let left = parseStatement(tokenizer, source, commandRegistry);
+  while (tokenizer.peek()?.kind === "|" /* Pipe */) {
+    tokenizer.next();
+    const right = parseStatement(tokenizer, source, commandRegistry);
+    left = makeBinopNode("|" /* Pipe */, left, right);
+  }
+  return left;
+}
+function parseOrExpr(tokenizer, source, commandRegistry) {
+  let left = parsePipeExpr(tokenizer, source, commandRegistry);
+  while (tokenizer.peek()?.kind === "||" /* Or */) {
+    tokenizer.next();
+    const right = parsePipeExpr(tokenizer, source, commandRegistry);
+    left = makeBinopNode("||" /* Or */, left, right);
+  }
+  return left;
+}
+function parseAndExpr(tokenizer, source, commandRegistry) {
+  let left = parseOrExpr(tokenizer, source, commandRegistry);
+  while (tokenizer.peek()?.kind === "&&" /* And */) {
+    tokenizer.next();
+    const right = parseOrExpr(tokenizer, source, commandRegistry);
+    left = makeBinopNode("&&" /* And */, left, right);
+  }
+  return left;
+}
+function parseSequence(tokenizer, source, commandRegistry) {
+  skipSemicolonSeparators(tokenizer);
+  if (tokenizer.peek() === undefined) {
+    return parseBashCommand("", commandRegistry);
+  }
+  let left = parseAndExpr(tokenizer, source, commandRegistry);
+  while (tokenizer.peek()?.kind === ";" /* Semicolon */) {
+    tokenizer.next();
+    skipSemicolonSeparators(tokenizer);
+    if (tokenizer.peek() === undefined) {
+      break;
+    }
+    const right = parseAndExpr(tokenizer, source, commandRegistry);
+    left = makeBinopNode(";" /* Semicolon */, left, right);
+  }
+  return left;
+}
+function makeBinopNode(op, left, right) {
+  return new BinopAstNode(op, { left, right }, `${left.source} ${op} ${right.source}`);
+}
+function parseBashExpression(command, commandRegistry) {
+  const tokenizer = new Tokenizer(command);
+  return parseSequence(tokenizer, command, commandRegistry);
+}
+function parseBashCommand(command, commandRegistry) {
+  const tokens = tokenizeCommand(command);
+  const envPrefixResult = parseEnvPrefix(tokens);
+  const commandName = envPrefixResult.remainingTokens[0] ?? "";
+  const commandDef = commandRegistry.get(commandName);
+  const parsedArguments = parseArguments(envPrefixResult.remainingTokens.slice(1), commandDef);
+  return new CommandAstNode(commandName, parsedArguments.options, parsedArguments.positionals, envPrefixResult.envPrefix, command);
+}
+function parseFilePathToolCall(call) {
+  const filePath = call.tool_input["file_path"];
+  return new FilePathToolAstNode(call.tool_name.toLowerCase(), filePath, `${call.tool_name} ${filePath}`);
+}
+function parseGrepToolCall(call) {
+  const pattern = call.tool_input["pattern"];
+  const path = call.tool_input["path"];
+  return new GrepAstNode(pattern, path, `Grep ${pattern} ${path}`);
+}
+function parseWebFetchToolCall(call) {
+  const url = call.tool_input["url"];
+  return new WebFetchAstNode(url, `WebFetch ${url}`);
+}
+function parseAgentToolCall(call) {
+  const description = call.tool_input["description"];
+  const prompt = call.tool_input["prompt"];
+  return new AgentAstNode(description, prompt, `Agent ${description}`);
+}
+function parseToolNode(call) {
+  return new ToolAstNode(call.tool_name, call.tool_input, call.tool_name);
+}
+function parseBashToolCall(call, commandRegistry) {
+  const command = call.tool_input["command"];
+  return new BashAstNode({ command: parseBashExpression(command, commandRegistry) }, command);
+}
+function parse(call, commandRegistry) {
+  if (call.tool_name === "Bash" || call.tool_name === "Shell") {
+    return parseBashToolCall(call, commandRegistry);
+  }
+  if (call.tool_name === "Read" || call.tool_name === "Write" || call.tool_name === "Edit" || call.tool_name === "MultiEdit") {
+    return parseFilePathToolCall(call);
+  }
+  if (call.tool_name === "Grep") {
+    return parseGrepToolCall(call);
+  }
+  if (call.tool_name === "WebFetch") {
+    return parseWebFetchToolCall(call);
+  }
+  if (call.tool_name === "Agent") {
+    return parseAgentToolCall(call);
+  }
+  return parseToolNode(call);
+}
+
+// src/analyze.ts
+async function parseToolCallToAst(call, homeDir, projectDir) {
+  const newToolInput = {};
+  for (const [key, value] of Object.entries(call.tool_input)) {
+    if (typeof value === "string") {
+      newToolInput[key] = value;
+    }
+  }
+  const descriptors = await loadCommandDescriptors(homeDir, projectDir);
+  return parse({
+    tool_name: call.tool_name,
+    tool_input: newToolInput,
+    cwd: call.cwd
+  }, descriptors);
+}
 
 // src/pending-prompt-log.ts
+import { mkdir as mkdir2, readdir as readdir3, stat as stat3, unlink, writeFile as writeFile2 } from "fs/promises";
+import { join as join4 } from "path";
 var STALE_PENDING_PROMPT_MAX_AGE_DAYS = 1;
 var PENDING_PROMPT_DESCRIPTION_MAX_LENGTH = 60;
-var EMPTY_TOOL_CALL = {
-  tool_name: "Bash",
-  tool_input: { command: "" },
-  cwd: "/"
-};
 function resolvePendingDir(projectDir) {
-  return join3(projectDir, ".claude", "permissions-log", "pending");
+  return join4(projectDir, ".claude", "permissions-log", "pending");
+}
+function childNodes(node) {
+  if (!node.children) {
+    return [];
+  }
+  if ("_" in node.children) {
+    const positionalChildren = node.children._;
+    if (Array.isArray(positionalChildren)) {
+      return positionalChildren;
+    }
+  }
+  const namedChildren = [];
+  for (const childValue of Object.values(node.children)) {
+    if (childValue && !Array.isArray(childValue)) {
+      namedChildren.push(childValue);
+    }
+  }
+  return namedChildren;
 }
 function formatPendingPromptFileTimestamp(date) {
   const year = date.getFullYear().toString();
@@ -10274,7 +12288,6 @@ function sanitizePendingPromptDescription(text) {
   sanitized = sanitized.replace(/^-|-$/g, "");
   if (sanitized.length > PENDING_PROMPT_DESCRIPTION_MAX_LENGTH) {
     sanitized = sanitized.slice(0, PENDING_PROMPT_DESCRIPTION_MAX_LENGTH);
-    sanitized = sanitized.replace(/-$/, "");
   }
   return sanitized;
 }
@@ -10296,9 +12309,9 @@ async function resolvePendingPromptFilePath(pendingDir, baseFileName) {
   let suffix = 0;
   while (true) {
     const fileName = suffix === 0 ? baseFileName : `${baseName}-${suffix}.md`;
-    const filePath = join3(pendingDir, fileName);
+    const filePath = join4(pendingDir, fileName);
     try {
-      await stat2(filePath);
+      await stat3(filePath);
       suffix = suffix + 1;
     } catch {
       return filePath;
@@ -10329,7 +12342,7 @@ function formatLocalTimestamp(date) {
   const millis = String(date.getMilliseconds()).padStart(3, "0");
   return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${millis}${sign}${offsetHours}:${offsetMins}`;
 }
-function buildLeafOutcomeMap(evaluations) {
+function buildCommandDecisionMap(evaluations) {
   const outcomeMap = new Map;
   for (const evaluation of evaluations) {
     outcomeMap.set(evaluation.cmd, {
@@ -10342,106 +12355,130 @@ function buildLeafOutcomeMap(evaluations) {
   }
   return outcomeMap;
 }
-function applyLeafEnvEffects(node, env) {
-  let runningEnv = env;
-  const prefixOutcome = envPrefixRule(node, env, EMPTY_TOOL_CALL);
-  if (prefixOutcome.scopedEnv !== undefined) {
-    runningEnv = prefixOutcome.scopedEnv;
+function buildCommandContextMap(evaluations) {
+  const commandContextMap = new Map;
+  for (const evaluation of evaluations) {
+    commandContextMap.set(evaluation.cmd, {
+      cwd: evaluation.cwd,
+      env: { ...evaluation.env }
+    });
   }
-  const leafContext = {
-    cwd: runningEnv.cwd,
-    env: { ...runningEnv.env }
+  return commandContextMap;
+}
+function envMapsEqual(left, right) {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+  for (const key of leftKeys) {
+    if (left[key] !== right[key]) {
+      return false;
+    }
+  }
+  return true;
+}
+function commandOutcomeFromMatches(buffer) {
+  const decisions = [];
+  for (const match of buffer.matches) {
+    decisions.push({
+      action: match.decision,
+      reason: match.reason
+    });
+  }
+  const picked = pickStrictest(decisions);
+  if (!picked) {
+    return {
+      cmd: buffer.cmd,
+      decision: "NOMATCH",
+      source: "no-rule-match",
+      cwd: buffer.cwd,
+      env: { ...buffer.env }
+    };
+  }
+  let chosen = buffer.matches.find((match) => {
+    return match.decision === picked.action && match.reason === picked.reason;
+  });
+  if (!chosen) {
+    chosen = buffer.matches.find((match) => match.decision === picked.action);
+  }
+  let source = "matched-rule";
+  if (picked.action === "deny") {
+    source = "deny-rule";
+  }
+  return {
+    cmd: buffer.cmd,
+    decision: picked.action.toUpperCase(),
+    ruleFile: chosen?.ruleFile,
+    ruleLine: chosen?.ruleLine,
+    reason: picked.reason,
+    source,
+    cwd: buffer.cwd,
+    env: { ...buffer.env }
   };
-  let envOut = runningEnv;
-  const cdOutcome = cdRule(node, runningEnv, EMPTY_TOOL_CALL);
-  if (cdOutcome.env !== undefined) {
-    envOut = cdOutcome.env;
-  }
-  const setOutcome = envSetRule(node, runningEnv, EMPTY_TOOL_CALL);
-  if (setOutcome.env !== undefined) {
-    envOut = setOutcome.env;
-  }
-  const exportOutcome = exportRule(node, runningEnv, EMPTY_TOOL_CALL);
-  if (exportOutcome.env !== undefined) {
-    envOut = exportOutcome.env;
-  }
-  return { leafContext, envOut };
 }
-function simWalkEnv(node, env, leafContextMap) {
-  if (isLeaf(node)) {
-    const { leafContext, envOut } = applyLeafEnvEffects(node, env);
-    leafContextMap.set(describeNode(node), leafContext);
-    return envOut;
-  }
-  if (node.type === "bash") {
-    return simWalkEnv(node.ast, env, leafContextMap);
-  }
-  if (node.type === "xargs") {
-    return simWalkEnv(node.child, env, leafContextMap);
-  }
-  if (node.type === "redirect") {
-    return simWalkEnv(node.command, env, leafContextMap);
-  }
-  if (node.type === "for_loop") {
-    let lastEnv = env;
-    for (const item of node.items) {
-      const iterEnv = {
-        ...env,
-        env: { ...env.env, [node.variable]: item }
-      };
-      lastEnv = simWalkEnv(node.body, iterEnv, leafContextMap);
+function commandOutcomesFromAuditEntries(entries) {
+  const commandOutcomes = [];
+  let pending;
+  for (const entry of entries) {
+    if (entry.type === "no_rule_match") {
+      if (pending) {
+        commandOutcomes.push(commandOutcomeFromMatches(pending));
+        pending = undefined;
+      }
+      commandOutcomes.push({
+        cmd: entry.cmd,
+        decision: "NOMATCH",
+        source: "no-rule-match",
+        cwd: entry.cwd,
+        env: { ...entry.env }
+      });
+      continue;
     }
-    return env;
-  }
-  if (node.type === "while_loop") {
-    const conditionEnv = simWalkEnv(node.condition, env, leafContextMap);
-    simWalkEnv(node.body, conditionEnv, leafContextMap);
-    return conditionEnv;
-  }
-  if (node.type === "group") {
-    const bodyEnv = simWalkEnv(node.body, env, leafContextMap);
-    if (node.style === "brace") {
-      return bodyEnv;
+    if (entry.type === "rule_match") {
+      const cmd = entry.cmd ?? "";
+      const cwd = entry.cwd ?? "";
+      const env = entry.env ?? {};
+      if (pending && (pending.cmd !== cmd || pending.cwd !== cwd || !envMapsEqual(pending.env, env))) {
+        commandOutcomes.push(commandOutcomeFromMatches(pending));
+        pending = undefined;
+      }
+      if (!pending) {
+        pending = {
+          cmd,
+          cwd,
+          env: { ...env },
+          matches: []
+        };
+      }
+      pending.matches.push(entry);
+      continue;
     }
-    return env;
-  }
-  if (node.type === "case_statement") {
-    for (const clause of node.clauses) {
-      simWalkEnv(clause.body, env, leafContextMap);
+    if (entry.type === "aggregation") {
+      if (pending) {
+        commandOutcomes.push(commandOutcomeFromMatches(pending));
+        pending = undefined;
+      }
     }
-    return env;
   }
-  if (node.type === "if_statement") {
-    const conditionEnv = simWalkEnv(node.condition, env, leafContextMap);
-    simWalkEnv(node.thenBranch, conditionEnv, leafContextMap);
-    if (node.elseBranch !== undefined) {
-      simWalkEnv(node.elseBranch, conditionEnv, leafContextMap);
-    }
-    return conditionEnv;
+  if (pending) {
+    commandOutcomes.push(commandOutcomeFromMatches(pending));
   }
-  const binop = node;
-  if (binop.op === ";" || binop.op === "&&") {
-    const leftEnv = simWalkEnv(binop.left, env, leafContextMap);
-    return simWalkEnv(binop.right, leftEnv, leafContextMap);
-  }
-  simWalkEnv(binop.left, env, leafContextMap);
-  simWalkEnv(binop.right, env, leafContextMap);
-  return env;
-}
-function simulateLeafEnvironments(root, env0) {
-  const leafContextMap = new Map;
-  simWalkEnv(root, env0, leafContextMap);
-  return leafContextMap;
+  return commandOutcomes;
 }
 function flattenSequential(node) {
-  if (node.type === "binop" && (node.op === "&&" || node.op === ";")) {
-    return [...flattenSequential(node.left), ...flattenSequential(node.right)];
+  if (node.type === "binop") {
+    const binop = node;
+    if (binop.op === "&&" || binop.op === ";") {
+      return [
+        ...flattenSequential(binop.children.left),
+        ...flattenSequential(binop.children.right)
+      ];
+    }
   }
   if (node.type === "bash") {
-    return flattenSequential(node.ast);
-  }
-  if (isLeaf(node)) {
-    return [node];
+    const bashNode = node;
+    return flattenSequential(bashNode.children.command);
   }
   return [node];
 }
@@ -10480,14 +12517,14 @@ function outcomeIndent(prefix, isLast) {
   }
   return `${prefix}│     `;
 }
-function appendOutcomeLines(outcome, leafContext, hookCwd, prefix, isLast, lines) {
+function appendOutcomeLines(outcome, commandContext, hookCwd, prefix, isLast, lines) {
   lines.push(`${prefix}│`);
   const indent = outcomeIndent(prefix, isLast);
-  if (leafContext !== undefined && leafContext.cwd !== hookCwd) {
-    lines.push(`${indent}cwd: ${leafContext.cwd}`);
+  if (commandContext !== undefined && commandContext.cwd !== hookCwd) {
+    lines.push(`${indent}cwd: ${commandContext.cwd}`);
   }
-  if (leafContext !== undefined && Object.keys(leafContext.env).length > 0) {
-    lines.push(`${indent}env: ${formatEnvSummary(leafContext.env)}`);
+  if (commandContext !== undefined && Object.keys(commandContext.env).length > 0) {
+    lines.push(`${indent}env: ${formatEnvSummary(commandContext.env)}`);
   }
   if (outcome === undefined) {
     return;
@@ -10501,124 +12538,63 @@ function appendOutcomeLines(outcome, leafContext, hookCwd, prefix, isLast, lines
     lines.push(`${indent}reason: "${outcome.reason}"`);
   }
 }
-function appendTreeLines(node, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines) {
+function appendTreeLines(node, prefix, isLast, commandDecisionMap, commandContextMap, hookCwd, lines) {
   const connector = isLast ? "└── " : "├── ";
   const childPrefix = isLast ? "    " : "│   ";
   if (node.type === "bash") {
-    appendTreeLines(node.ast, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
+    const bashNode = node;
+    appendTreeLines(bashNode.children.command, prefix, isLast, commandDecisionMap, commandContextMap, hookCwd, lines);
     return;
   }
-  if (node.type === "xargs") {
-    appendTreeLines(node.child, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
-    return;
-  }
-  if (node.type === "redirect") {
-    appendTreeLines(node.command, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
-    return;
-  }
-  if (node.type === "while_loop") {
-    lines.push(`${prefix}${connector}${truncateLabel(describeNode(node), 80)}`);
-    appendTreeLines(node.body, `${prefix}${childPrefix}`, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
-    if (!isLast) {
-      lines.push(`${prefix}│`);
-    }
-    return;
-  }
-  if (node.type === "if_statement") {
-    lines.push(`${prefix}${connector}${truncateLabel(describeNode(node), 80)}`);
-    const hasElseBranch = node.elseBranch !== undefined;
-    appendTreeLines(node.thenBranch, `${prefix}${childPrefix}`, !hasElseBranch && isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
-    const elseBranch = node.elseBranch;
-    if (elseBranch !== undefined) {
-      appendTreeLines(elseBranch, `${prefix}${childPrefix}`, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
-    }
-    if (!isLast) {
-      lines.push(`${prefix}│`);
-    }
-    return;
-  }
-  if (node.type === "group") {
-    lines.push(`${prefix}${connector}${truncateLabel(describeNode(node), 80)}`);
-    appendTreeLines(node.body, `${prefix}${childPrefix}`, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
-    if (!isLast) {
-      lines.push(`${prefix}│`);
-    }
-    return;
-  }
-  if (node.type === "binop" && node.op !== "&&" && node.op !== ";") {
-    renderCompoundTree(node, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
-    return;
-  }
-  if (node.type === "binop" && (node.op === "&&" || node.op === ";")) {
-    const parts = flattenSequential(node);
-    if (parts.length > 1) {
-      lines.push(`${prefix}${connector}${truncateLabel(describeNode(node), 80)}`);
-      for (let index = 0;index < parts.length; index++) {
-        appendTreeLines(parts[index], `${prefix}${childPrefix}`, index === parts.length - 1, leafOutcomeMap, leafContextMap, hookCwd, lines);
-      }
-      if (!isLast) {
-        lines.push(`${prefix}│`);
-      }
-      return;
-    }
-  }
-  if (isLeaf(node)) {
-    lines.push(`${prefix}${connector}${truncateLabel(describeNode(node), 80)}`);
-    const cmd = describeNode(node);
-    appendOutcomeLines(leafOutcomeMap.get(cmd), leafContextMap.get(cmd), hookCwd, prefix, isLast, lines);
-    if (!isLast) {
-      lines.push(`${prefix}│`);
-    }
-    return;
-  }
-  renderCompoundTree(node, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
-}
-function renderCompoundTree(node, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines) {
-  const connector = isLast ? "└── " : "├── ";
-  const childPrefix = isLast ? "    " : "│   ";
-  lines.push(`${prefix}${connector}${truncateLabel(describeNode(node), 80)}`);
   if (node.type === "binop") {
-    appendTreeLines(node.left, `${prefix}${childPrefix}`, false, leafOutcomeMap, leafContextMap, hookCwd, lines);
-    appendTreeLines(node.right, `${prefix}${childPrefix}`, true, leafOutcomeMap, leafContextMap, hookCwd, lines);
+    const binop = node;
+    if (binop.op === "&&" || binop.op === ";") {
+      const parts = flattenSequential(node);
+      if (parts.length > 1) {
+        lines.push(`${prefix}${connector}${truncateLabel(node.source, 80)}`);
+        for (let index = 0;index < parts.length; index++) {
+          appendTreeLines(parts[index], `${prefix}${childPrefix}`, index === parts.length - 1, commandDecisionMap, commandContextMap, hookCwd, lines);
+        }
+        if (!isLast) {
+          lines.push(`${prefix}│`);
+        }
+        return;
+      }
+    }
+  }
+  if (!node.children) {
+    lines.push(`${prefix}${connector}${truncateLabel(node.source, 80)}`);
+    appendOutcomeLines(commandDecisionMap.get(node.source), commandContextMap.get(node.source), hookCwd, prefix, isLast, lines);
     if (!isLast) {
       lines.push(`${prefix}│`);
     }
     return;
   }
-  if (node.type === "while_loop") {
-    appendTreeLines(node.body, `${prefix}${childPrefix}`, true, leafOutcomeMap, leafContextMap, hookCwd, lines);
-    return;
+  lines.push(`${prefix}${connector}${truncateLabel(node.source, 80)}`);
+  const children = childNodes(node);
+  for (let index = 0;index < children.length; index++) {
+    appendTreeLines(children[index], `${prefix}${childPrefix}`, index === children.length - 1, commandDecisionMap, commandContextMap, hookCwd, lines);
   }
-  if (node.type === "if_statement") {
-    const hasElseBranch = node.elseBranch !== undefined;
-    appendTreeLines(node.thenBranch, `${prefix}${childPrefix}`, !hasElseBranch, leafOutcomeMap, leafContextMap, hookCwd, lines);
-    const elseBranch = node.elseBranch;
-    if (elseBranch !== undefined) {
-      appendTreeLines(elseBranch, `${prefix}${childPrefix}`, true, leafOutcomeMap, leafContextMap, hookCwd, lines);
-    }
-    return;
-  }
-  if (node.type === "group") {
-    appendTreeLines(node.body, `${prefix}${childPrefix}`, true, leafOutcomeMap, leafContextMap, hookCwd, lines);
-    return;
-  }
-  if (node.type === "bash") {
-    appendTreeLines(node.ast, `${prefix}${childPrefix}`, true, leafOutcomeMap, leafContextMap, hookCwd, lines);
+  if (!isLast) {
+    lines.push(`${prefix}│`);
   }
 }
-function formatPendingPromptTree(root, leafOutcomeMap, leafContextMap, hookCwd) {
+function formatPendingPromptTree(root, commandDecisionMap, commandContextMap, hookCwd) {
   const lines = [];
-  lines.push(truncateLabel(describeNode(root), 80));
-  if (root.type === "binop" && (root.op === "&&" || root.op === ";")) {
-    const parts = flattenSequential(root);
-    for (let index = 0;index < parts.length; index++) {
-      appendTreeLines(parts[index], "", index === parts.length - 1, leafOutcomeMap, leafContextMap, hookCwd, lines);
+  lines.push(truncateLabel(root.source, 80));
+  const displayRoot = root.type === "bash" ? root.children.command : root;
+  if (displayRoot.type === "binop") {
+    const binop = displayRoot;
+    if (binop.op === "&&" || binop.op === ";") {
+      const parts = flattenSequential(displayRoot);
+      for (let index = 0;index < parts.length; index++) {
+        appendTreeLines(parts[index], "", index === parts.length - 1, commandDecisionMap, commandContextMap, hookCwd, lines);
+      }
+      return lines.join(`
+`);
     }
-  } else if (root.type === "binop") {
-    renderCompoundTree(root, "", true, leafOutcomeMap, leafContextMap, hookCwd, lines);
-  } else {
-    appendTreeLines(root, "", true, leafOutcomeMap, leafContextMap, hookCwd, lines);
   }
+  appendTreeLines(displayRoot, "", true, commandDecisionMap, commandContextMap, hookCwd, lines);
   return lines.join(`
 `);
 }
@@ -10640,11 +12616,11 @@ function sourceLabelForOutcome(outcome) {
   }
   return "matched rule";
 }
-function resolveVerdictTrigger(leafOutcomeMap, leafContextMap, root, hookCwd, decisionReason) {
-  let bestCmd = describeNode(root);
-  let bestOutcome = leafOutcomeMap.get(bestCmd);
+function resolveVerdictTrigger(commandDecisionMap, commandContextMap, root, hookCwd, decisionReason) {
+  let bestCmd = root.source;
+  let bestOutcome = commandDecisionMap.get(bestCmd);
   let bestPriority = bestOutcome !== undefined ? decisionPriority(bestOutcome.decision) : 0;
-  for (const [cmd, outcome] of leafOutcomeMap.entries()) {
+  for (const [cmd, outcome] of commandDecisionMap.entries()) {
     const priority = decisionPriority(outcome.decision);
     if (priority > bestPriority) {
       bestPriority = priority;
@@ -10656,14 +12632,14 @@ function resolveVerdictTrigger(leafOutcomeMap, leafContextMap, root, hookCwd, de
   if (bestOutcome !== undefined && bestOutcome.reason !== undefined) {
     reason = bestOutcome.reason;
   }
-  const leafContext = leafContextMap.get(bestCmd);
+  const commandContext = commandContextMap.get(bestCmd);
   let cwd;
-  if (leafContext !== undefined && leafContext.cwd !== hookCwd) {
-    cwd = leafContext.cwd;
+  if (commandContext !== undefined && commandContext.cwd !== hookCwd) {
+    cwd = commandContext.cwd;
   }
   let env;
-  if (leafContext !== undefined && Object.keys(leafContext.env).length > 0) {
-    env = leafContext.env;
+  if (commandContext !== undefined && Object.keys(commandContext.env).length > 0) {
+    env = commandContext.env;
   }
   const sourceLabel = bestOutcome !== undefined ? sourceLabelForOutcome(bestOutcome) : "no rule matched";
   return {
@@ -10675,14 +12651,14 @@ function resolveVerdictTrigger(leafOutcomeMap, leafContextMap, root, hookCwd, de
     outcome: bestOutcome
   };
 }
-function formatContextBlock(call, env0) {
-  const envKeys = Object.keys(env0.env).sort();
+function formatContextBlock(call, context0) {
+  const envKeys = Object.keys(context0.env).sort();
   if (envKeys.length === 0) {
     return call.cwd;
   }
   const lines = [call.cwd, ""];
   for (const key of envKeys) {
-    lines.push(`${key}=${env0.env[key]}`);
+    lines.push(`${key}=${context0.env[key]}`);
   }
   return lines.join(`
 `);
@@ -10726,17 +12702,17 @@ function formatVerdictBlock(trigger, decision, hookCwd) {
   return lines.join(`
 `);
 }
-function formatPendingPromptMarkdown(call, root, leafEvaluations, decision, reason, pendingSince) {
-  const env0 = {
+async function formatPendingPromptMarkdown(call, root, commandOutcomes, decision, reason, pendingSince) {
+  const context0 = {
     cwd: call.cwd,
     cwdResolved: true,
     env: {}
   };
-  const leafOutcomeMap = buildLeafOutcomeMap(leafEvaluations);
-  const leafContextMap = simulateLeafEnvironments(root, env0);
-  const treeBlock = formatPendingPromptTree(root, leafOutcomeMap, leafContextMap, call.cwd);
-  const trigger = resolveVerdictTrigger(leafOutcomeMap, leafContextMap, root, call.cwd, reason);
-  const contextBlock = formatContextBlock(call, env0);
+  const commandDecisionMap = buildCommandDecisionMap(commandOutcomes);
+  const commandContextMap = buildCommandContextMap(commandOutcomes);
+  const treeBlock = formatPendingPromptTree(root, commandDecisionMap, commandContextMap, call.cwd);
+  const trigger = resolveVerdictTrigger(commandDecisionMap, commandContextMap, root, call.cwd, reason);
+  const contextBlock = formatContextBlock(call, context0);
   const sections = [];
   sections.push(`# ${call.tool_name} — ${decision.toUpperCase()}`);
   sections.push("");
@@ -10767,19 +12743,19 @@ function formatPendingPromptMarkdown(call, root, leafEvaluations, decision, reas
   return sections.join(`
 `);
 }
-async function writePendingPrompt(projectDir, call, root, leafEvaluations, decision, reason, pendingSince) {
+async function writePendingPrompt(projectDir, call, root, commandOutcomes, decision, reason, pendingSince) {
   const pendingDir = resolvePendingDir(projectDir);
   await mkdir2(pendingDir, { recursive: true });
   const baseFileName = buildPendingPromptFileName(call, pendingSince);
   const filePath = await resolvePendingPromptFilePath(pendingDir, baseFileName);
-  const content = formatPendingPromptMarkdown(call, root, leafEvaluations, decision, reason, pendingSince);
+  const content = await formatPendingPromptMarkdown(call, root, commandOutcomes, decision, reason, pendingSince);
   await writeFile2(filePath, content, "utf-8");
 }
 async function cleanupStalePendingPrompts(projectDir, now, maxAgeDays) {
   const pendingDir = resolvePendingDir(projectDir);
   let fileNames;
   try {
-    fileNames = await readdir2(pendingDir);
+    fileNames = await readdir3(pendingDir);
   } catch {
     return;
   }
@@ -10788,8 +12764,8 @@ async function cleanupStalePendingPrompts(projectDir, now, maxAgeDays) {
     if (!fileName.endsWith(".md")) {
       continue;
     }
-    const filePath = join3(pendingDir, fileName);
-    const fileStat = await stat2(filePath);
+    const filePath = join4(pendingDir, fileName);
+    const fileStat = await stat3(filePath);
     const ageMs = now.getTime() - fileStat.mtimeMs;
     if (ageMs > maxAgeMs) {
       await unlink(filePath);
@@ -10797,1693 +12773,15 @@ async function cleanupStalePendingPrompts(projectDir, now, maxAgeDays) {
   }
 }
 
-// src/rule-registry.ts
-function runRulesOverList(ruleList, node, env, call, logger) {
-  let runningEnv = env;
-  let lastPersistentEnv = null;
-  let bestAnnotation = { decision: { action: "abstain" } };
-  for (const rule of ruleList) {
-    const effectiveNode = node.type === "command" ? expandCommandOptions(node, runningEnv.env) : node;
-    const outcome = rule(effectiveNode, runningEnv, call);
-    if (outcome.env !== undefined) {
-      runningEnv = outcome.env;
-      lastPersistentEnv = outcome.env;
-    }
-    if (outcome.scopedEnv !== undefined) {
-      runningEnv = outcome.scopedEnv;
-    }
-    if (outcome.decision.action !== "abstain") {
-      const timestamp = toLocalISOString(new Date);
-      const reason = outcome.decision.reason;
-      logger.log({
-        type: "rule_match",
-        timestamp,
-        ruleFile: rule.ruleFile,
-        ruleLine: rule.ruleLine,
-        decision: outcome.decision.action,
-        reason,
-        cmd: describeNode(effectiveNode)
-      });
-    }
-    if (outcome.decision.action === "deny") {
-      bestAnnotation = {
-        decision: outcome.decision,
-        ruleFile: rule.ruleFile,
-        ruleLine: rule.ruleLine
-      };
-      break;
-    }
-    if (outcome.decision.action !== "abstain" && rank(outcome.decision) >= rank(bestAnnotation.decision)) {
-      bestAnnotation = {
-        decision: outcome.decision,
-        ruleFile: rule.ruleFile,
-        ruleLine: rule.ruleLine
-      };
-    }
-  }
-  const capturedPersistentEnv = lastPersistentEnv;
-  const capturedRunningEnv = runningEnv;
-  return {
-    annotation: bestAnnotation,
-    envUpdate: (environment) => capturedPersistentEnv !== null ? capturedPersistentEnv : environment,
-    nodeRunningEnv: capturedRunningEnv
-  };
-}
-
-class RuleLayer {
-  _rules;
-  constructor(rules) {
-    this._rules = rules;
-  }
-  runRules(node, env, call, logger) {
-    return runRulesOverList(this._rules, node, env, call, logger);
-  }
-}
-
-class FileLayer {
-  _rules;
-  constructor(loadFn, displayPath, logger) {
-    this._rules = loadFn();
-    logConfigLoad(logger, displayPath, this._rules.length);
-  }
-  runRules(node, env, call, logger) {
-    return runRulesOverList(this._rules, node, env, call, logger);
-  }
-}
-
-class RuleRegistry {
-  _layers;
-  constructor(layers) {
-    this._layers = layers;
-  }
-  runRules(node, env, call, logger) {
-    let currentEnv = env;
-    let lastPersistentEnv = null;
-    let bestAnnotation = { decision: { action: "abstain" } };
-    for (const layer of this._layers) {
-      const envBeforeLayer = currentEnv;
-      const layerResult = layer.runRules(node, currentEnv, call, logger);
-      currentEnv = layerResult.nodeRunningEnv;
-      const persistentUpdate = layerResult.envUpdate(envBeforeLayer);
-      if (persistentUpdate !== envBeforeLayer) {
-        lastPersistentEnv = persistentUpdate;
-      }
-      if (layerResult.annotation.decision.action === "deny") {
-        const capturedDenyPersistentEnv = lastPersistentEnv;
-        const capturedDenyRunningEnv = currentEnv;
-        return {
-          annotation: layerResult.annotation,
-          nodeRunningEnv: capturedDenyRunningEnv,
-          envUpdate: (environment) => capturedDenyPersistentEnv !== null ? capturedDenyPersistentEnv : environment
-        };
-      }
-      if (layerResult.annotation.decision.action !== "abstain" && rank(layerResult.annotation.decision) >= rank(bestAnnotation.decision)) {
-        bestAnnotation = layerResult.annotation;
-      }
-    }
-    const capturedPersistentEnv = lastPersistentEnv;
-    const capturedRunningEnv = currentEnv;
-    return {
-      annotation: bestAnnotation,
-      nodeRunningEnv: capturedRunningEnv,
-      envUpdate: (environment) => capturedPersistentEnv !== null ? capturedPersistentEnv : environment
-    };
-  }
-}
-
-// src/rules/builtin/xargs.ts
-var xargsRule = function xargsRule2(node, _env, _call) {
-  if (node.type !== "xargs") {
-    return ABSTAIN;
-  }
-  return ABSTAIN;
-};
-
-// src/rules/index.ts
-var builtinRules = [cdRule, envPrefixRule, envSetRule, exportRule, xargsRule];
-
-// src/load-config.ts
-import { readFileSync, existsSync as existsSync2, readdirSync as readdirSync2, statSync } from "fs";
-import { join as join4, resolve as resolve2 } from "path";
-import { homedir } from "os";
-var import_picomatch = __toESM(require_picomatch2(), 1);
-var KNOWN_FIELDS = new Set(["decide", "reason", "rules", "not", "file", "cmd", "cmd-in", "options", "options-in", "cwd", "cwd-in", "cwd_resolved", "env", "path", "path-in", "host", "host-in", "tool", "tool-in", "sourceLine", "sourceFile"]);
-var KNOWN_SECTIONS = new Set(["bash", "read", "write", "edit", "multi_edit", "webfetch", "redirect"]);
-var VALID_DECIDE_VALUES = new Set(["allow", "deny", "ask", "abstain"]);
-function normalizeToList(value) {
-  if (Array.isArray(value)) {
-    return value;
-  }
-  return [value];
-}
-function mapDecision(decide2, reason) {
-  if (decide2 === "allow") {
-    return { action: "allow", reason };
-  }
-  if (decide2 === "deny") {
-    return { action: "deny", reason };
-  }
-  if (decide2 === "abstain") {
-    return { action: "abstain" };
-  }
-  return { action: "ask", reason };
-}
-function matchesGlob(pattern, value) {
-  if (pattern.endsWith("/**") && value === pattern.slice(0, -3)) {
-    return false;
-  }
-  return import_picomatch.default(pattern, { dot: true })(value);
-}
-function matchesPathGlob(pattern, value) {
-  if (pattern.endsWith("/**") && value === pattern.slice(0, -3)) {
-    return true;
-  }
-  return import_picomatch.default(pattern, { dot: true })(value);
-}
-function matchesPattern(pattern, value) {
-  if (pattern.length >= 2 && pattern.startsWith("/") && pattern.endsWith("/")) {
-    return new RegExp(pattern.slice(1, -1)).test(value);
-  }
-  return matchesGlob(pattern, value);
-}
-function matchesCwd(entry, env) {
-  if (entry["cwd-in"] !== undefined) {
-    return entry["cwd-in"].some((pattern) => matchesPattern(pattern, env.cwd));
-  }
-  if (entry.cwd !== undefined) {
-    return matchesPattern(entry.cwd, env.cwd);
-  }
-  return true;
-}
-function matchesCwdResolved(entry, env) {
-  if (entry.cwd_resolved === undefined) {
-    return true;
-  }
-  return entry.cwd_resolved === env.cwdResolved;
-}
-function homePath(rawPath) {
-  if (rawPath.startsWith("~")) {
-    return homedir() + rawPath.slice(1);
-  }
-  if (!rawPath.startsWith("/")) {
-    const projectDir = process.env["CLAUDE_PROJECT_DIR"] ?? process.cwd();
-    return join4(projectDir, rawPath);
-  }
-  return rawPath;
-}
-function evaluateFileField(file) {
-  for (const [rawPath, fileMatch] of Object.entries(file)) {
-    const expandedPath = homePath(rawPath);
-    if (!existsSync2(expandedPath)) {
-      return "file-absent";
-    }
-    if (fileMatch === true) {
-      continue;
-    }
-    const content = readFileSync(expandedPath, "utf8");
-    if (!content.includes(fileMatch.contains)) {
-      return "no-match";
-    }
-  }
-  return "match";
-}
-function matchesFileField(entry) {
-  if (entry.file === undefined) {
-    return true;
-  }
-  return evaluateFileField(entry.file) === "match";
-}
-function matchesEnvVars(entry, env) {
-  if (entry.env === undefined) {
-    return true;
-  }
-  for (const [varName, pattern] of Object.entries(entry.env)) {
-    const actualValue = env.env[varName];
-    if (actualValue === undefined) {
-      return false;
-    }
-    if (!matchesPattern(pattern, actualValue)) {
-      return false;
-    }
-  }
-  return true;
-}
-function expandAliases(aliasExpr) {
-  return aliasExpr.split("|");
-}
-function flagPresent(aliasExpr, namedOptions) {
-  return expandAliases(aliasExpr).some((alias) => (alias in namedOptions));
-}
-function flagValue(aliasExpr, namedOptions) {
-  for (const alias of expandAliases(aliasExpr)) {
-    if (alias in namedOptions) {
-      return namedOptions[alias];
-    }
-  }
-  return;
-}
-function matchesOptions(entry, node) {
-  if (entry["options-in"] !== undefined) {
-    return entry["options-in"].some((aliasExpr) => flagPresent(aliasExpr, node.options));
-  }
-  if (entry.options === undefined) {
-    return true;
-  }
-  if (Array.isArray(entry.options)) {
-    return entry.options.every((aliasExpr) => flagPresent(aliasExpr, node.options));
-  }
-  for (const [aliasExpr, pattern] of Object.entries(entry.options)) {
-    if (typeof pattern !== "string") {
-      if (!flagPresent(aliasExpr, node.options)) {
-        return false;
-      }
-    } else {
-      const val = flagValue(aliasExpr, node.options);
-      if (val === undefined) {
-        return false;
-      }
-      if (typeof val !== "string") {
-        return false;
-      }
-      if (!matchesPattern(pattern, val)) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-function expandEnvVars(value, envVars) {
-  return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (fullMatch, bracedName, bareName) => {
-    const variableName = bracedName !== undefined ? bracedName : bareName;
-    const replacement = envVars[variableName];
-    return replacement !== undefined ? replacement : fullMatch;
-  });
-}
-function matchesCmdPattern(pattern, arg, env) {
-  if (!isCmdPathPattern(pattern)) {
-    return matchesPattern(pattern, arg);
-  }
-  const resolvedArg = resolve2(env.cwd, arg);
-  return matchesPathGlob(pattern, resolvedArg);
-}
-function matchesCmd(entry, node, cmdOffset, env) {
-  const rawCmdArray = Array.isArray(node.cmd) ? node.cmd : [node.cmd];
-  const cmdArray = rawCmdArray.map((token) => expandEnvVars(token, env.env));
-  if (entry["cmd-in"] !== undefined) {
-    const slice = cmdArray.slice(cmdOffset);
-    return entry["cmd-in"].some((pattern) => slice.some((positional) => matchesCmdPattern(pattern, positional, env)));
-  }
-  if (entry.cmd !== undefined) {
-    const patterns = Array.isArray(entry.cmd) ? entry.cmd : entry.cmd.trim().split(/\s+/);
-    for (let idx = 0;idx < patterns.length; idx++) {
-      const target = cmdArray[cmdOffset + idx];
-      if (target === undefined) {
-        return false;
-      }
-      if (!matchesCmdPattern(patterns[idx], target, env)) {
-        return false;
-      }
-    }
-    return true;
-  }
-  return true;
-}
-function aggregateOutcomes(firstOutcome, secondOutcome) {
-  const firstAction = firstOutcome.decision.action;
-  const secondAction = secondOutcome.decision.action;
-  if (firstAction === "deny") {
-    return firstOutcome;
-  }
-  if (secondAction === "deny") {
-    return secondOutcome;
-  }
-  if (firstAction === "ask") {
-    return firstOutcome;
-  }
-  if (secondAction === "ask") {
-    return secondOutcome;
-  }
-  if (firstAction === "allow") {
-    return firstOutcome;
-  }
-  if (secondAction === "allow") {
-    return secondOutcome;
-  }
-  return firstOutcome;
-}
-function matchesSubcommandPath(cmdArray, subcommandPath) {
-  if (cmdArray.length < subcommandPath.length) {
-    return false;
-  }
-  for (let idx = 0;idx < subcommandPath.length; idx++) {
-    if (cmdArray[idx] !== subcommandPath[idx]) {
-      return false;
-    }
-  }
-  return true;
-}
-function buildBashRule(binary, subcommandPath, entry) {
-  const decision = mapDecision(entry.decide, entry.reason);
-  const pathLabel = subcommandPath.length > 0 ? `:${subcommandPath.join(":")}` : "";
-  const ruleName = `yaml:${binary}${pathLabel}:${entry.decide}`;
-  const cmdOffset = subcommandPath.length;
-  const rule = function(node, env, _call) {
-    if (node.type !== "command") {
-      return ABSTAIN;
-    }
-    if (node.binary !== binary) {
-      return ABSTAIN;
-    }
-    const cmdArray = Array.isArray(node.cmd) ? node.cmd : [node.cmd];
-    if (!matchesSubcommandPath(cmdArray, subcommandPath)) {
-      return ABSTAIN;
-    }
-    if (!matchesCmd(entry, node, cmdOffset, env)) {
-      return ABSTAIN;
-    }
-    if (!matchesOptions(entry, node)) {
-      return ABSTAIN;
-    }
-    if (entry.host !== undefined || entry["host-in"] !== undefined) {
-      const urlArg = cmdArray[cmdOffset];
-      const hostname = urlArg !== undefined ? extractHost(urlArg) : "";
-      if (entry["host-in"] !== undefined) {
-        const hostIn = entry["host-in"];
-        if (!hostIn.some((pattern) => matchesPattern(pattern, hostname))) {
-          return ABSTAIN;
-        }
-      } else if (entry.host !== undefined) {
-        if (!matchesPattern(entry.host, hostname)) {
-          return ABSTAIN;
-        }
-      }
-    }
-    if (!matchesCwd(entry, env)) {
-      return ABSTAIN;
-    }
-    if (!matchesCwdResolved(entry, env)) {
-      return ABSTAIN;
-    }
-    if (!matchesEnvVars(entry, env)) {
-      return ABSTAIN;
-    }
-    if (!matchesFileField(entry)) {
-      return ABSTAIN;
-    }
-    if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, cmdOffset)) {
-      return ABSTAIN;
-    }
-    return { decision };
-  };
-  Object.defineProperty(rule, "name", { value: ruleName });
-  rule.ruleFile = entry.sourceFile;
-  rule.ruleLine = entry.sourceLine;
-  return rule;
-}
-function runSubRules(subRules, node, env, call) {
-  let result = ABSTAIN;
-  for (const subRule of subRules) {
-    const outcome = subRule(node, env, call);
-    result = aggregateOutcomes(result, outcome);
-    if (result.decision.action === "deny") {
-      break;
-    }
-  }
-  return result;
-}
-function runFirstMatchSubRules(subRules, node, env, call) {
-  for (const subRule of subRules) {
-    const outcome = subRule(node, env, call);
-    if (outcome.decision.action !== "abstain") {
-      return outcome;
-    }
-  }
-  return ABSTAIN;
-}
-function buildBashScopedRule(binary, subcommandPath, entry) {
-  const subRules = compileBashBinary(binary, entry.rules, subcommandPath);
-  const pathLabel = subcommandPath.length > 0 ? `:${subcommandPath.join(":")}` : "";
-  const ruleName = `yaml:${binary}${pathLabel}:scoped`;
-  const cmdOffset = subcommandPath.length;
-  const rule = function(node, env, call) {
-    if (node.type !== "command") {
-      return ABSTAIN;
-    }
-    if (node.binary !== binary) {
-      return ABSTAIN;
-    }
-    const cmdArray = Array.isArray(node.cmd) ? node.cmd : [node.cmd];
-    if (!matchesSubcommandPath(cmdArray, subcommandPath)) {
-      return ABSTAIN;
-    }
-    if (!matchesCmd(entry, node, cmdOffset, env)) {
-      return ABSTAIN;
-    }
-    if (!matchesOptions(entry, node)) {
-      return ABSTAIN;
-    }
-    if (!matchesCwd(entry, env)) {
-      return ABSTAIN;
-    }
-    if (!matchesCwdResolved(entry, env)) {
-      return ABSTAIN;
-    }
-    if (!matchesEnvVars(entry, env)) {
-      return ABSTAIN;
-    }
-    if (!matchesFileField(entry)) {
-      return ABSTAIN;
-    }
-    if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, cmdOffset)) {
-      return ABSTAIN;
-    }
-    return runSubRules(subRules, node, env, call);
-  };
-  Object.defineProperty(rule, "name", { value: ruleName });
-  rule.ruleFile = entry.sourceFile;
-  rule.ruleLine = entry.sourceLine;
-  return rule;
-}
-function compileBashBinary(binary, entries, subcommandPath) {
-  const compiledRules = [];
-  for (const entry of entries) {
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-      continue;
-    }
-    const subcommandKeys = Object.keys(entry).filter((key) => !KNOWN_FIELDS.has(key));
-    if (entry.rules !== undefined) {
-      compiledRules.push(buildBashScopedRule(binary, subcommandPath, entry));
-    } else if (typeof entry.decide === "string") {
-      compiledRules.push(buildBashRule(binary, subcommandPath, entry));
-    }
-    for (const subKey of subcommandKeys) {
-      const subValue = entry[subKey];
-      const subEntries = normalizeToList(subValue);
-      compiledRules.push(...compileBashBinary(binary, subEntries, [...subcommandPath, subKey]));
-    }
-  }
-  return compiledRules;
-}
-function compileBashSection(bashSection) {
-  const compiledRules = [];
-  for (const [binary, value] of Object.entries(bashSection)) {
-    const entries = normalizeToList(value);
-    compiledRules.push(...compileBashBinary(binary, entries, []));
-  }
-  return compiledRules;
-}
-function matchesPath(entry, filePath) {
-  if (entry["path-in"] !== undefined) {
-    return entry["path-in"].some((pattern) => matchesPattern(pattern, filePath));
-  }
-  if (entry.path !== undefined) {
-    return matchesPattern(entry.path, filePath);
-  }
-  return true;
-}
-function notFieldsAllMatch(not, node, env, cmdOffset) {
-  if (not.file !== undefined) {
-    const fileResult = evaluateFileField(not.file);
-    if (fileResult === "file-absent") {
-      return true;
-    }
-    if (fileResult === "no-match") {
-      return false;
-    }
-  }
-  if (node.type === "command") {
-    if (!matchesCmd(not, node, cmdOffset, env)) {
-      return false;
-    }
-    if (!matchesOptions(not, node)) {
-      return false;
-    }
-  }
-  if (!matchesCwd(not, env)) {
-    return false;
-  }
-  if (!matchesEnvVars(not, env)) {
-    return false;
-  }
-  if ("file_path" in node) {
-    const filePath = node.file_path;
-    if (!matchesPath(not, filePath)) {
-      return false;
-    }
-  }
-  if (node.type === "redirect" && (not.path !== undefined || not["path-in"] !== undefined)) {
-    const redirectNode = node;
-    if (isRedirectFdMerge(redirectNode)) {
-      return false;
-    }
-    const redirectKind = REDIRECT_OUT_OPS.has(redirectNode.op) ? "out" : "in";
-    if (!matchesRedirectPathFields(not, redirectNode, env, redirectKind)) {
-      return false;
-    }
-  }
-  return true;
-}
-function matchesFileEntry(nodeType, entry, node, env) {
-  if (node.type !== nodeType) {
-    return false;
-  }
-  if (!("file_path" in node)) {
-    return false;
-  }
-  const filePath = node.file_path;
-  if (!matchesPath(entry, filePath)) {
-    return false;
-  }
-  if (!matchesCwd(entry, env)) {
-    return false;
-  }
-  if (!matchesCwdResolved(entry, env)) {
-    return false;
-  }
-  if (!matchesEnvVars(entry, env)) {
-    return false;
-  }
-  if (!matchesFileField(entry)) {
-    return false;
-  }
-  if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, 0)) {
-    return false;
-  }
-  return true;
-}
-function buildFileRule(nodeType, entry) {
-  const decision = mapDecision(entry.decide, entry.reason);
-  const ruleName = `yaml:${nodeType}:${entry.decide}`;
-  const rule = function(node, env, _call) {
-    if (!matchesFileEntry(nodeType, entry, node, env)) {
-      return ABSTAIN;
-    }
-    return { decision };
-  };
-  Object.defineProperty(rule, "name", { value: ruleName });
-  rule.ruleFile = entry.sourceFile;
-  rule.ruleLine = entry.sourceLine;
-  return rule;
-}
-function extractHost(url) {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return "";
-  }
-}
-function matchesWebFetchEntry(entry, node, env) {
-  if (node.type !== "other" || node.tool_name !== "WebFetch") {
-    return false;
-  }
-  const url = typeof node.tool_input["url"] === "string" ? node.tool_input["url"] : "";
-  const hostname = extractHost(url);
-  if (entry.host !== undefined && !matchesPattern(entry.host, hostname)) {
-    return false;
-  }
-  if (entry["host-in"] !== undefined) {
-    const hostIn = entry["host-in"];
-    if (!hostIn.some((pattern) => matchesPattern(pattern, hostname))) {
-      return false;
-    }
-  }
-  if (!matchesCwd(entry, env)) {
-    return false;
-  }
-  if (!matchesCwdResolved(entry, env)) {
-    return false;
-  }
-  if (!matchesEnvVars(entry, env)) {
-    return false;
-  }
-  if (!matchesFileField(entry)) {
-    return false;
-  }
-  if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, 0)) {
-    return false;
-  }
-  return true;
-}
-function buildWebFetchRule(entry) {
-  const decision = mapDecision(entry.decide, entry.reason);
-  const ruleName = `yaml:webfetch:${entry.decide}`;
-  const rule = function(node, env, _call) {
-    if (!matchesWebFetchEntry(entry, node, env)) {
-      return ABSTAIN;
-    }
-    return { decision };
-  };
-  Object.defineProperty(rule, "name", { value: ruleName });
-  rule.ruleFile = entry.sourceFile;
-  rule.ruleLine = entry.sourceLine;
-  return rule;
-}
-var EMPTY_DESCRIPTORS = new Map;
-function resolveRedirectTarget(target, env) {
-  let expanded = expandEnvVars(target, env.env);
-  if (expanded.startsWith("~")) {
-    return homedir() + expanded.slice(1);
-  }
-  if (expanded.startsWith("/")) {
-    return expanded;
-  }
-  return resolve2(env.cwd, expanded);
-}
-function matchesRedirectPath(pattern, target, env) {
-  const resolvedTarget = resolveRedirectTarget(target, env);
-  if (!isCmdPathPattern(pattern)) {
-    return matchesPattern(pattern, resolvedTarget);
-  }
-  return matchesPathGlob(pattern, resolvedTarget);
-}
-function matchesRedirectTargets(patterns, targets, env) {
-  for (const target of targets) {
-    const matched = patterns.some((pattern) => matchesRedirectPath(pattern, target, env));
-    if (!matched) {
-      return false;
-    }
-  }
-  return true;
-}
-function collectRedirectsByInnerRaw(root, innerRaw) {
-  const chain = [];
-  function walk(node) {
-    if (node.type === "redirect") {
-      if (findInnerCommand(node).raw === innerRaw) {
-        chain.push(node);
-      }
-      walk(node.command);
-    } else if (node.type === "binop") {
-      walk(node.left);
-      walk(node.right);
-    } else if (node.type === "for_loop" || node.type === "group") {
-      walk(node.body);
-    } else if (node.type === "while_loop") {
-      walk(node.condition);
-      walk(node.body);
-    } else if (node.type === "if_statement") {
-      walk(node.condition);
-      walk(node.thenBranch);
-      if (node.elseBranch !== undefined) {
-        walk(node.elseBranch);
-      }
-    } else if (node.type === "case_statement") {
-      for (const clause of node.clauses) {
-        walk(clause.body);
-      }
-    } else if (node.type === "xargs") {
-      walk(node.child);
-    } else if (node.type === "command" && node.substitutions !== undefined) {
-      for (const substitution of node.substitutions) {
-        walk(substitution);
-      }
-    }
-  }
-  walk(root);
-  return chain;
-}
-function getBashAstFromCall(call) {
-  if (call.tool_name !== "Bash" && call.tool_name !== "Shell") {
-    return null;
-  }
-  const command = call.tool_input.command;
-  if (typeof command !== "string") {
-    return null;
-  }
-  return parseBash(command, EMPTY_DESCRIPTORS);
-}
-function collectRedirectFileTargetsForNode(node, call, ops) {
-  const bashAst = getBashAstFromCall(call);
-  if (bashAst === null) {
-    return [];
-  }
-  const innerRaw = findInnerCommand(node).raw;
-  const chain = collectRedirectsByInnerRaw(bashAst, innerRaw);
-  const targets = [];
-  for (const redirectNode of chain) {
-    if (!ops.has(redirectNode.op)) {
-      continue;
-    }
-    if (isRedirectFdMerge(redirectNode)) {
-      continue;
-    }
-    targets.push(redirectNode.target);
-  }
-  return targets;
-}
-function matchesRedirectPathFields(entry, node, env, kind) {
-  const ops = kind === "out" ? REDIRECT_OUT_OPS : REDIRECT_IN_OPS;
-  if (!ops.has(node.op)) {
-    return false;
-  }
-  if (isRedirectFdMerge(node)) {
-    return false;
-  }
-  if (entry["path-in"] !== undefined) {
-    return matchesRedirectTargets(entry["path-in"], [node.target], env);
-  }
-  if (entry.path !== undefined) {
-    return matchesRedirectPath(entry.path, node.target, env);
-  }
-  return true;
-}
-function matchesRedirectOut(entry, node, env, call) {
-  if (!REDIRECT_OUT_OPS.has(node.op)) {
-    return false;
-  }
-  if (isRedirectFdMerge(node)) {
-    return false;
-  }
-  if (entry["path-in"] !== undefined || entry.path !== undefined) {
-    const targets = collectRedirectFileTargetsForNode(node, call, REDIRECT_OUT_OPS);
-    if (targets.length === 0) {
-      return false;
-    }
-    if (entry["path-in"] !== undefined) {
-      if (!matchesRedirectTargets(entry["path-in"], targets, env)) {
-        return false;
-      }
-    } else if (entry.path !== undefined) {
-      for (const target of targets) {
-        if (!matchesRedirectPath(entry.path, target, env)) {
-          return false;
-        }
-      }
-    }
-  }
-  if (!matchesCwd(entry, env)) {
-    return false;
-  }
-  if (!matchesCwdResolved(entry, env)) {
-    return false;
-  }
-  if (!matchesEnvVars(entry, env)) {
-    return false;
-  }
-  if (!matchesFileField(entry)) {
-    return false;
-  }
-  if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, 0)) {
-    return false;
-  }
-  return true;
-}
-function matchesRedirectIn(entry, node, env, call) {
-  if (!REDIRECT_IN_OPS.has(node.op)) {
-    return false;
-  }
-  if (isRedirectFdMerge(node)) {
-    return false;
-  }
-  if (entry["path-in"] !== undefined || entry.path !== undefined) {
-    const targets = collectRedirectFileTargetsForNode(node, call, REDIRECT_IN_OPS);
-    if (targets.length === 0) {
-      return false;
-    }
-    if (entry["path-in"] !== undefined) {
-      if (!matchesRedirectTargets(entry["path-in"], targets, env)) {
-        return false;
-      }
-    } else if (entry.path !== undefined) {
-      for (const target of targets) {
-        if (!matchesRedirectPath(entry.path, target, env)) {
-          return false;
-        }
-      }
-    }
-  }
-  if (!matchesCwd(entry, env)) {
-    return false;
-  }
-  if (!matchesCwdResolved(entry, env)) {
-    return false;
-  }
-  if (!matchesEnvVars(entry, env)) {
-    return false;
-  }
-  if (!matchesFileField(entry)) {
-    return false;
-  }
-  if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, 0)) {
-    return false;
-  }
-  return true;
-}
-function buildRedirectRule(kind, entry) {
-  const decision = mapDecision(entry.decide, entry.reason);
-  const ruleName = `yaml:redirect:${kind}:${entry.decide}`;
-  const rule = function(node, env, call) {
-    if (node.type !== "redirect") {
-      return ABSTAIN;
-    }
-    const redirectNode = node;
-    const matched = kind === "out" ? matchesRedirectOut(entry, redirectNode, env, call) : matchesRedirectIn(entry, redirectNode, env, call);
-    if (!matched) {
-      return ABSTAIN;
-    }
-    return { decision };
-  };
-  Object.defineProperty(rule, "name", { value: ruleName });
-  rule.ruleFile = entry.sourceFile;
-  rule.ruleLine = entry.sourceLine;
-  return rule;
-}
-function buildRedirectScopedRule(kind, entry) {
-  const subRules = compileRedirectEntries(kind, entry.rules);
-  const ruleName = `yaml:redirect:${kind}:scoped`;
-  const rule = function(node, env, call) {
-    if (node.type !== "redirect") {
-      return ABSTAIN;
-    }
-    const redirectNode = node;
-    const matched = kind === "out" ? matchesRedirectOut(entry, redirectNode, env, call) : matchesRedirectIn(entry, redirectNode, env, call);
-    if (!matched) {
-      return ABSTAIN;
-    }
-    return runFirstMatchSubRules(subRules, node, env, call);
-  };
-  Object.defineProperty(rule, "name", { value: ruleName });
-  rule.ruleFile = entry.sourceFile;
-  rule.ruleLine = entry.sourceLine;
-  return rule;
-}
-function compileRedirectEntries(kind, entries) {
-  return compileEntries(entries, (entry) => buildRedirectRule(kind, entry), (entry) => buildRedirectScopedRule(kind, entry));
-}
-function buildRedirectOrderedRule(kind, entries) {
-  const subRules = compileRedirectEntries(kind, entries);
-  const ruleName = `yaml:redirect:${kind}:ordered`;
-  const rule = function(node, env, call) {
-    if (node.type !== "redirect") {
-      return ABSTAIN;
-    }
-    return runFirstMatchSubRules(subRules, node, env, call);
-  };
-  Object.defineProperty(rule, "name", { value: ruleName });
-  if (entries.length > 0) {
-    rule.ruleFile = entries[0].sourceFile;
-    rule.ruleLine = entries[0].sourceLine;
-  }
-  return rule;
-}
-function compileRedirectSection(redirectSection) {
-  const compiledRules = [];
-  if (redirectSection.out !== undefined) {
-    compiledRules.push(buildRedirectOrderedRule("out", normalizeToList(redirectSection.out)));
-  }
-  if (redirectSection.in !== undefined) {
-    compiledRules.push(buildRedirectOrderedRule("in", normalizeToList(redirectSection.in)));
-  }
-  return compiledRules;
-}
-function resolveEntryRedirectPatterns(entry, projectDir) {
-  if (typeof entry.path === "string") {
-    entry.path = resolveCmdPathPattern(entry.path, projectDir);
-  }
-  if (Array.isArray(entry["path-in"])) {
-    entry["path-in"] = entry["path-in"].map((pattern) => resolveCmdPathPattern(pattern, projectDir));
-  }
-  if (entry.not !== undefined) {
-    if (typeof entry.not.path === "string") {
-      entry.not.path = resolveCmdPathPattern(entry.not.path, projectDir);
-    }
-    if (Array.isArray(entry.not["path-in"])) {
-      entry.not["path-in"] = entry.not["path-in"].map((pattern) => resolveCmdPathPattern(pattern, projectDir));
-    }
-  }
-  if (Array.isArray(entry.rules)) {
-    for (const subEntry of entry.rules) {
-      resolveEntryRedirectPatterns(subEntry, projectDir);
-    }
-  }
-}
-function matchesMcpEntry(entry, node, env) {
-  if (node.type !== "other") {
-    return false;
-  }
-  if (entry["tool-in"] !== undefined) {
-    const toolIn = entry["tool-in"];
-    if (!toolIn.some((pattern) => matchesPattern(pattern, node.tool_name))) {
-      return false;
-    }
-  }
-  if (entry.tool !== undefined && !matchesPattern(entry.tool, node.tool_name)) {
-    return false;
-  }
-  if (!matchesCwd(entry, env)) {
-    return false;
-  }
-  if (!matchesCwdResolved(entry, env)) {
-    return false;
-  }
-  if (!matchesEnvVars(entry, env)) {
-    return false;
-  }
-  if (!matchesFileField(entry)) {
-    return false;
-  }
-  if (entry.not !== undefined && notFieldsAllMatch(entry.not, node, env, 0)) {
-    return false;
-  }
-  return true;
-}
-function buildMcpRule(entry) {
-  const decision = mapDecision(entry.decide, entry.reason);
-  const ruleName = `yaml:tool:${entry.decide}`;
-  const rule = function(node, env, _call) {
-    if (!matchesMcpEntry(entry, node, env)) {
-      return ABSTAIN;
-    }
-    return { decision };
-  };
-  Object.defineProperty(rule, "name", { value: ruleName });
-  rule.ruleFile = entry.sourceFile;
-  rule.ruleLine = entry.sourceLine;
-  return rule;
-}
-function compileEntries(entries, buildLeaf, buildScoped) {
-  const compiledRules = [];
-  for (const entry of entries) {
-    if (entry.rules !== undefined) {
-      compiledRules.push(buildScoped(entry));
-    } else if (typeof entry.decide === "string") {
-      compiledRules.push(buildLeaf(entry));
-    }
-  }
-  return compiledRules;
-}
-function compileFileEntries(nodeType, entries) {
-  return compileEntries(entries, (entry) => buildFileRule(nodeType, entry), (entry) => buildFileScopedRule(nodeType, entry));
-}
-function buildFileScopedRule(nodeType, entry) {
-  const subRules = compileFileEntries(nodeType, entry.rules);
-  const ruleName = `yaml:${nodeType}:scoped`;
-  const rule = function(node, env, call) {
-    if (!matchesFileEntry(nodeType, entry, node, env)) {
-      return ABSTAIN;
-    }
-    return runSubRules(subRules, node, env, call);
-  };
-  Object.defineProperty(rule, "name", { value: ruleName });
-  rule.ruleFile = entry.sourceFile;
-  rule.ruleLine = entry.sourceLine;
-  return rule;
-}
-function compileWebFetchEntries(entries) {
-  return compileEntries(entries, buildWebFetchRule, buildWebFetchScopedRule);
-}
-function buildWebFetchScopedRule(entry) {
-  const subRules = compileWebFetchEntries(entry.rules);
-  const ruleName = `yaml:webfetch:scoped`;
-  const rule = function(node, env, call) {
-    if (!matchesWebFetchEntry(entry, node, env)) {
-      return ABSTAIN;
-    }
-    return runSubRules(subRules, node, env, call);
-  };
-  Object.defineProperty(rule, "name", { value: ruleName });
-  rule.ruleFile = entry.sourceFile;
-  rule.ruleLine = entry.sourceLine;
-  return rule;
-}
-function compileMcpEntries(entries) {
-  return compileEntries(entries, buildMcpRule, buildMcpScopedRule);
-}
-function buildMcpScopedRule(entry) {
-  const subRules = compileMcpEntries(entry.rules);
-  const ruleName = `yaml:tool:scoped`;
-  const rule = function(node, env, call) {
-    if (!matchesMcpEntry(entry, node, env)) {
-      return ABSTAIN;
-    }
-    return runSubRules(subRules, node, env, call);
-  };
-  Object.defineProperty(rule, "name", { value: ruleName });
-  rule.ruleFile = entry.sourceFile;
-  rule.ruleLine = entry.sourceLine;
-  return rule;
-}
-function compileTopLevelToolRules(config) {
-  const compiledRules = [];
-  for (const key of Object.keys(config)) {
-    if (KNOWN_SECTIONS.has(key)) {
-      continue;
-    }
-    if (KNOWN_FIELDS.has(key)) {
-      continue;
-    }
-    const sectionValue = config[key];
-    if (sectionValue === undefined) {
-      continue;
-    }
-    const entries = normalizeToList(sectionValue);
-    for (const entry of entries) {
-      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-        continue;
-      }
-      if (entry.tool === undefined && entry["tool-in"] === undefined) {
-        entry.tool = key;
-      }
-      if (Array.isArray(entry.rules)) {
-        for (const subEntry of entry.rules) {
-          if (typeof subEntry !== "object" || subEntry === null || Array.isArray(subEntry)) {
-            continue;
-          }
-          if (subEntry.tool === undefined && subEntry["tool-in"] === undefined) {
-            subEntry.tool = key;
-          }
-        }
-      }
-    }
-    compiledRules.push(...compileMcpEntries(entries));
-  }
-  return compiledRules;
-}
-function compileNonBashSections(config) {
-  const compiledRules = [];
-  const fileSections = [
-    ["read", "read"],
-    ["write", "write"],
-    ["edit", "edit"],
-    ["multi_edit", "multiedit"]
-  ];
-  for (const [sectionKey, nodeType] of fileSections) {
-    const sectionValue = config[sectionKey];
-    if (sectionValue === undefined) {
-      continue;
-    }
-    const entries = normalizeToList(sectionValue);
-    for (const entry of entries) {
-      if (entry.rules !== undefined) {
-        compiledRules.push(buildFileScopedRule(nodeType, entry));
-      } else if (typeof entry.decide === "string") {
-        compiledRules.push(buildFileRule(nodeType, entry));
-      }
-    }
-  }
-  if (config.webfetch !== undefined) {
-    const entries = normalizeToList(config.webfetch);
-    for (const entry of entries) {
-      if (entry.rules !== undefined) {
-        compiledRules.push(buildWebFetchScopedRule(entry));
-      } else {
-        compiledRules.push(buildWebFetchRule(entry));
-      }
-    }
-  }
-  return compiledRules;
-}
-function resolveCwdPattern(pattern, baseDir) {
-  if (pattern.startsWith("./")) {
-    return baseDir + "/" + pattern.slice(2);
-  }
-  return pattern;
-}
-function resolveEntryCwdPatterns(entry, baseDir, options) {
-  if (typeof entry.cwd === "string") {
-    entry.cwd = resolveCwdPattern(entry.cwd, baseDir);
-  }
-  if (Array.isArray(entry["cwd-in"])) {
-    entry["cwd-in"] = entry["cwd-in"].map((pattern) => resolveCwdPattern(pattern, baseDir));
-  }
-  if (entry.not !== undefined) {
-    if (typeof entry.not.cwd === "string") {
-      entry.not.cwd = resolveCwdPattern(entry.not.cwd, baseDir);
-    }
-    if (Array.isArray(entry.not["cwd-in"])) {
-      entry.not["cwd-in"] = entry.not["cwd-in"].map((pattern) => resolveCwdPattern(pattern, baseDir));
-    }
-  }
-  if (Array.isArray(entry.rules)) {
-    for (const subEntry of entry.rules) {
-      resolveEntryCwdPatterns(subEntry, baseDir, options);
-    }
-  }
-  if (options !== undefined && options.isToolNameEntry) {
-    return;
-  }
-  for (const key of Object.keys(entry)) {
-    if (KNOWN_FIELDS.has(key)) {
-      continue;
-    }
-    const subValue = entry[key];
-    if (Array.isArray(subValue)) {
-      for (const subEntry of subValue) {
-        resolveEntryCwdPatterns(subEntry, baseDir);
-      }
-    } else if (typeof subValue === "object" && subValue !== null) {
-      resolveEntryCwdPatterns(subValue, baseDir);
-    }
-  }
-}
-function resolveRelativeCwdPatterns(config, baseDir) {
-  if (config.bash !== undefined) {
-    for (const entries of Object.values(config.bash)) {
-      for (const entry of normalizeToList(entries)) {
-        resolveEntryCwdPatterns(entry, baseDir);
-      }
-    }
-  }
-  const sectionKeys = ["read", "write", "edit", "multi_edit", "webfetch"];
-  for (const sectionKey of sectionKeys) {
-    const sectionValue = config[sectionKey];
-    if (sectionValue !== undefined) {
-      for (const entry of normalizeToList(sectionValue)) {
-        resolveEntryCwdPatterns(entry, baseDir);
-      }
-    }
-  }
-  if (config.redirect !== undefined) {
-    if (config.redirect.out !== undefined) {
-      for (const entry of normalizeToList(config.redirect.out)) {
-        resolveEntryCwdPatterns(entry, baseDir);
-      }
-    }
-    if (config.redirect.in !== undefined) {
-      for (const entry of normalizeToList(config.redirect.in)) {
-        resolveEntryCwdPatterns(entry, baseDir);
-      }
-    }
-  }
-  const toolNameOptions = { isToolNameEntry: true };
-  for (const key of Object.keys(config)) {
-    if (KNOWN_SECTIONS.has(key)) {
-      continue;
-    }
-    if (KNOWN_FIELDS.has(key)) {
-      continue;
-    }
-    const sectionValue = config[key];
-    if (sectionValue === undefined) {
-      continue;
-    }
-    for (const entry of normalizeToList(sectionValue)) {
-      resolveEntryCwdPatterns(entry, baseDir, toolNameOptions);
-    }
-  }
-}
-function isCmdPathPattern(pattern) {
-  if (pattern.length >= 2 && pattern.startsWith("/") && pattern.endsWith("/")) {
-    return false;
-  }
-  return pattern.startsWith("./") || pattern.startsWith("/");
-}
-function resolveCmdPathPattern(pattern, projectDir) {
-  if (pattern.startsWith("./")) {
-    return projectDir + "/" + pattern.slice(2);
-  }
-  return pattern;
-}
-function rewriteCmdField(cmdField, projectDir) {
-  if (Array.isArray(cmdField)) {
-    return cmdField.map((pattern) => resolveCmdPathPattern(pattern, projectDir));
-  }
-  const tokens = cmdField.trim().split(/\s+/);
-  const rewrittenTokens = tokens.map((token) => resolveCmdPathPattern(token, projectDir));
-  return rewrittenTokens.join(" ");
-}
-function resolveEntryCmdPatterns(entry, projectDir, options) {
-  if (entry.cmd !== undefined) {
-    entry.cmd = rewriteCmdField(entry.cmd, projectDir);
-  }
-  if (Array.isArray(entry["cmd-in"])) {
-    entry["cmd-in"] = entry["cmd-in"].map((pattern) => resolveCmdPathPattern(pattern, projectDir));
-  }
-  if (entry.not !== undefined) {
-    if (entry.not.cmd !== undefined) {
-      entry.not.cmd = rewriteCmdField(entry.not.cmd, projectDir);
-    }
-    if (Array.isArray(entry.not["cmd-in"])) {
-      entry.not["cmd-in"] = entry.not["cmd-in"].map((pattern) => resolveCmdPathPattern(pattern, projectDir));
-    }
-  }
-  if (Array.isArray(entry.rules)) {
-    for (const subEntry of entry.rules) {
-      resolveEntryCmdPatterns(subEntry, projectDir, options);
-    }
-  }
-  if (options !== undefined && options.isToolNameEntry) {
-    return;
-  }
-  for (const key of Object.keys(entry)) {
-    if (KNOWN_FIELDS.has(key)) {
-      continue;
-    }
-    const subValue = entry[key];
-    if (Array.isArray(subValue)) {
-      for (const subEntry of subValue) {
-        resolveEntryCmdPatterns(subEntry, projectDir);
-      }
-    } else if (typeof subValue === "object" && subValue !== null) {
-      resolveEntryCmdPatterns(subValue, projectDir);
-    }
-  }
-}
-function resolveRelativeCmdPatterns(config, projectDir) {
-  if (config.bash !== undefined) {
-    for (const entries of Object.values(config.bash)) {
-      for (const entry of normalizeToList(entries)) {
-        resolveEntryCmdPatterns(entry, projectDir);
-      }
-    }
-  }
-  const sectionKeys = ["read", "write", "edit", "multi_edit", "webfetch"];
-  for (const sectionKey of sectionKeys) {
-    const sectionValue = config[sectionKey];
-    if (sectionValue !== undefined) {
-      for (const entry of normalizeToList(sectionValue)) {
-        resolveEntryCmdPatterns(entry, projectDir);
-      }
-    }
-  }
-  if (config.redirect !== undefined) {
-    if (config.redirect.out !== undefined) {
-      for (const entry of normalizeToList(config.redirect.out)) {
-        resolveEntryRedirectPatterns(entry, projectDir);
-      }
-    }
-    if (config.redirect.in !== undefined) {
-      for (const entry of normalizeToList(config.redirect.in)) {
-        resolveEntryRedirectPatterns(entry, projectDir);
-      }
-    }
-  }
-  const toolNameOptions = { isToolNameEntry: true };
-  for (const key of Object.keys(config)) {
-    if (KNOWN_SECTIONS.has(key)) {
-      continue;
-    }
-    if (KNOWN_FIELDS.has(key)) {
-      continue;
-    }
-    const sectionValue = config[key];
-    if (sectionValue === undefined) {
-      continue;
-    }
-    for (const entry of normalizeToList(sectionValue)) {
-      resolveEntryCmdPatterns(entry, projectDir, toolNameOptions);
-    }
-  }
-}
-function expandEnvTokens(value, projectDir, homeDir, displayFile, warnings) {
-  if (value.length >= 2 && value.startsWith("/") && value.endsWith("/")) {
-    return value;
-  }
-  let result = value;
-  const projectDirToken = "${{PROJECT_DIR}}";
-  const homeToken = "${{HOME}}";
-  if (result.includes(projectDirToken)) {
-    if (projectDir !== undefined) {
-      result = result.split(projectDirToken).join(projectDir);
-    } else {
-      warnings.add(projectDirToken + "@" + displayFile);
-    }
-  }
-  if (result.includes(homeToken)) {
-    if (homeDir !== undefined) {
-      result = result.split(homeToken).join(homeDir);
-    } else {
-      warnings.add(homeToken + "@" + displayFile);
-    }
-  }
-  return result;
-}
-function expandMatcherFields(target, expand) {
-  if (typeof target.cmd === "string") {
-    target.cmd = expand(target.cmd);
-  } else if (Array.isArray(target.cmd)) {
-    target.cmd = target.cmd.map(expand);
-  }
-  if (Array.isArray(target["cmd-in"])) {
-    target["cmd-in"] = target["cmd-in"].map(expand);
-  }
-  if (typeof target.cwd === "string") {
-    target.cwd = expand(target.cwd);
-  }
-  if (Array.isArray(target["cwd-in"])) {
-    target["cwd-in"] = target["cwd-in"].map(expand);
-  }
-  if (typeof target.path === "string") {
-    target.path = expand(target.path);
-  }
-  if (Array.isArray(target["path-in"])) {
-    target["path-in"] = target["path-in"].map(expand);
-  }
-  if (target.env !== undefined) {
-    const newEnv = {};
-    for (const [envKey, envValue] of Object.entries(target.env)) {
-      newEnv[envKey] = typeof envValue === "string" ? expand(envValue) : envValue;
-    }
-    target.env = newEnv;
-  }
-  if (target.file !== undefined) {
-    const newFile = {};
-    for (const [fileKey, fileValue] of Object.entries(target.file)) {
-      newFile[expand(fileKey)] = fileValue;
-    }
-    target.file = newFile;
-  }
-}
-function expandEntryEnvTokens(entry, projectDir, homeDir, displayFile, warnings, options) {
-  const expand = (value) => expandEnvTokens(value, projectDir, homeDir, displayFile, warnings);
-  expandMatcherFields(entry, expand);
-  if (entry.not !== undefined) {
-    expandMatcherFields(entry.not, expand);
-  }
-  if (Array.isArray(entry.rules)) {
-    for (const subEntry of entry.rules) {
-      expandEntryEnvTokens(subEntry, projectDir, homeDir, displayFile, warnings, options);
-    }
-  }
-  if (options !== undefined && options.isToolNameEntry) {
-    return;
-  }
-  for (const key of Object.keys(entry)) {
-    if (KNOWN_FIELDS.has(key)) {
-      continue;
-    }
-    const subValue = entry[key];
-    if (Array.isArray(subValue)) {
-      for (const subEntry of subValue) {
-        expandEntryEnvTokens(subEntry, projectDir, homeDir, displayFile, warnings);
-      }
-    } else if (typeof subValue === "object" && subValue !== null) {
-      expandEntryEnvTokens(subValue, projectDir, homeDir, displayFile, warnings);
-    }
-  }
-}
-function expandConfigEnvTokens(config, projectDir, homeDir, displayFile) {
-  const warnings = new Set;
-  if (config.bash !== undefined) {
-    for (const entries of Object.values(config.bash)) {
-      for (const entry of normalizeToList(entries)) {
-        expandEntryEnvTokens(entry, projectDir, homeDir, displayFile, warnings);
-      }
-    }
-  }
-  const sectionKeys = ["read", "write", "edit", "multi_edit", "webfetch"];
-  for (const sectionKey of sectionKeys) {
-    const sectionValue = config[sectionKey];
-    if (sectionValue !== undefined) {
-      for (const entry of normalizeToList(sectionValue)) {
-        expandEntryEnvTokens(entry, projectDir, homeDir, displayFile, warnings);
-      }
-    }
-  }
-  if (config.redirect !== undefined) {
-    if (config.redirect.out !== undefined) {
-      for (const entry of normalizeToList(config.redirect.out)) {
-        expandEntryEnvTokens(entry, projectDir, homeDir, displayFile, warnings);
-      }
-    }
-    if (config.redirect.in !== undefined) {
-      for (const entry of normalizeToList(config.redirect.in)) {
-        expandEntryEnvTokens(entry, projectDir, homeDir, displayFile, warnings);
-      }
-    }
-  }
-  const toolNameOptions = { isToolNameEntry: true };
-  for (const key of Object.keys(config)) {
-    if (KNOWN_SECTIONS.has(key)) {
-      continue;
-    }
-    if (KNOWN_FIELDS.has(key)) {
-      continue;
-    }
-    const sectionValue = config[key];
-    if (sectionValue === undefined) {
-      continue;
-    }
-    for (const entry of normalizeToList(sectionValue)) {
-      expandEntryEnvTokens(entry, projectDir, homeDir, displayFile, warnings, toolNameOptions);
-    }
-  }
-  for (const warningKey of warnings) {
-    const atIndex = warningKey.indexOf("@");
-    const token = warningKey.slice(0, atIndex);
-    process.stderr.write(`[CONFIG WARN] (${displayFile}) unresolved ${token}
-`);
-  }
-}
-function lineOfOffset(source, offset) {
-  let line = 1;
-  for (let idx = 0;idx < offset; idx++) {
-    if (source[idx] === `
-`) {
-      line++;
-    }
-  }
-  return line;
-}
-function annotateLines(node, jsValue, source, displayFile) {
-  if ($isMap(node) && jsValue !== null && typeof jsValue === "object" && !Array.isArray(jsValue)) {
-    const jsObj = jsValue;
-    if ("decide" in jsObj && node.range) {
-      jsObj.sourceFile = displayFile;
-      jsObj.sourceLine = lineOfOffset(source, node.range[0]);
-    }
-    for (const pair of node.items) {
-      if (!$isPair(pair) || !$isScalar(pair.key)) {
-        continue;
-      }
-      const key = String(pair.key.value);
-      if (key in jsObj) {
-        annotateLines(pair.value, jsObj[key], source, displayFile);
-      }
-    }
-  } else if ($isSeq(node) && Array.isArray(jsValue)) {
-    for (let idx = 0;idx < node.items.length; idx++) {
-      annotateLines(node.items[idx], jsValue[idx], source, displayFile);
-    }
-  }
-}
-function readYamlFile(filePath, displayFile) {
-  if (!existsSync2(filePath)) {
-    return null;
-  }
-  const content = readFileSync(filePath, "utf-8");
-  const doc = $parseDocument(content);
-  if (doc.errors.length > 0) {
-    throw doc.errors[0];
-  }
-  const config = doc.toJS();
-  annotateLines(doc.contents, config, content, displayFile);
-  return config;
-}
-function validateEntry(entry, path, errors2, options) {
-  if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-    errors2.push({ path, message: `expected a rule entry object but got ${Array.isArray(entry) ? "array" : typeof entry}` });
-    return;
-  }
-  if (path.startsWith("bash.") && (entry.path !== undefined || entry["path-in"] !== undefined)) {
-    errors2.push({ path, message: "path and path-in are not valid on bash: entries; use redirect.out or redirect.in for redirect path policy" });
-  }
-  if (entry.decide !== undefined && !VALID_DECIDE_VALUES.has(entry.decide)) {
-    errors2.push({ path: `${path}.decide`, message: `invalid decide value '${entry.decide}': must be one of allow, deny, ask, abstain` });
-  }
-  if (entry.decide !== undefined && entry.rules !== undefined) {
-    errors2.push({ path, message: `'decide' and 'rules' are mutually exclusive; 'decide' will be ignored` });
-  }
-  const subcommandKeys = Object.keys(entry).filter((key) => !KNOWN_FIELDS.has(key));
-  const isToolNameEntry = options !== undefined && options.isToolNameEntry;
-  if (entry.decide === undefined && entry.rules === undefined && (isToolNameEntry || subcommandKeys.length === 0)) {
-    errors2.push({ path, message: `entry has neither 'decide', 'rules', nor subcommand keys and will always abstain` });
-  }
-  if (entry.rules !== undefined) {
-    for (let index = 0;index < entry.rules.length; index++) {
-      validateEntry(entry.rules[index], `${path}.rules[${index}]`, errors2, options);
-    }
-  }
-  if (isToolNameEntry) {
-    for (const unknownKey of subcommandKeys) {
-      errors2.push({ path: `${path}.${unknownKey}`, message: `unknown field '${unknownKey}' on tool-name rule '${path}'` });
-    }
-    return;
-  }
-  for (const subKey of subcommandKeys) {
-    const subValue = entry[subKey];
-    if (typeof subValue !== "object" || subValue === null) {
-      errors2.push({ path: `${path}.${subKey}`, message: `subcommand value must be a rule entry object or list of rule entries, got ${typeof subValue}` });
-      continue;
-    }
-    if (Array.isArray(subValue)) {
-      for (let index = 0;index < subValue.length; index++) {
-        const item = subValue[index];
-        if (typeof item !== "object" || item === null || Array.isArray(item)) {
-          errors2.push({ path: `${path}.${subKey}[${index}]`, message: `expected a rule entry object but got ${Array.isArray(item) ? "array" : typeof item}` });
-          continue;
-        }
-        validateEntry(item, `${path}.${subKey}[${index}]`, errors2);
-      }
-    } else {
-      validateEntry(subValue, `${path}.${subKey}`, errors2);
-    }
-  }
-}
-function validateConfig(config) {
-  const errors2 = [];
-  if (config.bash !== undefined) {
-    for (const [binary, value] of Object.entries(config.bash)) {
-      const entries = normalizeToList(value);
-      for (let index = 0;index < entries.length; index++) {
-        validateEntry(entries[index], `bash.${binary}[${index}]`, errors2);
-      }
-    }
-  }
-  const nonBashSections = ["read", "write", "edit", "multi_edit", "webfetch"];
-  for (const section of nonBashSections) {
-    const sectionValue = config[section];
-    if (sectionValue === undefined) {
-      continue;
-    }
-    const entries = normalizeToList(sectionValue);
-    for (let index = 0;index < entries.length; index++) {
-      validateEntry(entries[index], `${section}[${index}]`, errors2);
-    }
-  }
-  if (config.redirect !== undefined) {
-    if (config.redirect.out !== undefined) {
-      const outEntries = normalizeToList(config.redirect.out);
-      for (let index = 0;index < outEntries.length; index++) {
-        validateEntry(outEntries[index], `redirect.out[${index}]`, errors2);
-      }
-    }
-    if (config.redirect.in !== undefined) {
-      const inEntries = normalizeToList(config.redirect.in);
-      for (let index = 0;index < inEntries.length; index++) {
-        validateEntry(inEntries[index], `redirect.in[${index}]`, errors2);
-      }
-    }
-  }
-  const toolNameOptions = { isToolNameEntry: true };
-  for (const key of Object.keys(config)) {
-    if (KNOWN_SECTIONS.has(key)) {
-      continue;
-    }
-    if (KNOWN_FIELDS.has(key)) {
-      errors2.push({
-        path: key,
-        message: `top-level key '${key}' is a reserved rule field; tool-name rules cannot use these as keys`
-      });
-      continue;
-    }
-    const sectionValue = config[key];
-    if (sectionValue === undefined) {
-      continue;
-    }
-    const entries = normalizeToList(sectionValue);
-    for (let index = 0;index < entries.length; index++) {
-      const entryPath = index > 0 ? `${key}[${index}]` : key;
-      validateEntry(entries[index], entryPath, errors2, toolNameOptions);
-    }
-  }
-  return errors2;
-}
-function compileConfig(config) {
-  const compiledRules = [];
-  if (config.bash !== undefined) {
-    compiledRules.push(...compileBashSection(config.bash));
-  }
-  compiledRules.push(...compileNonBashSections(config));
-  if (config.redirect !== undefined) {
-    compiledRules.push(...compileRedirectSection(config.redirect));
-  }
-  compiledRules.push(...compileTopLevelToolRules(config));
-  return compiledRules;
-}
-function loadConfigRulesFromFile(filePath, displayFile, baseDir) {
-  const config = readYamlFile(filePath, displayFile);
-  if (config === null) {
-    return [];
-  }
-  expandConfigEnvTokens(config, process.env["CLAUDE_PROJECT_DIR"], process.env["HOME"], displayFile);
-  resolveRelativeCwdPatterns(config, baseDir);
-  const projectDir = process.env["CLAUDE_PROJECT_DIR"];
-  if (projectDir !== undefined) {
-    resolveRelativeCmdPatterns(config, projectDir);
-  }
-  const configErrors = validateConfig(config);
-  for (const configError of configErrors) {
-    process.stderr.write(`[CONFIG ERROR] ${configError.path}: ${configError.message}
-`);
-  }
-  return compileConfig(config);
-}
-function loadHomeConfigRules() {
-  const homeDir = process.env["HOME"];
-  if (homeDir === undefined) {
-    return [];
-  }
-  return loadConfigRulesFromFile(join4(homeDir, ".claude", "permissions.yaml"), "~/.claude/permissions.yaml", homeDir);
-}
-function loadProjectConfigRules() {
-  const projectDir = process.env["CLAUDE_PROJECT_DIR"];
-  if (projectDir === undefined) {
-    return [];
-  }
-  return loadConfigRulesFromFile(join4(projectDir, ".claude", "permissions.yaml"), ".claude/permissions.yaml", projectDir);
-}
-function isDropInFileCandidate(dirPath, entryName) {
-  if (entryName.startsWith(".")) {
-    return false;
-  }
-  const stat3 = statSync(join4(dirPath, entryName));
-  return stat3.isFile();
-}
-function discoverConfigDirFiles(dirPath, displayPrefix, baseDir) {
-  if (!existsSync2(dirPath)) {
-    return [];
-  }
-  const dirStat = statSync(dirPath);
-  if (!dirStat.isDirectory()) {
-    return [];
-  }
-  const allEntries = readdirSync2(dirPath);
-  const matchingNames = [];
-  for (const entryName of allEntries) {
-    if (!entryName.endsWith(".yaml") && !entryName.endsWith(".yml")) {
-      continue;
-    }
-    if (!isDropInFileCandidate(dirPath, entryName)) {
-      continue;
-    }
-    matchingNames.push(entryName);
-  }
-  matchingNames.sort();
-  const sources = [];
-  for (const name of matchingNames) {
-    sources.push({
-      filePath: join4(dirPath, name),
-      displayPath: displayPrefix + "/" + name,
-      baseDir
-    });
-  }
-  return sources;
-}
-function discoverHomeConfigDirFiles() {
-  const homeDir = process.env["HOME"];
-  if (homeDir === undefined) {
-    return [];
-  }
-  return discoverConfigDirFiles(join4(homeDir, ".claude", "permissions.d"), "~/.claude/permissions.d", homeDir);
-}
-function discoverProjectConfigDirFiles() {
-  const projectDir = process.env["CLAUDE_PROJECT_DIR"];
-  if (projectDir === undefined) {
-    return [];
-  }
-  return discoverConfigDirFiles(join4(projectDir, ".claude", "permissions.d"), ".claude/permissions.d", projectDir);
-}
-function makeConfigFileLoader(source) {
-  return function configFileLoader() {
-    return loadConfigRulesFromFile(source.filePath, source.displayPath, source.baseDir);
-  };
-}
-
 // src/pre-hook.ts
-import { homedir as homedir2 } from "os";
+import { homedir } from "os";
 var hookEventName = "PreToolUse";
-var homeDir = homedir2();
+function resolveHomeDir() {
+  if (process.env["HOME"]) {
+    return process.env["HOME"];
+  }
+  return homedir();
+}
 async function readStdin() {
   const chunks = [];
   for await (const chunk of process.stdin) {
@@ -12499,29 +12797,46 @@ async function runHook() {
     if (!projectDir) {
       throw new Error("CLAUDE_PROJECT_DIR is not set");
     }
+    const homeDir = resolveHomeDir();
     const logger = createLogger(projectDir, new Date);
     await ensureLogDirIgnored(resolveLogBaseDir(projectDir));
     await cleanupStalePendingPrompts(projectDir, new Date, STALE_PENDING_PROMPT_MAX_AGE_DAYS);
-    const layers = [
-      new RuleLayer(builtinRules),
-      new FileLayer(loadHomeConfigRules, "~/.claude/permissions.yaml", logger)
-    ];
-    for (const homeDropInSource of discoverHomeConfigDirFiles()) {
-      layers.push(new FileLayer(makeConfigFileLoader(homeDropInSource), homeDropInSource.displayPath, logger));
+    logger.log({
+      type: "tool_request",
+      timestamp: toLocalISOString(new Date),
+      tool: call.tool_name,
+      input: call.tool_input,
+      cwd: call.cwd
+    });
+    const ast = await parseToolCallToAst(call, homeDir, projectDir);
+    const rules = await load(projectDir, homeDir, logger);
+    const startingContext = { cwd: call.cwd, cwdResolved: true, env: {} };
+    const capturingLogger = new CapturingAuditLogger;
+    const decision = await decide(ast, rules, startingContext, capturingLogger);
+    for (const entry of capturingLogger.getEntries()) {
+      logger.log(entry);
     }
-    layers.push(new FileLayer(loadProjectConfigRules, ".claude/permissions.yaml", logger));
-    for (const projectDropInSource of discoverProjectConfigDirFiles()) {
-      layers.push(new FileLayer(makeConfigFileLoader(projectDropInSource), projectDropInSource.displayPath, logger));
+    const commandOutcomes = commandOutcomesFromAuditEntries(capturingLogger.getEntries());
+    const permissionDecision = decision !== undefined ? decision.action : "ask";
+    const permissionDecisionReason = decision !== undefined ? decision.reason : undefined;
+    logger.log({
+      type: "final_decision",
+      timestamp: toLocalISOString(new Date),
+      tool: call.tool_name,
+      cmd: ast.source,
+      decision: permissionDecision,
+      reason: permissionDecisionReason
+    });
+    if (permissionDecision === "ask") {
+      await writePendingPrompt(projectDir, call, ast, commandOutcomes, permissionDecision, permissionDecisionReason, new Date);
     }
-    const registry = new RuleRegistry(layers);
-    const descriptors = await loadCommandDescriptors(homeDir, projectDir);
-    const decideResult = decide(call, logger, registry, descriptors);
-    const permissionDecision = decideResult.decision.action;
-    const permissionDecisionReason = "reason" in decideResult.decision ? decideResult.decision.reason : undefined;
-    if (decideResult.decision.action === "ask") {
-      await writePendingPrompt(projectDir, call, decideResult.root, decideResult.leafEvaluations, decideResult.decision.action, permissionDecisionReason, new Date);
-    }
-    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName, permissionDecision, permissionDecisionReason } }) + `
+    process.stdout.write(JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName,
+        permissionDecision,
+        permissionDecisionReason
+      }
+    }) + `
 `);
     process.exit(0);
   } catch (hookError) {
@@ -12535,5 +12850,6 @@ if (process.env["NODE_ENV"] !== "test") {
 }
 export {
   runHook,
+  resolveHomeDir,
   readStdin
 };

@@ -1,0 +1,15 @@
+description: "bash: path is a synonym for cwd on bash entries"
+input:
+  tool_name: Bash
+  tool_input:
+    command: npm install
+  cwd: ${PROJECT_DIR}/src
+rules: {}
+expected:
+  decision: allow
+home_dir_files:
+  bash-path-cwd-synonym.yaml:
+    bash:
+      npm:
+        path: ${{PROJECT_DIR}}/**
+        decide: allow

@@ -1,0 +1,20 @@
+description: "bash: project permissions.d/git.yaml file denies git"
+source_e2e: e2e/bash/bash-layered-permissions-d-deny/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: git status
+  cwd: /home/user/project
+rules:
+  bash:
+    ls:
+      decide: allow
+expected:
+  decision: deny
+  reason: no git
+project_dir_files:
+  git.yaml:
+    bash:
+      git:
+        decide: deny
+        reason: no git

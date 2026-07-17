@@ -1,16 +1,17 @@
 tool_call:
-  tool_name: "Bash"
+  tool_name: Bash
   tool_input:
-    command: "A=1 B=2 cmd"
+    command: A=1 B=2 cmd
 ast:
-  type: "bash"
-  raw: "A=1 B=2 cmd"
-  ast:
-    type: "command"
-    binary: "cmd"
-    options: {}
-    cmd: []
-    envPrefix:
-      A: "1"
-      B: "2"
-    raw: "A=1 B=2 cmd"
+  type: bash
+  source: A=1 B=2 cmd
+  children:
+    command:
+      type: command
+      source: A=1 B=2 cmd
+      commandName: cmd
+      options: {}
+      positionals: []
+      envPrefix:
+        A: "1"
+        B: "2"

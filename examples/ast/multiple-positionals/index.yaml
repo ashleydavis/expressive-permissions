@@ -4,13 +4,14 @@ tool_call:
     command: mv src/main.ts dist/main.ts
 ast:
   type: bash
-  raw: mv src/main.ts dist/main.ts
-  ast:
-    type: command
-    binary: mv
-    options: {}
-    cmd:
-      - src/main.ts
-      - dist/main.ts
-    envPrefix: {}
-    raw: mv src/main.ts dist/main.ts
+  source: mv src/main.ts dist/main.ts
+  children:
+    command:
+      type: command
+      source: mv src/main.ts dist/main.ts
+      commandName: mv
+      options: {}
+      positionals:
+        - src/main.ts
+        - dist/main.ts
+      envPrefix: {}

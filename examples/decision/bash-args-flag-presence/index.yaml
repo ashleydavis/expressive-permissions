@@ -1,0 +1,17 @@
+description: "bash: flag present (-r) triggers deny"
+source_e2e: e2e/bash/bash-args-flag-presence/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: rm -r dir
+  cwd: /home/user/project
+rules:
+  bash:
+    rm:
+      options:
+        - r
+      decide: deny
+      reason: recursive rm denied
+expected:
+  decision: deny
+  reason: recursive rm denied

@@ -5,5 +5,5 @@ tool_call:
     content: hello world
 ast:
   type: write
+  source: Write /tmp/out.txt
   file_path: /tmp/out.txt
-  content: hello world

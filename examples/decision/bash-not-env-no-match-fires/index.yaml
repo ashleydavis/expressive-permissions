@@ -1,0 +1,16 @@
+description: "bash not: env does not match → rule fires (deny)"
+source_e2e: e2e/bash/bash-not-env-no-match-fires/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: AWS_PROFILE=prod aws ec2 delete-vpc --vpc-id vpc-12345
+  cwd: /home/user/project
+rules:
+  bash:
+    aws:
+      decide: deny
+      not:
+        env:
+          AWS_PROFILE: sandbox
+expected:
+  decision: deny

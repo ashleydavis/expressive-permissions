@@ -1,0 +1,18 @@
+description: "bash: any positional matches (OR)"
+source_e2e: e2e/bash/bash-cmd-in/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: rm config.json
+  cwd: /home/user/project
+rules:
+  bash:
+    rm:
+      cmd-in:
+        - "*.json"
+        - "*.yaml"
+      decide: deny
+      reason: config files protected
+expected:
+  decision: deny
+  reason: config files protected

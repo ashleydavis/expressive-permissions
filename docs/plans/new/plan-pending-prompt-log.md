@@ -17,7 +17,7 @@ Path: `.claude/permissions-log/pending/<key>.md`
 Concise sections only. One fenced block per section.
 
 ```markdown
-# Bash — ASK
+# Bash: ASK
 
 Pending since 2026-06-19T18:17:43+10:00
 
@@ -54,7 +54,7 @@ Omit `## Context` when hook CWD is the only line and `env` is empty.
 ## Verdict
 
 ```
-ASK (matched rule) — network access requires approval
+ASK (matched rule): network access requires approval
 → curl https://api.internal.corp/v1/deploy  (cwd: /tmp)
 ```
 ```
@@ -75,7 +75,7 @@ ASK (matched rule) — network access requires approval
 
 **Verdict block**
 
-- Line 1: `<DECISION> (<source>) — <reason>` where `<source>` is `matched rule`, `no rule matched`, or `deny rule` derived from the triggering leaf outcome.
+- Line 1: `<DECISION> (<source>): <reason>` where `<source>` is `matched rule`, `no rule matched`, or `deny rule` derived from the triggering leaf outcome.
 - Line 2: `→ <cmd>` plus `(cwd: …)` when the trigger leaf’s cwd differs from hook cwd.
 
 ## Steps
@@ -84,17 +84,17 @@ ASK (matched rule) — network access requires approval
 
    - `ILeafOutcome` interface: `decision: string` (uppercase), optional `ruleFile`, optional `ruleLine`, optional `reason`, optional `source` (`matched-rule` | `no-rule-match` | `deny-rule`).
    - `ILeafContext` interface: `cwd: string`, `env: Record<string, string>`.
-   - `resolvePendingDir(projectDir: string): string` — returns `<projectDir>/.claude/permissions-log/pending`.
-   - `computePendingPromptKey(call: IToolCall | IPostToolUseCall): string` — deterministic 16-character hex key derived from `tool_name`, `tool_input`, and `cwd`. Serialize with `JSON.stringify` on `{ tool_name, tool_input, cwd }` (object keys in that order) and hash with `createHash("sha256")` from `crypto`; take the first 16 hex characters. This is the correlation key between pre-hook write and post-hook cleanup because `IToolCall` and `IPostToolUseCall` share those three fields.
-   - `buildLeafOutcomeMap(trace: IAuditLogEntry[]): Map<string, ILeafOutcome>` — index leaf outcomes by `cmd` from `rule_match` and `no_rule_match`.
-   - `simulateLeafEnvironments(root: AstNode, env0: IEnvironment): Map<string, ILeafContext>` — walk the AST with the same env threading as `interpret` (reuse or mirror `walkChildren` and built-in env/cd semantics); key by `describeNode(leaf)`.
-   - `formatContextBlock(call: IToolCall, root: AstNode, env0: IEnvironment): string | undefined` — render the Context fenced block; return `undefined` when only hook CWD and no env vars apply.
-   - `formatPendingPromptTree(root: AstNode, leafOutcomeMap: Map<string, ILeafOutcome>, leafContextMap: Map<string, ILeafContext>, hookCwd: string): string` — render the ASCII tree with cwd annotations and rule reasons.
-   - `resolveVerdictTrigger(trace: IAuditLogEntry[], finalDecision: string, leafOutcomeMap: Map<string, ILeafOutcome>): { cmd: string; source: string; reason: string | undefined; cwd: string | undefined }` — strictest leaf driving the outcome plus its context.
-   - `formatPendingPromptMarkdown(call: IToolCall, root: AstNode, trace: IAuditLogEntry[], decision: string, reason: string | undefined, pendingSince: Date): string` — H1, pending-since line, then `## Command`, optional `## Context`, `## Sub-commands`, `## Verdict`.
-   - `writePendingPrompt(projectDir: string, call: IToolCall, root: AstNode, trace: IAuditLogEntry[], decision: string, reason: string | undefined, pendingSince: Date): Promise<void>` — compute key, `mkdir` `pending/` if needed, `writeFile` `pending/<key>.md` only.
-   - `removePendingPrompt(projectDir: string, call: IPostToolUseCall): Promise<void>` — compute key, `unlink` `pending/<key>.md` if present (ignore absent file).
-   - `cleanupStalePendingPrompts(projectDir: string, now: Date, maxAgeDays: number): Promise<void>` — delete `pending/*.md` whose mtime is older than `maxAgeDays` (use 7). Called from both hooks so orphaned files from denied or ignored prompts do not accumulate forever.
+   - `resolvePendingDir(projectDir: string): string`: returns `<projectDir>/.claude/permissions-log/pending`.
+   - `computePendingPromptKey(call: IToolCall | IPostToolUseCall): string`: deterministic 16-character hex key derived from `tool_name`, `tool_input`, and `cwd`. Serialize with `JSON.stringify` on `{ tool_name, tool_input, cwd }` (object keys in that order) and hash with `createHash("sha256")` from `crypto`; take the first 16 hex characters. This is the correlation key between pre-hook write and post-hook cleanup because `IToolCall` and `IPostToolUseCall` share those three fields.
+   - `buildLeafOutcomeMap(trace: IAuditLogEntry[]): Map<string, ILeafOutcome>`: index leaf outcomes by `cmd` from `rule_match` and `no_rule_match`.
+   - `simulateLeafEnvironments(root: AstNode, env0: IEnvironment): Map<string, ILeafContext>`: walk the AST with the same env threading as `interpret` (reuse or mirror `walkChildren` and built-in env/cd semantics); key by `describeNode(leaf)`.
+   - `formatContextBlock(call: IToolCall, root: AstNode, env0: IEnvironment): string | undefined`: render the Context fenced block; return `undefined` when only hook CWD and no env vars apply.
+   - `formatPendingPromptTree(root: AstNode, leafOutcomeMap: Map<string, ILeafOutcome>, leafContextMap: Map<string, ILeafContext>, hookCwd: string): string`: render the ASCII tree with cwd annotations and rule reasons.
+   - `resolveVerdictTrigger(trace: IAuditLogEntry[], finalDecision: string, leafOutcomeMap: Map<string, ILeafOutcome>): { cmd: string; source: string; reason: string | undefined; cwd: string | undefined }`: strictest leaf driving the outcome plus its context.
+   - `formatPendingPromptMarkdown(call: IToolCall, root: AstNode, trace: IAuditLogEntry[], decision: string, reason: string | undefined, pendingSince: Date): string`: H1, pending-since line, then `## Command`, optional `## Context`, `## Sub-commands`, `## Verdict`.
+   - `writePendingPrompt(projectDir: string, call: IToolCall, root: AstNode, trace: IAuditLogEntry[], decision: string, reason: string | undefined, pendingSince: Date): Promise<void>`: compute key, `mkdir` `pending/` if needed, `writeFile` `pending/<key>.md` only.
+   - `removePendingPrompt(projectDir: string, call: IPostToolUseCall): Promise<void>`: compute key, `unlink` `pending/<key>.md` if present (ignore absent file).
+   - `cleanupStalePendingPrompts(projectDir: string, now: Date, maxAgeDays: number): Promise<void>`: delete `pending/*.md` whose mtime is older than `maxAgeDays` (use 7). Called from both hooks so orphaned files from denied or ignored prompts do not accumulate forever.
 
 2. Extend `decide()` in `src/interpret.ts` to return `{ decision, root, trace }`. The trace is captured inside `decide()` while still forwarding entries to the caller's logger for file audit output. Pre-hook and pending-prompt code use `decideResult.trace`; no tee wrapper in callers.
 
@@ -114,9 +114,9 @@ ASK (matched rule) — network access requires approval
 
 7. Update documentation.
 
-   - `docs/AUDIT-LOG.md` — add a "Pending approvals" section describing `pending/<key>.md` files, the correlation key, write-on-ask / delete-on-execute lifecycle, 7-day stale cleanup, and `ls -t .claude/permissions-log/pending/` to list outstanding prompts.
-   - `docs/TROUBLESHOOTING.md` — add a bullet pointing users to `.claude/permissions-log/pending/` when deciding whether to approve a prompt.
-   - `README.md` — one sentence in the audit log bullet mentioning pending approval Markdown files.
+   - `docs/AUDIT-LOG.md`: add a "Pending approvals" section describing `pending/<key>.md` files, the correlation key, write-on-ask / delete-on-execute lifecycle, 7-day stale cleanup, and `ls -t .claude/permissions-log/pending/` to list outstanding prompts.
+   - `docs/TROUBLESHOOTING.md`: add a bullet pointing users to `.claude/permissions-log/pending/` when deciding whether to approve a prompt.
+   - `README.md`: one sentence in the audit log bullet mentioning pending approval Markdown files.
 
 8. Extend `scripts/run-e2e-test.ts` to support optional pending-prompt assertions in test YAML.
 
@@ -140,7 +140,7 @@ Add to `src/test/pending-prompt-log.test.ts`:
 
 - `decide()` returns a trace for pending prompt formatting.
 
-- Ask decision creates a pending detail file (use a temp project dir with an ask rule, same pattern as the existing drop-in deny test).
+- Ask decision creates a pending detail file (use a temp project dir with an ask rule, same pattern as the existing `permissions.d` deny test).
 
 Add to `src/test/post-hook.test.ts`:
 

@@ -1,0 +1,24 @@
+tool_call:
+  tool_name: Bash
+  tool_input:
+    command: qux -n hello
+ast:
+  type: bash
+  source: qux -n hello
+  children:
+    command:
+      type: command
+      source: qux -n hello
+      commandName: qux
+      options:
+        n: hello
+      positionals: []
+      envPrefix: {}
+descriptors:
+  qux:
+    description: Made-up qux tool with a named value flag
+    flags:
+      n|name:
+        arity: 1
+        kind: string
+        description: Display name

@@ -1,8 +1,0 @@
-tool_call:
-  tool_name: mcp__github__list_repos
-  tool_input: &a1
-    owner: octocat
-ast:
-  type: other
-  tool_name: mcp__github__list_repos
-  tool_input: *a1

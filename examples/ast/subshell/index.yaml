@@ -1,28 +1,32 @@
 tool_call:
-  tool_name: "Bash"
+  tool_name: Bash
   tool_input:
-    command: "(cd src && make)"
+    command: (cd src && make)
 ast:
-  type: "bash"
-  raw: "(cd src && make)"
-  ast:
-    type: "group"
-    style: "subshell"
-    body:
-      type: "binop"
-      op: "&&"
-      left:
-        type: "command"
-        binary: "cd"
-        options: {}
-        cmd: "src"
-        envPrefix: {}
-        raw: "cd src"
-      right:
-        type: "command"
-        binary: "make"
-        options: {}
-        cmd: []
-        envPrefix: {}
-        raw: "make"
-    raw: "(cd src && make)"
+  type: bash
+  source: (cd src && make)
+  children:
+    command:
+      type: subshell
+      source: (cd src && make)
+      children:
+        body:
+          type: binop
+          source: cd src && make
+          children:
+            left:
+              type: command
+              source: cd src
+              commandName: cd
+              options: {}
+              positionals:
+                - src
+              envPrefix: {}
+            right:
+              type: command
+              source: make
+              commandName: make
+              options: {}
+              positionals: []
+              envPrefix: {}
+          op: "&&"

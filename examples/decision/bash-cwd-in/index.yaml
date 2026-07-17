@@ -1,0 +1,17 @@
+description: "bash: cwd-in OR list match"
+source_e2e: e2e/bash/bash-cwd-in/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: npm install
+  cwd: /home/user/project
+rules:
+  bash:
+    npm:
+      install:
+        cwd-in:
+          - /home/**
+          - /tmp/**
+        decide: allow
+expected:
+  decision: allow

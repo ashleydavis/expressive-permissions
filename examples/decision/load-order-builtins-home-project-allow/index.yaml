@@ -1,0 +1,31 @@
+description: "load order: earlier deny wins over later allow across home/project layers"
+input:
+  tool_name: Bash
+  tool_input:
+    command: ls
+  cwd: /home/user/project
+rules:
+  bash:
+    ls:
+      decide: deny
+      reason: denied by project yaml
+expected:
+  decision: deny
+  reason: denied by home yaml
+home_rules:
+  bash:
+    ls:
+      decide: deny
+      reason: denied by home yaml
+home_dir_files:
+  home-allow.yaml:
+    bash:
+      ls:
+        decide: deny
+        reason: denied by home permissions.d
+project_dir_files:
+  project-allow.yaml:
+    bash:
+      ls:
+        decide: allow
+        reason: allowed by project permissions.d

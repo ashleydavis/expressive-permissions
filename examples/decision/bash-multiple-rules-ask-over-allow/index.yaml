@@ -1,0 +1,16 @@
+description: "bash: allow + ask → ask"
+source_e2e: e2e/bash/bash-multiple-rules-ask-over-allow/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: rm file.txt
+  cwd: /home/user/project
+rules:
+  bash:
+    rm:
+      - decide: allow
+      - decide: ask
+        reason: please confirm rm
+expected:
+  decision: ask
+  reason: please confirm rm

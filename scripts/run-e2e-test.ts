@@ -232,9 +232,9 @@ interface ITestCase {
     rules: Record<string, unknown>;
     // Optional: written verbatim as home/.claude/permissions.yaml for the test run
     home_rules?: Record<string, unknown>;
-    // Optional: per-file drop-ins written under home/.claude/permissions.d/
+    // Optional: per-file layers written under home/.claude/permissions.d/
     home_dir_files?: Record<string, Record<string, unknown>>;
-    // Optional: per-file drop-ins written under project/.claude/permissions.d/
+    // Optional: per-file layers written under project/.claude/permissions.d/
     project_dir_files?: Record<string, Record<string, unknown>>;
     // The expected outputs from hook.ts
     expected: ITestCaseExpected;
@@ -320,22 +320,22 @@ function runTest(testFilePath: string): boolean {
     }
 
     if (testCase.home_dir_files !== undefined) {
-        const homeDropInDir = join(homeDir, ".claude", "permissions.d");
-        mkdirSync(homeDropInDir, { recursive: true });
-        for (const [dropInName, dropInBody] of Object.entries(testCase.home_dir_files)) {
-            const destPath = join(homeDropInDir, dropInName);
+        const homePermissionsDir = join(homeDir, ".claude", "permissions.d");
+        mkdirSync(homePermissionsDir, { recursive: true });
+        for (const [fileName, fileBody] of Object.entries(testCase.home_dir_files)) {
+            const destPath = join(homePermissionsDir, fileName);
             mkdirSync(dirname(destPath), { recursive: true });
-            writeFileSync(destPath, stringify(dropInBody));
+            writeFileSync(destPath, stringify(fileBody));
         }
     }
 
     if (testCase.project_dir_files !== undefined) {
-        const projectDropInDir = join(claudeDir, "permissions.d");
-        mkdirSync(projectDropInDir, { recursive: true });
-        for (const [dropInName, dropInBody] of Object.entries(testCase.project_dir_files)) {
-            const destPath = join(projectDropInDir, dropInName);
+        const projectPermissionsDir = join(claudeDir, "permissions.d");
+        mkdirSync(projectPermissionsDir, { recursive: true });
+        for (const [fileName, fileBody] of Object.entries(testCase.project_dir_files)) {
+            const destPath = join(projectPermissionsDir, fileName);
             mkdirSync(dirname(destPath), { recursive: true });
-            writeFileSync(destPath, stringify(dropInBody));
+            writeFileSync(destPath, stringify(fileBody));
         }
     }
 

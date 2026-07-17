@@ -1,14 +1,16 @@
 tool_call:
-  tool_name: "Bash"
+  tool_name: Bash
   tool_input:
-    command: "echo \"hello world\""
+    command: echo "hello world"
 ast:
-  type: "bash"
-  raw: "echo \"hello world\""
-  ast:
-    type: "command"
-    binary: "echo"
-    options: {}
-    cmd: "hello world"
-    envPrefix: {}
-    raw: "echo \"hello world\""
+  type: bash
+  source: echo "hello world"
+  children:
+    command:
+      type: command
+      source: echo "hello world"
+      commandName: echo
+      options: {}
+      positionals:
+        - hello world
+      envPrefix: {}

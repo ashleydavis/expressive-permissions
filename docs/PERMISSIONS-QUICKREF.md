@@ -1,8 +1,17 @@
 # Permissions Quick Reference
 
-Rules live in `.claude/permissions.yaml` (project) or `~/.claude/permissions.yaml` (global). You can also split rules across `.claude/permissions.d/*.yaml` (or `~/.claude/permissions.d/*.yaml`) — each drop-in file is loaded as its own layer; deny in any file wins. Run `/reload-plugins` after edits.
+This doc is a concise reference for the permissions rule format.
 
----
+Rules live in `.claude/permissions.yaml` (project) or `~/.claude/permissions.yaml` (global). You can also split rules across `.claude/permissions.d/*.yaml` / `*.yml` (or the same under `~/`). Configuration is reloaded automatically on the next hook run.
+
+## Rule load order
+
+1. Built-ins (`cd`, `export`, empty-command, env-prefix handling)
+2. `~/.claude/permissions.yaml` → `~/.claude/permissions.d/*` (alphabetical)
+3. `.claude/permissions.yaml` → `.claude/permissions.d/*` (alphabetical)
+
+All matching rules combine with **strictest wins**. A `deny` short-circuits remaining rules at that node, so an earlier-layer deny beats a later-layer allow.
+
 
 ## Decisions
 
@@ -25,7 +34,7 @@ Rules live in `.claude/permissions.yaml` (project) or `~/.claude/permissions.yam
 
 ## List form
 
-Any rule section can be written as a list to apply multiple rules in order:
+`bash`, `read` / `write` / `edit` / `multi_edit`, and `redirect.out` / `redirect.in` accept a list of rules. `webfetch`, `Grep`, and generic tool keys are a single object (not a list).
 
 ```yaml
 write:
@@ -34,7 +43,7 @@ write:
   - decide: allow   # catch-all
 ```
 
-List form can also be used under nested rules:
+Under bash, list form also works at the command or subcommand level:
 
 ```yaml
 bash:
@@ -47,7 +56,6 @@ bash:
       reason: No other git commands
 ```
 
----
 
 ## Command descriptors
 
@@ -72,7 +80,6 @@ kubectl:
 
 Flag `arity: 1` means the flag takes a value; `arity: 0` means it is boolean. Use `short|long` to declare both forms together.
 
----
 
 ## Bash
 
@@ -107,12 +114,12 @@ All fields in a rule are AND'd.
 | `options-in: [force, force-with-lease]` | Any flag present; OR |
 | `options: {m\|message: "/wip/"}` | Flag with specific value |
 | `env: {CI: "true"}` | All env vars match; AND |
-| `cwd: ${{PROJECT_DIR}}/**` | cwd matches pattern; `${{PROJECT_DIR}}/**` = anywhere inside this project |
+| `cwd: ${{PROJECT_DIR}}/**` | cwd matches pattern; `${{PROJECT_DIR}}` and `${{HOME}}` expand when set |
+| `path: ...` | Synonym for `cwd` on bash entries |
 | `cwd-in: [/etc/**, /usr/**]` | cwd matches any entry; OR |
 | `file: {"~/.kube/config": true}` | File exists |
 | `file: {"~/.kube/config": {contains: "current-context: sandbox"}}` | File exists and contains pattern |
 
----
 
 ## Redirect path rules
 
@@ -133,14 +140,14 @@ redirect:
 ```
 
 - **`path` / `path-in`** under `redirect.out` or `redirect.in` only
-- **AND across redirects:** every file-target redirect of that direction must match
+- **First match wins** within each of `redirect.out` / `redirect.in` (list order matters; unlike bash strictest-wins)
+- **AND across redirects:** every file-target redirect of that direction must match for an entry to fire
 - **Fd merges** (`2>&1`) are ignored by path matchers
-- **`bash:`** matches the inner `command` leaf only (not redirect targets); use `redirect.out` / `redirect.in` for redirect paths
-- `not:` inverts redirect matchers on `redirect:` entries
+- **`bash:`** matches the inner `command` node only (not redirect targets); use `redirect.out` / `redirect.in` for redirect paths
 
 ## not:
 
-`not:` inverts any combination of fields and works in any rule type. The example below denies all `aws` commands when `AWS_PROFILE` is anything other than `sandbox`:
+`not:` is a bash-only field. It inverts matcher fields on that bash entry. The example below denies all `aws` commands when `AWS_PROFILE` is anything other than `sandbox`:
 
 ```yaml
 bash:
@@ -152,11 +159,10 @@ bash:
       reason: Blocked outside sandbox
 ```
 
----
 
 ## File tools (read, write, edit, multi_edit)
 
-Fields: `path` (single pattern) or `path-in` (OR list). All other fields (`cwd`, `env`, `not`, etc.) also apply.
+Fields: `path` / `path-in`, optional `cwd`, `decide`, `reason`, and nested `rules:` (parent may carry `cwd`). No `env` or `not:` on file-tool entries.
 
 ```yaml
 read:
@@ -169,24 +175,31 @@ write:
   - decide: allow   # catch-all
 ```
 
----
 
 ## WebFetch
 
-Fields: `host` (single pattern) or `host-in` (OR list).
+Single object with optional `host` / `host-in`, plus `decide` and optional `reason`. Not a list. Omit both host fields to match every WebFetch URL.
 
 ```yaml
 webfetch:
-  - host-in: [docs.anthropic.com, "*.github.com"]
-    decide: allow
-  - decide: ask
+  host-in: [docs.anthropic.com, "*.github.com"]
+  decide: allow
 ```
 
----
 
-## Tool-name rules
+## Grep
 
-The YAML key is a glob matched against the Claude Code tool name. Quote keys containing glob chars. Use `tool-in` to list exact names under a readable label:
+Single object with `decide` and optional `reason`. Matches every Grep tool call (no path/cwd matchers).
+
+```yaml
+Grep:
+  decide: allow
+```
+
+
+## Generic tool rules
+
+Top-level keys that are not recognised sections are matched against the Claude Code tool name. Quote keys containing glob chars. Use `tool` or `tool-in` when the key is only a label. Single object only (not a list).
 
 ```yaml
 ToolSearch:
@@ -200,11 +213,10 @@ github-writes:
   decide: ask
 ```
 
----
 
 ## Nested rules
 
-`rules:` groups sub-rules under shared parent conditions. The parent needs no `decide` -- it is a pure filter:
+On bash entries, `rules:` groups sub-rules under shared parent conditions. The parent needs no `decide` -- it is a pure filter:
 
 ```yaml
 bash:
@@ -218,7 +230,6 @@ bash:
           reason: Confirm on non-sandbox profile
 ```
 
----
 
 ## Troubleshooting
 

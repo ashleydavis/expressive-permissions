@@ -1,0 +1,14 @@
+description: "bash: git status subcommand allow"
+source_e2e: e2e/bash/bash-subcommand-allow/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: git status
+  cwd: /home/user/project
+rules:
+  bash:
+    git:
+      status:
+        decide: allow
+expected:
+  decision: allow

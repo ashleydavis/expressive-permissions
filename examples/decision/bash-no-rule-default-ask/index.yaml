@@ -1,0 +1,10 @@
+description: "bash: no matching rule defaults to ask"
+source_e2e: e2e/bash/bash-no-rule-default-ask/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: grep foo file.txt
+  cwd: /home/user/project
+rules: {}
+expected:
+  decision: ask

@@ -1,24 +1,28 @@
 tool_call:
-  tool_name: "Bash"
+  tool_name: Bash
   tool_input:
-    command: "make || echo failed"
+    command: make || echo failed
 ast:
-  type: "bash"
-  raw: "make || echo failed"
-  ast:
-    type: "binop"
-    op: "||"
-    left:
-      type: "command"
-      binary: "make"
-      options: {}
-      cmd: []
-      envPrefix: {}
-      raw: "make"
-    right:
-      type: "command"
-      binary: "echo"
-      options: {}
-      cmd: "failed"
-      envPrefix: {}
-      raw: "echo failed"
+  type: bash
+  source: make || echo failed
+  children:
+    command:
+      type: binop
+      source: make || echo failed
+      children:
+        left:
+          type: command
+          source: make
+          commandName: make
+          options: {}
+          positionals: []
+          envPrefix: {}
+        right:
+          type: command
+          source: echo failed
+          commandName: echo
+          options: {}
+          positionals:
+            - failed
+          envPrefix: {}
+      op: "||"

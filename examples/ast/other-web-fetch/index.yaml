@@ -1,8 +1,0 @@
-tool_call:
-  tool_name: WebFetch
-  tool_input: &a1
-    url: https://example.com
-ast:
-  type: other
-  tool_name: WebFetch
-  tool_input: *a1

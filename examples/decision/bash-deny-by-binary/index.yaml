@@ -1,0 +1,15 @@
+description: "bash: deny rm by binary name"
+source_e2e: e2e/bash/bash-deny-by-binary/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: rm file.txt
+  cwd: /home/user/project
+rules:
+  bash:
+    rm:
+      decide: deny
+      reason: rm is not allowed
+expected:
+  decision: deny
+  reason: rm is not allowed

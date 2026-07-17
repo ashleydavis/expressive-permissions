@@ -1,0 +1,17 @@
+description: "protecting-production: aws cloudformation deploy → ask (PROTECTING-PRODUCTION.md Block all write operations)"
+input:
+  tool_name: Bash
+  tool_input:
+    command: aws cloudformation deploy --stack-name my-stack
+  cwd: /home/user/project
+rules:
+  bash:
+    aws:
+      - cmd: "cloudformation deploy"
+        decide: ask
+        reason: Confirm CloudFormation deployment before proceeding.
+      - cmd: "* describe-*"
+        decide: allow
+expected:
+  decision: ask
+  reason: Confirm CloudFormation deployment before proceeding.

@@ -4,31 +4,39 @@ tool_call:
     command: cd /some/path && git status | grep foo
 ast:
   type: bash
-  raw: cd /some/path && git status | grep foo
-  ast:
-    type: binop
-    op: "&&"
-    left:
-      type: command
-      binary: cd
-      options: {}
-      cmd: /some/path
-      envPrefix: {}
-      raw: cd /some/path
-    right:
+  source: cd /some/path && git status | grep foo
+  children:
+    command:
       type: binop
-      op: "|"
-      left:
-        type: command
-        binary: git
-        options: {}
-        cmd: status
-        envPrefix: {}
-        raw: git status
-      right:
-        type: command
-        binary: grep
-        options: {}
-        cmd: foo
-        envPrefix: {}
-        raw: grep foo
+      source: cd /some/path && git status | grep foo
+      children:
+        left:
+          type: command
+          source: cd /some/path
+          commandName: cd
+          options: {}
+          positionals:
+            - /some/path
+          envPrefix: {}
+        right:
+          type: binop
+          source: git status | grep foo
+          children:
+            left:
+              type: command
+              source: git status
+              commandName: git
+              options: {}
+              positionals:
+                - status
+              envPrefix: {}
+            right:
+              type: command
+              source: grep foo
+              commandName: grep
+              options: {}
+              positionals:
+                - foo
+              envPrefix: {}
+          op: "|"
+      op: "&&"

@@ -1,0 +1,18 @@
+description: "bash: any of listed flags triggers (OR)"
+source_e2e: e2e/bash/bash-args-in/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: rm -r dir
+  cwd: /home/user/project
+rules:
+  bash:
+    rm:
+      options-in:
+        - r
+        - f
+      decide: deny
+      reason: rm -r or -f denied
+expected:
+  decision: deny
+  reason: rm -r or -f denied

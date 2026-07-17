@@ -1,0 +1,17 @@
+description: "bash: find /etc with rule cmd: ${{PROJECT_DIR}}/** should not
+  allow (guards against over-permissive substitution)"
+source_e2e: e2e/bash/bash-explicit-projectdir-outside-deny/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: find /etc -type f
+  cwd: ${PROJECT_DIR}
+rules: {}
+expected:
+  decision: ask
+home_dir_files:
+  bash-explicit-projectdir-only.yaml:
+    bash:
+      find:
+        cmd: ${{PROJECT_DIR}}/**
+        decide: allow

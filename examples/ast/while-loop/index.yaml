@@ -1,25 +1,29 @@
 tool_call:
-  tool_name: "Bash"
+  tool_name: Bash
   tool_input:
-    command: "while read line; do echo $line; done"
+    command: while read line; do echo $line; done
 ast:
-  type: "bash"
-  raw: "while read line; do echo $line; done"
-  ast:
-    type: "while_loop"
-    until: false
-    condition:
-      type: "command"
-      binary: "read"
-      options: {}
-      cmd: "line"
-      envPrefix: {}
-      raw: "read line"
-    body:
-      type: "command"
-      binary: "echo"
-      options: {}
-      cmd: "$line"
-      envPrefix: {}
-      raw: "echo $line"
-    raw: "while read line; do echo $line; done"
+  type: bash
+  source: while read line; do echo $line; done
+  children:
+    command:
+      type: while_loop
+      source: while read line; do echo $line; done
+      children:
+        condition:
+          type: command
+          source: read line
+          commandName: read
+          options: {}
+          positionals:
+            - line
+          envPrefix: {}
+        body:
+          type: command
+          source: echo $line
+          commandName: echo
+          options: {}
+          positionals:
+            - $line
+          envPrefix: {}
+      until: false

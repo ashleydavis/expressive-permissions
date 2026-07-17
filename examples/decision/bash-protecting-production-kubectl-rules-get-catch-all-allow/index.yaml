@@ -1,0 +1,38 @@
+description: "protecting-production: kubectl --context non-sandbox get with allow + catch-all ask in rules → allow (PROTECTING-PRODUCTION.md Kubectl: matching on the context argument)"
+input:
+  tool_name: Bash
+  tool_input:
+    command: kubectl get pods --context prod-cluster
+  cwd: /home/user/project
+rules:
+  bash:
+    kubectl:
+      - options:
+          context: sandbox
+        decide: allow
+      - options:
+          context: "/^(?!sandbox$)/"
+        rules:
+          - cmd: get
+            decide: allow
+            reason: Read-only resource listing.
+          - cmd: describe
+            decide: allow
+            reason: Read-only resource inspection.
+          - cmd: delete
+            decide: deny
+            reason: Deleted resources outside sandbox may not be recoverable.
+          - decide: ask
+            reason: Confirm kubectl operation outside sandbox
+expected:
+  decision: allow
+  reason: Read-only resource listing.
+project_dir_files:
+  commands/kubectl.yaml:
+    kubectl:
+      description: Kubernetes CLI
+      flags:
+        context:
+          arity: 1
+          kind: string
+          description: Kubeconfig context name

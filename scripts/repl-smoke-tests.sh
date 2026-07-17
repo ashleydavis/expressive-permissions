@@ -84,8 +84,8 @@ TMP6=$(mktemp -d)
 mkdir -p "$TMP6/.claude"
 cat > "$TMP6/.claude/permissions.yaml" <<'YAML'
 webfetch:
-  - host: api.example.com
-    decide: allow
+  host: api.example.com
+  decide: allow
 YAML
 run_test "WebFetch api.example.com with host allow rule" "$TMP6" "webfetch https://api.example.com/v1" "ALLOW"
 rm -rf "$TMP6"

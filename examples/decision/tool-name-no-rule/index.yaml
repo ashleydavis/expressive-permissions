@@ -1,0 +1,9 @@
+description: "tool-name rule: no rule defaults to ask"
+source_e2e: e2e/tool-name/tool-name-no-rule/test.yaml
+input:
+  tool_name: mcp__unknown__action
+  tool_input: {}
+  cwd: /home/user/project
+rules: {}
+expected:
+  decision: ask

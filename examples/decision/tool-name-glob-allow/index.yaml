@@ -1,0 +1,12 @@
+description: "tool-name rule: tool glob allow"
+source_e2e: e2e/tool-name/tool-name-glob-allow/test.yaml
+input:
+  tool_name: mcp__my_server__search
+  tool_input:
+    query: foo
+  cwd: /home/user/project
+rules:
+  mcp__my_server__*:
+    decide: allow
+expected:
+  decision: allow

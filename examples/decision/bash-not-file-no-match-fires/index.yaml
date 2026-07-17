@@ -1,0 +1,17 @@
+description: "bash not: file: file exists but does not contain string → rule fires (deny)"
+source_e2e: e2e/bash/bash-not-file-no-match-fires/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: kubectl delete pod mypod
+  cwd: /home/user/project
+rules:
+  bash:
+    kubectl:
+      not:
+        file:
+          fixtures/no-sandbox.txt:
+            contains: sandbox
+      decide: deny
+expected:
+  decision: deny

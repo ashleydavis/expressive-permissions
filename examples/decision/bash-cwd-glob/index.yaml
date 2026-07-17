@@ -1,0 +1,15 @@
+description: "bash: cwd glob match"
+source_e2e: e2e/bash/bash-cwd-glob/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: npm install
+  cwd: /home/user/project
+rules:
+  bash:
+    npm:
+      install:
+        cwd: /home/**
+        decide: allow
+expected:
+  decision: allow

@@ -2,7 +2,7 @@
 
 _A robust, configurable, flexible and decidedly not annoying expressive permissions system for Claude._
 
-A permissions plugin for Claude Code that intercepts every tool call and decides allow, deny, or ask based on rules you define in a YAML config file. All decisions are fully auditable — see the [audit log documentation](https://github.com/ashleydavis/expressive-permissions/blob/main/docs/AUDIT-LOG.md).
+A permissions plugin for Claude Code that intercepts every tool call and decides allow, deny, or ask based on rules you define in a YAML config file. All decisions are fully auditable: see the [audit log documentation](https://github.com/ashleydavis/expressive-permissions/blob/main/docs/AUDIT-LOG.md).
 
 For the full explanation of why this exists and how it works, see the [project README on GitHub](https://github.com/ashleydavis/expressive-permissions).
 
@@ -24,7 +24,7 @@ After installing, confirm the plugin is intercepting tool calls (see [Verifying 
 
 Place your rules in `.claude/permissions.yaml` at your project root (or `~/.claude/permissions.yaml` for global rules).
 
-Each rule sits under a top-level tool key (`bash`, `Read`, `Write`, `WebFetch`, and so on), is optionally nested by command and subcommand, and sets `decide: allow`, `deny`, or `ask`, with an optional `reason`. Any tool call that matches no rule defaults to `ask`.
+Each rule sits under a top-level section key (`bash`, `read`, `write`, `edit`, `multi_edit`, `webfetch`, `redirect`, `Grep`, or a Claude tool-name pattern such as `ToolSearch` / `"mcp__*__delete_*"`), is optionally nested by command and subcommand for bash, and sets `decide: allow`, `deny`, or `ask`, with an optional `reason`. Any tool call that matches no rule defaults to `ask`.
 
 ```yaml
 bash:
@@ -70,7 +70,7 @@ Then set Claude Code to allow all tools so the plugin is the sole decision-maker
 
 See the [full configuration guide](https://github.com/ashleydavis/expressive-permissions/blob/main/docs/CONFIGURATION.md) for the complete rule syntax.
 
-Run `/reload-plugins` after editing rules to pick up changes.
+Configuration is reloaded automatically on the next hook run; no `/reload-plugins` needed for rule edits.
 
 ## Verifying the plugin
 

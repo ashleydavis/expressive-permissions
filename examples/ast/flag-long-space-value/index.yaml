@@ -4,15 +4,17 @@ tool_call:
     command: kubectl delete --context prod-cluster
 ast:
   type: bash
-  raw: kubectl delete --context prod-cluster
-  ast:
-    type: command
-    binary: kubectl
-    options:
-      context: prod-cluster
-    cmd: delete
-    envPrefix: {}
-    raw: kubectl delete --context prod-cluster
+  source: kubectl delete --context prod-cluster
+  children:
+    command:
+      type: command
+      source: kubectl delete --context prod-cluster
+      commandName: kubectl
+      options:
+        context: prod-cluster
+      positionals:
+        - delete
+      envPrefix: {}
 descriptors:
   kubectl:
     description: Kubernetes CLI

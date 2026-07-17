@@ -4,12 +4,14 @@ tool_call:
     command: git push --force-with-lease
 ast:
   type: bash
-  raw: git push --force-with-lease
-  ast:
-    type: command
-    binary: git
-    options:
-      force-with-lease: true
-    cmd: push
-    envPrefix: {}
-    raw: git push --force-with-lease
+  source: git push --force-with-lease
+  children:
+    command:
+      type: command
+      source: git push --force-with-lease
+      commandName: git
+      options:
+        force-with-lease: true
+      positionals:
+        - push
+      envPrefix: {}

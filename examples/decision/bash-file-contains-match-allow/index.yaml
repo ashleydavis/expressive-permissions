@@ -1,0 +1,16 @@
+description: "bash file: contains matches → ALLOW"
+source_e2e: e2e/bash/bash-file-contains-match-allow/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: kubectl delete pod mypod
+  cwd: /home/user/project
+rules:
+  bash:
+    kubectl:
+      file:
+        fixtures/sandbox.txt:
+          contains: sandbox
+      decide: allow
+expected:
+  decision: allow

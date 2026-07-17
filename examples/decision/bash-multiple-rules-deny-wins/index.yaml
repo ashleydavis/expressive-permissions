@@ -1,0 +1,16 @@
+description: "bash: allow + deny → deny (strictest wins)"
+source_e2e: e2e/bash/bash-multiple-rules-deny-wins/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: rm file.txt
+  cwd: /home/user/project
+rules:
+  bash:
+    rm:
+      - decide: allow
+      - decide: deny
+        reason: rm is blocked
+expected:
+  decision: deny
+  reason: rm is blocked

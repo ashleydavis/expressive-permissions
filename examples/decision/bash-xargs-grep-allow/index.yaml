@@ -1,0 +1,15 @@
+description: "bash: xargs grep with pattern should be allowed"
+source_e2e: e2e/bash/bash-xargs-grep-allow/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: xargs grep -l "pattern" 2>/dev/null
+  cwd: ${PROJECT_DIR}
+rules: {}
+expected:
+  decision: allow
+home_dir_files:
+  bash-rules.yaml:
+    bash:
+      grep:
+        decide: allow

@@ -1,0 +1,11 @@
+description: "integration: bare FOO=bar with no user rule, built-in env-set allows it"
+source_e2e: e2e/integration/env-set-no-rule-allow/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: FOO=bar
+  cwd: /home/user/project
+rules:
+  bash: {}
+expected:
+  decision: allow

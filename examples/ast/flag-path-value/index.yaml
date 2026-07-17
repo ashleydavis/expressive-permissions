@@ -4,17 +4,19 @@ tool_call:
     command: git -C /some/path status -sb
 ast:
   type: bash
-  raw: git -C /some/path status -sb
-  ast:
-    type: command
-    binary: git
-    options:
-      C: /some/path
-      s: true
-      b: true
-    cmd: status
-    envPrefix: {}
-    raw: git -C /some/path status -sb
+  source: git -C /some/path status -sb
+  children:
+    command:
+      type: command
+      source: git -C /some/path status -sb
+      commandName: git
+      options:
+        C: /some/path
+        s: true
+        b: true
+      positionals:
+        - status
+      envPrefix: {}
 descriptors:
   git:
     description: Git

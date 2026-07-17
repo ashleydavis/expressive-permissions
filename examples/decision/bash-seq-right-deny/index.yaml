@@ -1,0 +1,17 @@
+description: "bash: cmd1; cmd2 right deny → deny"
+source_e2e: e2e/bash/bash-seq-right-deny/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: ls; rm file.txt
+  cwd: /home/user/project
+rules:
+  bash:
+    ls:
+      decide: allow
+    rm:
+      decide: deny
+      reason: rm is not allowed
+expected:
+  decision: deny
+  reason: rm is not allowed

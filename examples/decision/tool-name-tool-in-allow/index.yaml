@@ -1,0 +1,15 @@
+description: "tool-name rule: tool-in OR list allow"
+source_e2e: e2e/tool-name/tool-name-tool-in-allow/test.yaml
+input:
+  tool_name: mcp__my_server__search
+  tool_input:
+    query: foo
+  cwd: /home/user/project
+rules:
+  my-server-allow:
+    tool-in:
+      - mcp__my_server__search
+      - mcp__my_server__fetch
+    decide: allow
+expected:
+  decision: allow

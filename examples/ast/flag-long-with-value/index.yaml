@@ -4,12 +4,14 @@ tool_call:
     command: git push --remote=origin
 ast:
   type: bash
-  raw: git push --remote=origin
-  ast:
-    type: command
-    binary: git
-    options:
-      remote: origin
-    cmd: push
-    envPrefix: {}
-    raw: git push --remote=origin
+  source: git push --remote=origin
+  children:
+    command:
+      type: command
+      source: git push --remote=origin
+      commandName: git
+      options:
+        remote: origin
+      positionals:
+        - push
+      envPrefix: {}

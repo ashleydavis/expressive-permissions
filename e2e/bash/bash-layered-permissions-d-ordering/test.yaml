@@ -1,4 +1,4 @@
-description: "bash: deny in any drop-in file wins regardless of alphabetical discovery order"
+description: "bash: deny in any `permissions.d` file wins regardless of alphabetical discovery order"
 
 input:
   tool_name: Bash

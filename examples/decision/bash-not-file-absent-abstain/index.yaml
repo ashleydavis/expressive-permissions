@@ -1,0 +1,17 @@
+description: "bash not: file: file absent → ABSTAIN (neither rule fires)"
+source_e2e: e2e/bash/bash-not-file-absent-abstain/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: kubectl delete pod mypod
+  cwd: /home/user/project
+rules:
+  bash:
+    kubectl:
+      not:
+        file:
+          /nonexistent/path/to/file.yaml:
+            contains: sandbox
+      decide: deny
+expected:
+  decision: ask

@@ -1,0 +1,11 @@
+description: "bash: custom command with no descriptor; unknown flag defaults to
+  arity-0, no rule matches, decision is ask"
+source_e2e: e2e/bash/bash-value-flags-no-config-ask/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: mytool --output result.txt
+  cwd: ${PROJECT_DIR}
+rules: {}
+expected:
+  decision: ask

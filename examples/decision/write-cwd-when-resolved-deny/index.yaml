@@ -1,0 +1,18 @@
+description: "write: cwd rule matches when cwd tracking is resolved"
+source_e2e: e2e/file/write-cwd-when-resolved-deny/test.yaml
+input:
+  tool_name: Write
+  tool_input:
+    file_path: /home/user/project/secrets.txt
+    content: leaked
+  cwd: /home/user/project
+rules:
+  write:
+    - cwd: /home/user/**
+      rules:
+        - path: "**/secrets.txt"
+          decide: deny
+          reason: secrets in known dir
+expected:
+  decision: deny
+  reason: secrets in known dir

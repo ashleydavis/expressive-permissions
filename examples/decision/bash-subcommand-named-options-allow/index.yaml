@@ -1,0 +1,18 @@
+description: "bash: kubectl options is a subcommand name, not the options matcher field → allow"
+input:
+  tool_name: Bash
+  tool_input:
+    command: "kubectl options"
+  cwd: /home/user/project
+rules:
+  bash:
+    kubectl:
+      get:
+        decide: allow
+        reason: Readonly kubectl access
+      options:
+        decide: allow
+        reason: Readonly kubectl access
+expected:
+  decision: allow
+  reason: Readonly kubectl access

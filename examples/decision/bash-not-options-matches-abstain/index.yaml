@@ -1,0 +1,25 @@
+description: "bash not: options matches → ABSTAIN (rule suppressed, falls to default ask)"
+input:
+  tool_name: Bash
+  tool_input:
+    command: "yq -i '.a=1' file.yaml"
+  cwd: /home/user/project
+rules:
+  bash:
+    yq:
+      decide: allow
+      not:
+        options:
+          - i|inplace
+      reason: YAML processing on stdout; read-only (in-place edits with -i fall through to ask)
+expected:
+  decision: ask
+project_dir_files:
+  commands/yq.yaml:
+    yq:
+      description: YAML processor
+      flags:
+        i|inplace:
+          arity: 0
+          kind: boolean
+          description: Edit files in place

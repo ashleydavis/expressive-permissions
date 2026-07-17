@@ -1,0 +1,17 @@
+description: "bash: cwd-in ./ and ./** do not match cwd outside the project"
+input:
+  tool_name: Bash
+  tool_input:
+    command: bun install
+  cwd: /tmp/elsewhere
+rules:
+  bash:
+    bun:
+      install:
+        cwd-in:
+          - "./"
+          - "./**"
+        decide: allow
+        reason: bun install with cwd at project root or under it
+expected:
+  decision: ask

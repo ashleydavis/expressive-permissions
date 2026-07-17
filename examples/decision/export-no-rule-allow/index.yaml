@@ -1,0 +1,11 @@
+description: "integration: export FOO=bar with no user rule, built-in export allows it"
+source_e2e: e2e/integration/export-no-rule-allow/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: export FOO=bar
+  cwd: /home/user/project
+rules:
+  bash: {}
+expected:
+  decision: allow

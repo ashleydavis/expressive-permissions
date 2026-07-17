@@ -1,0 +1,16 @@
+description: "bash: positional array AND match"
+source_e2e: e2e/bash/bash-cmd-array/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: cp file.ts dest.ts
+  cwd: /home/user/project
+rules:
+  bash:
+    cp:
+      cmd:
+        - "*.ts"
+        - "*.ts"
+      decide: allow
+expected:
+  decision: allow

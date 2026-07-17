@@ -1,0 +1,13 @@
+description: "bash: allow ls by binary name"
+source_e2e: e2e/bash/bash-allow-by-binary/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: ls -la
+  cwd: /home/user/project
+rules:
+  bash:
+    ls:
+      decide: allow
+expected:
+  decision: allow

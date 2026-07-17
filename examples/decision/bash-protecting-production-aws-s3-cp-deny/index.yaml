@@ -1,0 +1,17 @@
+description: "protecting-production: aws s3 cp → deny (PROTECTING-PRODUCTION.md Block all write operations)"
+input:
+  tool_name: Bash
+  tool_input:
+    command: aws s3 cp s3://my-bucket/object.txt ./object.txt
+  cwd: /home/user/project
+rules:
+  bash:
+    aws:
+      - cmd: "s3 cp"
+        decide: deny
+        reason: Copying S3 objects may overwrite existing data or duplicate sensitive content.
+      - cmd: "s3 ls"
+        decide: allow
+expected:
+  decision: deny
+  reason: Copying S3 objects may overwrite existing data or duplicate sensitive content.

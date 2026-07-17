@@ -1,0 +1,14 @@
+description: "bash: single positional glob match"
+source_e2e: e2e/bash/bash-cmd-single/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: cp file.ts dest/
+  cwd: /home/user/project
+rules:
+  bash:
+    cp:
+      cmd: "*.ts"
+      decide: allow
+expected:
+  decision: allow

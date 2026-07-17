@@ -40,7 +40,7 @@ This plugin goes further: it converts each tool call into an abstract syntax tre
 
 You have fine-grained control over what Claude is allowed to do and an expressive system for defining permissions so that you don't have to keep repeating yourself for every combination of commands that Claude might come up with.
 
-It's all about allowing Claude the freedom to do what it needs to do, without constantly interupting you for permissions, but at the same time protecting you from the most damaging things it can do. Rules can also be scoped by environment, so you can allow full read/write access in a sandbox AWS account or dev cluster while locking down production to read-only - or blocking writes entirely. See [docs/PROTECTING-PRODUCTION.md](docs/PROTECTING-PRODUCTION.md) for recipes covering AWS CLI and kubectl.
+It's all about allowing Claude the freedom to do what it needs to do, without constantly interrupting you for permissions, but at the same time protecting you from the most damaging things it can do. Rules can also be scoped by environment, so you can allow full read/write access in a sandbox AWS account or dev cluster while locking down production to read-only - or blocking writes entirely. See [docs/PROTECTING-PRODUCTION.md](docs/PROTECTING-PRODUCTION.md) for recipes covering AWS CLI and kubectl.
 
 All decisions are fully auditable. Every permission decision (allow, deny, or ask) and every tool execution result is written to a machine-readable JSON Lines file and a human-readable plain-text log, both under `.claude/permissions-log/`. When a tool call returns `ask`, a separate Markdown file is also written under `.claude/permissions-log/pending/` so you can inspect the decision while the approval prompt is on screen. See [docs/AUDIT-LOG.md](docs/AUDIT-LOG.md) for the audit log format and [docs/PENDING-APPROVALS.md](docs/PENDING-APPROVALS.md) for pending approval files.
 
@@ -129,11 +129,11 @@ Once verified, you can safely set Claude Code itself to allow all tools (see [Co
 
 ## Configuration
 
-The plugin intercepts tool calls via a `PreToolUse` hook. When the plugin is installed, every tool call passes through the hook before it runs. The hook evaluates your `permissions.yaml` rules and returns `allow`, `deny`, or `ask`. This makes the plugin the sole decision-maker, so Claude Code's own permission system must be set to allow all tools. Otherwise Claude Code prompts separately before the hook even runs, resulting in double prompts.
+The plugin intercepts tool calls via a `PreToolUse` hook. When the plugin is installed, every tool call passes through the hook before it runs. The hook evaluates your `permissions.yaml` and `permissions.d` rules and returns `allow`, `deny`, or `ask`. This makes the plugin the sole decision-maker, so Claude Code's own permission system must be set to allow all tools. Otherwise Claude Code prompts separately before the hook even runs, resulting in double prompts.
 
-> **Warning:** Only add the allow-all settings below after the plugin is installed and you have verified it is working (see [Verifying the plugin](#verifying-the-plugin)). Once the plugin is active, these settings are safe: every tool call is intercepted by the hook and evaluated against your `permissions.yaml` rules before anything runs, and any call with no matching rule defaults to `ask`. Without the plugin active, however, these settings remove all permission checks and Claude will run every tool call without prompting.
+> **Warning:** Only add the allow-all settings below after the plugin is installed and you have verified it is working (see [Verifying the plugin](#verifying-the-plugin)). Once the plugin is active, these settings are safe: every tool call is intercepted by the hook and evaluated against your permissions rules before anything runs, and any call with no matching rule defaults to `ask`. Without the plugin active, however, these settings remove all permission checks and Claude will run every tool call without prompting.
 
-Add the following to your settings to allow all tools. This causes the plugin's hook to be the sole decision-maker while still respecting any `deny` rules in other settings files.
+Add the following to your settings to allow all tools. This causes the plugin's hook to be the sole decision-maker. Claude Code still honors any `deny` entries from its other settings layers (for example `~/.claude/settings.json`, a project's `.claude/settings.json`, or managed/enterprise settings); those denies are separate from the plugin's `permissions.yaml` rules.
 
 ```json
 {
@@ -160,23 +160,21 @@ Add the following to your settings to allow all tools. This causes the plugin's 
 }
 ```
 
-The plugin's PreToolUse hook fires on every tool call and enforces your `permissions.yaml` rules.
+The plugin's PreToolUse hook fires on every tool call and enforces your permissions rules.
 
 ### Global configuration (applies to every project)
 
-Add the block above to `~/.claude/settings.json`. Place your global rules in `~/.claude/permissions.yaml`. These apply to every project on your machine.
+Add the block above to `~/.claude/settings.json`. Place your global rules in `~/.claude/permissions.yaml` and/or `~/.claude/permissions.d/`. These apply to every project on your machine.
 
 ### Local project configuration (applies to one project)
 
-Add the block above to `.claude/settings.json` in your project root. Place your project rules in `.claude/permissions.yaml` at the project root. These are layered on top of your global rules and take precedence when both match.
+Add the block above to `.claude/settings.json` in your project root. Place your project rules in `.claude/permissions.yaml` and/or `.claude/permissions.d/` at the project root. These are layered on top of your global rules and take precedence when both match. See [Layered files (`permissions.d/`)](docs/CONFIGURATION.md#layered-files-permissionsd) for details.
 
-With either (or both) in place, every tool call flows through your `permissions.yaml` rules and nothing prompts twice.
-
-You can also split rules across multiple files inside a `permissions.d/` drop-in directory at either location. See [Layered files (`permissions.d/`)](docs/CONFIGURATION.md#layered-files-permissionsd) for details.
+With either (or both) in place, every tool call flows through your permissions rules and nothing prompts twice.
 
 ## Quick start: adding a rule
 
-Add to `.claude/permissions.yaml` in your project root (or `~/.claude/permissions.yaml` for user-global rules), then run `/reload-plugins` to pick up changes.
+Add to `.claude/permissions.yaml` in your project root (or `~/.claude/permissions.yaml` for user-global rules). Configuration is reloaded automatically on the next hook run.
 
 Following are some quick examples of rules.
 
@@ -218,7 +216,7 @@ For the full rule syntax (matchers, AND/OR logic, file-path rules, WebFetch rule
 
 Three tools help when a rule is not behaving as expected:
 
-- **Pending approval files** — when Claude asks you to approve a tool call, open the Markdown file in `.claude/permissions-log/pending/` for the full command, parsed sub-commands, matched rules, and verdict. List outstanding prompts with `ls -t .claude/permissions-log/pending/`, then `cat` the newest file. See [docs/PENDING-APPROVALS.md](docs/PENDING-APPROVALS.md).
+- **Pending approval files**: when Claude asks you to approve a tool call, open the Markdown file in `.claude/permissions-log/pending/` for the full command, parsed sub-commands, matched rules, and verdict. List outstanding prompts with `ls -t .claude/permissions-log/pending/`, then `cat` the newest file. See [docs/PENDING-APPROVALS.md](docs/PENDING-APPROVALS.md).
 - **Audit log** -- every permission decision and tool result is written to `.claude/permissions-log/`. Check it first when you want to understand what just happened.
 - **Permission REPL** -- interactive terminal session; type a command and see the full rule trace in colour (`bun run repl`). Requires the repo to be cloned locally.
 - **Permission Analyzer MCP server** -- ask Claude to analyze a command: "Use analyze_permission to check why `git push --force` is denied."
@@ -234,6 +232,8 @@ See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for the full guide.
 - [docs/PENDING-APPROVALS.md](docs/PENDING-APPROVALS.md) - Pending approval Markdown files written when Claude asks you to approve a tool call.
 - [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) - Architecture deep-dive with AST diagrams, env-threading details, and a guide to writing non-trivial rules.
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) - Instructions on cloning, building, and running the plugin locally.
+- [docs/TESTING.md](docs/TESTING.md) - Unit tests and smoke tests.
+- [docs/PUBLISHING.md](docs/PUBLISHING.md) - Packaging, marketplace release, and CI.
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) - Troubleshooting rules: pending approval files, audit log, interactive REPL, and MCP server.
 - [docs/REPL.md](docs/REPL.md) - Interactive REPL for testing commands against your `permissions.yaml`.
 - [docs/MCP-SERVER.md](docs/MCP-SERVER.md) - MCP server that lets Claude explain permission decisions in natural language.

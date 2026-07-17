@@ -1,0 +1,13 @@
+description: "bash: a command substitution's inner command is evaluated; a deny inside $() denies the whole command"
+input:
+  tool_name: Bash
+  tool_input:
+    command: echo $(rm -rf /tmp/data)
+  cwd: /home/user/project
+rules:
+  bash:
+    rm:
+      decide: deny
+      reason: rm is not allowed
+expected:
+  decision: deny

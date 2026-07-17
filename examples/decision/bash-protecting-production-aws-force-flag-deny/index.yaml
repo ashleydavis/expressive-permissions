@@ -1,0 +1,18 @@
+description: "protecting-production: aws --force flag → deny (PROTECTING-PRODUCTION.md Block all write operations)"
+input:
+  tool_name: Bash
+  tool_input:
+    command: aws ec2 terminate-instances --instance-ids i-1234567890 --force
+  cwd: /home/user/project
+rules:
+  bash:
+    aws:
+      - options-in:
+          - force
+        decide: deny
+        reason: The --force flag bypasses safety checks and confirmation prompts.
+      - cmd: "* describe-*"
+        decide: allow
+expected:
+  decision: deny
+  reason: The --force flag bypasses safety checks and confirmation prompts.

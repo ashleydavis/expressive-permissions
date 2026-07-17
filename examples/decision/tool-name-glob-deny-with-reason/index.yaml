@@ -1,0 +1,14 @@
+description: "tool-name rule: tool glob deny with reason"
+source_e2e: e2e/tool-name/tool-name-glob-deny-with-reason/test.yaml
+input:
+  tool_name: mcp__admin__delete
+  tool_input:
+    id: "123"
+  cwd: /home/user/project
+rules:
+  mcp__admin__*:
+    decide: deny
+    reason: admin tools denied
+expected:
+  decision: deny
+  reason: admin tools denied

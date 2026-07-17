@@ -1,0 +1,16 @@
+description: "bash: /regex/ pattern in cmd field"
+source_e2e: e2e/bash/bash-regex-pattern/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: rm important_data_backup.tar.gz
+  cwd: /home/user/project
+rules:
+  bash:
+    rm:
+      cmd: /.*backup.*/
+      decide: deny
+      reason: backup files protected
+expected:
+  decision: deny
+  reason: backup files protected

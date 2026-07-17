@@ -1,0 +1,12 @@
+description: "tool-name rule: literal key matches Grep"
+source_e2e: e2e/tool-name/tool-name-literal-key/test.yaml
+input:
+  tool_name: Grep
+  tool_input:
+    pattern: TODO
+  cwd: /home/user/project
+rules:
+  Grep:
+    decide: allow
+expected:
+  decision: allow

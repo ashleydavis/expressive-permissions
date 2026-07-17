@@ -1,0 +1,16 @@
+description: "bash: git push subcommand deny"
+source_e2e: e2e/bash/bash-subcommand-deny/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: git push
+  cwd: /home/user/project
+rules:
+  bash:
+    git:
+      push:
+        decide: deny
+        reason: no remote pushes
+expected:
+  decision: deny
+  reason: no remote pushes

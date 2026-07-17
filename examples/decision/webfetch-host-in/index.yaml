@@ -1,0 +1,15 @@
+description: "webfetch: host-in OR list allow"
+source_e2e: e2e/webfetch/webfetch-host-in/test.yaml
+input:
+  tool_name: WebFetch
+  tool_input:
+    url: https://cdn.example.com/file.js
+  cwd: /home/user/project
+rules:
+  webfetch:
+    host-in:
+      - api.example.com
+      - cdn.example.com
+    decide: allow
+expected:
+  decision: allow

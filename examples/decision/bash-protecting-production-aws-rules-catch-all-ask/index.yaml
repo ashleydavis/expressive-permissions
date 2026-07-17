@@ -1,0 +1,29 @@
+description: "protecting-production: aws rules: non-sandbox profile + describe-*
+  → catch-all ask"
+source_e2e: e2e/bash/bash-protecting-production-aws-rules-catch-all-ask/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: AWS_PROFILE=prod aws ec2 describe-instances
+  cwd: /home/user/project
+rules:
+  bash:
+    aws:
+      - env:
+          AWS_PROFILE: sandbox
+        decide: allow
+      - env:
+          AWS_PROFILE: /^(?!sandbox$)/
+        rules:
+          - cmd: "* delete-*"
+            decide: deny
+            reason: Destructive deletes on non-sandbox profiles risk permanent data loss.
+          - cmd: "* terminate-*"
+            decide: deny
+            reason: Terminating instances on non-sandbox profiles causes irreversible
+              downtime.
+          - decide: ask
+            reason: Confirm AWS operation on non-sandbox profile
+expected:
+  decision: ask
+  reason: Confirm AWS operation on non-sandbox profile

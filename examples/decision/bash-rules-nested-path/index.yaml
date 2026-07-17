@@ -1,0 +1,16 @@
+description: "bash nested rules: parent path filter should gate sub-rules (CONFIGURATION.md Nested rules)"
+input:
+  tool_name: Bash
+  tool_input:
+    command: aws s3 ls
+  cwd: /projects/production/app
+rules:
+  bash:
+    aws:
+      - path: /projects/production/**
+        rules:
+          - decide: ask
+            reason: Confirm AWS inside production path
+expected:
+  decision: ask
+  reason: Confirm AWS inside production path

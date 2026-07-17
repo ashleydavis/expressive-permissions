@@ -1,0 +1,16 @@
+description: "bash: ls path 2>/dev/null || echo message both allow"
+source_e2e: e2e/bash/bash-ls-or-echo-allow/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: ls /home/blah/projects/expressive-permissions/e2e/ 2>/dev/null || echo
+      'No e2e directory'
+  cwd: /home/blah/projects/expressive-permissions
+rules:
+  bash:
+    ls:
+      decide: allow
+    echo:
+      decide: allow
+expected:
+  decision: allow

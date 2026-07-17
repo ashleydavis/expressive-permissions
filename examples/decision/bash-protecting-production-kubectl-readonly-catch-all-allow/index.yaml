@@ -1,0 +1,20 @@
+description: "protecting-production: kubectl get with read-only subcommand allow + catch-all ask → allow (PROTECTING-PRODUCTION.md Read-only access with a catch-all)"
+input:
+  tool_name: Bash
+  tool_input:
+    command: kubectl get pods
+  cwd: /home/user/project
+rules:
+  bash:
+    kubectl:
+      - get:
+          decide: allow
+          reason: Read-only resource listing.
+      - describe:
+          decide: allow
+          reason: Read-only resource inspection.
+      - decide: ask
+        reason: Confirm kubectl operation
+expected:
+  decision: allow
+  reason: Read-only resource listing.

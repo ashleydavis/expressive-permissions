@@ -17,10 +17,10 @@
         "t": "bun run test",
         "test:watch": "jest --watch",
         "tw": "bun run test:watch",
-        "smoke": "bash scripts/smoke-tests.sh",
+        "smoke": "bash scripts/smoke-tests.sh && bash scripts/smoke-tests-bash-parser.sh && bash scripts/smoke-tests-decision.sh",
         "smoke:repl": "bash scripts/repl-smoke-tests.sh",
         "validate": "claude plugin validate ./plugin && claude plugin validate .",
-        "test:all": "bun run validate && bun run test && bash scripts/smoke-tests-bash-parser.sh && bash scripts/hook-smoke-tests.sh && bash scripts/smoke-tests.sh && bash scripts/repl-smoke-tests.sh",
+        "test:all": "bun run validate && bun run test && bash scripts/smoke-tests-bash-parser.sh && bash scripts/smoke-tests-decision.sh && bash scripts/hook-smoke-tests.sh && bash scripts/smoke-tests.sh && bash scripts/repl-smoke-tests.sh",
         "ta": "bun run test:all",
         "dev": "claude --plugin-dir ./plugin",
         "d": "bun run dev"

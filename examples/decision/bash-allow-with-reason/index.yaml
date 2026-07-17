@@ -1,0 +1,15 @@
+description: "bash: allow rule with reason forwards reason to output"
+source_e2e: e2e/bash/bash-allow-with-reason/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: ls -la
+  cwd: /home/user/project
+rules:
+  bash:
+    ls:
+      decide: allow
+      reason: ls is safe
+expected:
+  decision: allow
+  reason: ls is safe

@@ -1,0 +1,16 @@
+description: "redirect.out: allow write to /tmp"
+source_e2e: e2e/bash/bash-redirect-out-tmp-allow/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: echo hi > /tmp/out.txt
+  cwd: ${PROJECT_DIR}
+rules:
+  redirect:
+    out:
+      - path-in:
+          - /tmp/**
+        decide: allow
+      - decide: ask
+expected:
+  decision: allow

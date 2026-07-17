@@ -1,0 +1,18 @@
+description: "bash: helm env is a subcommand name, not the env matcher field → allow"
+input:
+  tool_name: Bash
+  tool_input:
+    command: "helm env"
+  cwd: /home/user/project
+rules:
+  bash:
+    helm:
+      completion:
+        decide: allow
+        reason: Readonly helm access
+      env:
+        decide: allow
+        reason: Readonly helm access
+expected:
+  decision: allow
+  reason: Readonly helm access

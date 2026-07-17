@@ -1,0 +1,10 @@
+tool_call:
+  tool_name: Grep
+  tool_input:
+    pattern: TODO
+    path: /tmp
+ast:
+  type: grep
+  source: Grep TODO /tmp
+  pattern: TODO
+  path: /tmp

@@ -1,0 +1,17 @@
+description: "protecting-production: aws * create-* → deny (PROTECTING-PRODUCTION.md Block all write operations)"
+input:
+  tool_name: Bash
+  tool_input:
+    command: aws ec2 create-vpc --cidr-block 10.0.0.0/16
+  cwd: /home/user/project
+rules:
+  bash:
+    aws:
+      - cmd: "* create-*"
+        decide: deny
+        reason: Creating resources may incur unexpected costs or alter infrastructure state.
+      - cmd: "* describe-*"
+        decide: allow
+expected:
+  decision: deny
+  reason: Creating resources may incur unexpected costs or alter infrastructure state.

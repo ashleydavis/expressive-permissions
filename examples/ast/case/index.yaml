@@ -1,40 +1,40 @@
 tool_call:
-  tool_name: "Bash"
+  tool_name: Bash
   tool_input:
-    command: "case $1 in start) run;; stop|halt) halt;; *) usage;; esac"
+    command: case $1 in start) run;; stop|halt) halt;; *) usage;; esac
 ast:
-  type: "bash"
-  raw: "case $1 in start) run;; stop|halt) halt;; *) usage;; esac"
-  ast:
-    type: "case_statement"
-    word: "$1"
-    clauses:
-      - patterns:
-          - "start"
-        body:
-          type: "command"
-          binary: "run"
-          options: {}
-          cmd: []
-          envPrefix: {}
-          raw: "run"
-      - patterns:
-          - "stop"
-          - "halt"
-        body:
-          type: "command"
-          binary: "halt"
-          options: {}
-          cmd: []
-          envPrefix: {}
-          raw: "halt"
-      - patterns:
-          - "*"
-        body:
-          type: "command"
-          binary: "usage"
-          options: {}
-          cmd: []
-          envPrefix: {}
-          raw: "usage"
-    raw: "case $1 in start) run;; stop|halt) halt;; *) usage;; esac"
+  type: bash
+  source: case $1 in start) run;; stop|halt) halt;; *) usage;; esac
+  children:
+    command:
+      type: case_statement
+      source: case $1 in start) run;; stop|halt) halt;; *) usage;; esac
+      children:
+        _:
+          - type: command
+            source: run
+            commandName: run
+            options: {}
+            positionals: []
+            envPrefix: {}
+          - type: command
+            source: halt
+            commandName: halt
+            options: {}
+            positionals: []
+            envPrefix: {}
+          - type: command
+            source: usage
+            commandName: usage
+            options: {}
+            positionals: []
+            envPrefix: {}
+      word: $1
+      clauses:
+        - patterns:
+            - start
+        - patterns:
+            - stop
+            - halt
+        - patterns:
+            - "*"

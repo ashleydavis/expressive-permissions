@@ -1,0 +1,18 @@
+description: "bash: a $VAR set by X=Y earlier in the command is expanded before
+  cmd matching, so the rule matches the variable's value"
+source_e2e: e2e/bash/bash-env-var-expanded-in-cmd-match/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: B=/tmp/scratch.txt; sed -i 's/a/b/' "$B"
+  cwd: /home/user/outside-the-project
+rules:
+  bash:
+    sed:
+      cmd-in:
+        - /tmp/**
+      decide: allow
+      reason: sed within /tmp
+expected:
+  decision: allow
+  reason: sed within /tmp

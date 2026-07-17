@@ -1,28 +1,33 @@
 tool_call:
-  tool_name: "Bash"
+  tool_name: Bash
   tool_input:
-    command: "find . | xargs rm"
+    command: find . | xargs rm
 ast:
-  type: "bash"
-  raw: "find . | xargs rm"
-  ast:
-    type: "binop"
-    op: "|"
-    left:
-      type: "command"
-      binary: "find"
-      options: {}
-      cmd: "."
-      envPrefix: {}
-      raw: "find ."
-    right:
-      type: "xargs"
-      options: {}
-      child:
-        type: "command"
-        binary: "rm"
-        options: {}
-        cmd: []
-        envPrefix: {}
-        raw: "rm"
-      raw: "xargs rm"
+  type: bash
+  source: find . | xargs rm
+  children:
+    command:
+      type: binop
+      source: find . | xargs rm
+      children:
+        left:
+          type: command
+          source: find .
+          commandName: find
+          options: {}
+          positionals:
+            - .
+          envPrefix: {}
+        right:
+          type: xargs
+          source: xargs rm
+          children:
+            child:
+              type: command
+              source: rm
+              commandName: rm
+              options: {}
+              positionals: []
+              envPrefix: {}
+          options: {}
+      op: "|"

@@ -1,0 +1,16 @@
+description: "built-in: export rule runs before YAML rules and merges env for later commands"
+input:
+  tool_name: Bash
+  tool_input:
+    command: export FOO=bar; echo hi
+  cwd: /home/user/project
+rules:
+  bash:
+    echo:
+      env:
+        FOO: bar
+      decide: allow
+      reason: echo after export with FOO=bar
+expected:
+  decision: allow
+  reason: set environment variable; echo after export with FOO=bar

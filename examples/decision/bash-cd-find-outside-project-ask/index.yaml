@@ -1,0 +1,22 @@
+description: "bash: cd outside project then find . should NOT auto-allow (guards
+  against path-aware over-permissiveness)"
+source_e2e: e2e/bash/bash-cd-find-outside-project-ask/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: cd /etc && find . -type f
+  cwd: ${PROJECT_DIR}
+rules: {}
+expected:
+  decision: ask
+home_dir_files:
+  bash-readonly.yaml:
+    bash:
+      cd:
+        cmd: ./**
+        decide: allow
+        reason: cd targets under the project (same ./** semantics as find)
+      find:
+        cmd: ./**
+        decide: allow
+        reason: Readonly search within current directory (relative paths only)

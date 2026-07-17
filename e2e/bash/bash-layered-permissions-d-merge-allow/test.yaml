@@ -1,4 +1,4 @@
-description: "bash: home permissions.d/ls.yaml drop-in allows ls when project main yaml does not mention it"
+description: "bash: home permissions.d/ls.yaml file allows ls when project main yaml does not mention it"
 
 input:
   tool_name: Bash

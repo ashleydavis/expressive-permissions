@@ -1,31 +1,24 @@
 # How it works
 
-Architecture deep-dive for someone who wants to write non-trivial rules or debug an unexpected decision.
+This doc explains the permission engine architecture: AST parsing, rule evaluation, and context threading.
 
----
 
-- [1. End-to-end flow](#1-end-to-end-flow)
-- [2. Tool call → AST](#2-tool-call--ast)
-- [3. Walking the AST with an Environment](#3-walking-the-ast-with-an-environment)
-- [4. Per-node rule evaluation](#4-per-node-rule-evaluation)
-- [5. Bubble-up at intermediate nodes](#5-bubble-up-at-intermediate-nodes)
-- [6. Built-in rules](#6-built-in-rules)
-- [7. User extensibility](#7-user-extensibility)
-- [8. Audit log](#8-audit-log)
-- [9. Shared analysis core](#9-shared-analysis-core-srcanalyzets)
-- [10. Permission REPL](#10-permission-repl-srcreplts)
-- [11. Permission Analyzer MCP server](#11-permission-analyzer-mcp-server-srcmcp-serverts)
+- [End-to-end flow](#end-to-end-flow)
+- [Tool call → AST](#tool-call--ast)
+- [Walking the AST with a Context](#walking-the-ast-with-a-context)
+- [Per-node rule evaluation](#per-node-rule-evaluation)
+- [Bubble-up at intermediate nodes](#bubble-up-at-intermediate-nodes)
+- [Built-in rules](#built-in-rules)
 
----
 
-## 1. End-to-end flow
+## End-to-end flow
 
 ```mermaid
 flowchart LR
   A[LLM] -->|requests a tool| CC[Claude Code]
   CC -->|PreToolUse, JSON on stdin| H[pre-hook.js]
-  H --> BA[build AST]
-  BA --> I[interpret, apply rules]
+  H --> BA[parse AST]
+  BA --> I[decide, apply rules]
   I --> D[Decision]
   D -->|JSON on stdout| CC
   CC -->|allow / deny / ask| A
@@ -33,295 +26,124 @@ flowchart LR
   H & PH --> AL[audit log]
 ```
 
-- **Claude Code** intercepts every tool call via the `PreToolUse` hook and writes a JSON payload to `pre-hook.js` on stdin.
-- **`pre-hook.js`** (`src/pre-hook.ts`) reads stdin, calls `decide(call)`, and writes the result JSON to stdout. It is intentionally thin - no logic lives here.
-- **build AST** (`src/build-ast.ts`) converts the raw `ToolCall` into a typed root AST node (`bash`, `read`, `write`, `edit`, `multiedit`, or the generic `other` fallback). For Bash, it delegates sub-tree construction to `parseBash`.
-- **interpret, apply rules** (`src/interpret.ts`) walks the tree with an immutable `Environment`, runs every registered rule at each node, and aggregates outcomes bottom-up. Each non-abstaining rule match and aggregation step is written to the audit log.
-- **`Decision`** (`allow` / `deny` / `ask`) flows back to Claude Code, which acts on it.
-- **`post-hook.js`** (`src/post-hook.ts`) fires via the `PostToolUse` hook after the tool actually executes (only for allowed calls). It records the tool result and any error flag to the audit log.
+- **Claude Code** intercepts every tool call via the `PreToolUse` hook and passes a JSON payload to the hook on stdin.
+- [**Pre-hook**](../src/pre-hook.ts) reads stdin, parses the tool call into an AST via `parseToolCallToAst`, loads rules with `load`, calls `decide`, emits audit entries, and writes the hook result JSON to stdout. On `ask`, it also writes a pending approval file.
+- [**Parse**](../src/parse.ts) parses the tool call and commands into an AST.
+- [**Decide**](../src/decision.ts) evaluates the AST which returns a flat rule list with an immutable context.
+- **`Decision`** (`allow` / `deny` / `ask`) flows back to Claude Code. No matching rule defaults to `ask`.
+- [**Post-hook**](../src/post-hook.ts) fires via `PostToolUse` after an allowed tool executes, and records the result to the audit log (and clears pending approval files).
 
-## 2. Tool call → AST
+## Tool call → AST
 
-`buildAst` switches on `tool_name` and lifts the relevant fields into a typed node. For Bash, it first loads **command descriptor files** via `loadCommandDescriptors(projectDir)` from `~/.claude/permissions.d/commands/` (home) and `.claude/permissions.d/commands/` (project, wins on conflict). The resulting `Map<string, ICommandDescriptor>` is threaded into `parseBash`, which uses it to determine flag arity (whether a flag consumes the next token as its value) and positional kinds (path vs. string). Without a descriptor for a command, all flags default to arity 0.
+[`parse`](../src/parse.ts) dispatches on `tool_name` and builds a typed AST for each supported tool (Bash, Read, Write, Edit, Grep, WebFetch, Agent, and a fallback for everything else).
 
-`parseBash` runs a hand-written recursive descent parser: a flat lexer produces a token stream, then grammar functions (`parseSequence` / `parseAnd` / `parseOr` / `parsePipe` / `parseStatement` / `parseCommand`) call each other recursively to build a left-associative sub-AST of `Command` leaves connected by `BinOp` nodes (`pipe`, `and`, `or`, `seq`). The lexer also normalises **newlines** and a bare **`&`** to a `;` separator, so a command after a newline or backgrounded with `&` is parsed as its own statement rather than swallowed as an argument.
+Bash and Shell commands are tokenized and parsed into `command`, `binop`, `redirect`, `substitution`, `xargs`, and block nodes. [`parseToolCallToAst`](../src/analyze.ts) loads **command descriptors** from home and project `permissions.d/commands/` (project wins on conflict) so the parser knows flag arity and positional kinds before it runs.
 
-**Comments** are stripped by the lexer. A `#` at a token boundary (start of input, or just after whitespace, a newline, or an operator) begins a comment that is discarded to the end of the line, exactly as Bash treats it; a `#` in the middle of a word (e.g. `foo#bar`) is kept literally. This applies wherever the comment appears, not just at the start of a line, so a trailing comment like `echo hi # note` parses as just `echo hi`, and anything inside the comment (including what looks like a `$(...)` substitution) never reaches the AST or gets evaluated. Because comment-only lines and blank lines collapse with the surrounding separators, the only way to reach a completely empty `Command` (empty `binary`, no args/env) is an input that is *nothing but* a comment or whitespace; that degenerate case falls through to the default **ask** (see [§4](#4-per-node-rule-evaluation)).
+### How redirects appear in the AST
 
-After `parseCommand` builds a `command` leaf, any I/O redirections on that command are wrapped in nested **`redirect` intermediate nodes** (innermost closest to the command). A plain command with no redirects has no wrapper. Each `redirect` node carries the operator (`>`, `>>`, `<`, `2>`, `&>`, `2>&`, …) and a `target` string (file path, or fd number as a string for merges like `2>&1`). Redirect path rules from `redirect.out` / `redirect.in` match these nodes; the inner `command` leaf has no `redirects` field.
+Each shell redirect is a `redirect` node wrapping the inner command. Multiple redirects nest outward; the innermost redirect sits closest to the `command` node.
 
-`parseStatement` recognises the block constructs:
+```
+redirect  op: >
+├── command
+│   └── echo foo
+└── target: bar.txt
+```
 
-| Leading token | Node | Shape |
-|---|---|---|
-| `for` | `for_loop` | `for VAR in ITEMS; do BODY; done` |
-| `while` / `until` | `while_loop` (`until` flag) | `while COND; do BODY; done` |
-| `if` | `if_statement` | `if COND; then BODY [elif COND; then BODY]* [else BODY]; fi` |
-| `case` | `case_statement` | `case WORD in PATTERN) BODY ;; ... esac` |
-| `(` | `group` (`subshell`) | `( LIST )` |
-| `{` | `group` (`brace`) | `{ LIST; }` |
+```
+redirect  op: 2>&
+├── redirect  op: >
+│   ├── command
+│   │   └── cmd
+│   └── target: out.log
+└── target: 1
+```
 
-Conditions, bodies, branches, and clauses are each parsed as full sub-sequences, so operators, pipelines, and nested blocks inside them build normal sub-trees. An `elif` chain is represented as a nested `if_statement` in the `elseBranch` field. Embedded **command substitutions** — `$(...)` and backtick `` `...` `` — found in any word, redirect target, or env value of a command are parsed and attached to that command's `substitutions` array (arithmetic `$(( ... ))` is excluded), so the inner commands are evaluated for permissions instead of being treated as opaque text. After parsing, `buildAst` applies `transformXargsNodes` to the sub-tree: every `Command` leaf with `binary: "xargs"` is replaced by an `IXargsNode` intermediate node whose `child` is the parsed subcommand.
+Permission decisions on the inner `command` node, each `redirect` node, and parent compounds aggregate via strictest-wins as the walker moves up the tree. A `redirect.out` rule fires on the `redirect` node; a `bash.echo` rule fires on the inner `command` node inside the wrapper. YAML for those rules is in [CONFIGURATION.md](CONFIGURATION.md#redirect-path-rules).
 
-Worked AST examples for every construct live under [`examples/ast/`](../examples/ast) (full tool-call AST), each paired with a `.md` Mermaid diagram. Legacy compact Bash fixtures also remain under [`examples/bash/`](../examples/bash). The `examples/ast/` suite is verified by `scripts/smoke-tests-bash-parser.sh`.
+Block constructs include `for_loop`, `while_loop`, `if_statement`, `case_statement`, and `group` (subshell or brace).
+
+Command nodes expose:
+
+| Field | Meaning |
+|---|---|
+| `commandName` | argv[0] (e.g. `ls`, `rm`) |
+| `options` | Flag map (boolean or string values) |
+| `positionals` | Non-flag arguments |
+| `envPrefix` | `KEY=value` assignments before the command name |
+
+YAML matchers still use `cmd` / `cmd-in` for positionals; those names are rule fields, not AST field names.
+
+Worked examples live under [`examples/ast/`](../examples/ast). Decision examples live under [`examples/decision/`](../examples/decision). Smoke tests run both.
 
 For `find . | xargs grep -l "pattern"`:
 
 ```mermaid
 graph TD
-  Bash["bash<br/>raw: find . | xargs grep -l &quot;pattern&quot;"] --> Pipe["binop<br/>op: |"]
-  Pipe --> Find["command<br/>binary: find<br/>cmd: ."]
-  Pipe --> Xargs["xargs<br/>options: {l: true}<br/>raw: xargs grep -l &quot;pattern&quot;"]
-  Xargs --> Grep["command<br/>binary: grep<br/>options: {l: true}"]
-```
-
-For `cmd > out.log`:
-
-```mermaid
-graph TD
-  Bash["bash<br/>raw: cmd &gt; out.log"] --> Redirect["redirect<br/>op: &gt;<br/>target: out.log"]
-  Redirect --> Cmd["command<br/>binary: cmd"]
+  Bash["bash<br/>source: find . | xargs grep -l &quot;pattern&quot;"] --> Pipe["binop<br/>op: |"]
+  Pipe --> Find["command<br/>commandName: find<br/>positionals: [.]"]
+  Pipe --> Xargs["xargs"]
+  Xargs --> Grep["command<br/>commandName: grep<br/>options: {l: true}"]
 ```
 
 For `cd /etc && rm -rf /`:
 
 ```mermaid
 graph TD
-  Bash["bash<br/>raw: cd /etc &amp;&amp; rm -rf /"] --> And["and"]
-  And --> Cd["command<br/>binary: cd<br/>cmd: /etc"]
-  And --> Rm["command<br/>binary: rm<br/>options: { r: true, f: true }<br/>cmd: /"]
+  Bash["bash"] --> And["binop<br/>op: &&"]
+  And --> Cd["command<br/>commandName: cd<br/>positionals: [/etc]"]
+  And --> Rm["command<br/>commandName: rm<br/>options: { r: true, f: true }<br/>positionals: [/]"]
 ```
 
-For `if diff -q a b >/dev/null 2>&1; then echo same; else echo differ; fi` — the condition is a nested `redirect` chain around the `diff` command; both branches are plain `command` leaves:
+Source files: [`src/parse.ts`](https://github.com/ashleydavis/expressive-permissions/blob/main/src/parse.ts), [`src/analyze.ts`](https://github.com/ashleydavis/expressive-permissions/blob/main/src/analyze.ts).
 
-```mermaid
-graph TD
-  If["if_statement"] --> CondRedirect["redirect<br/>op: 2&gt;&amp;<br/>target: 1"]
-  CondRedirect --> CondOut["redirect<br/>op: &gt;<br/>target: /dev/null"]
-  CondOut --> Cond["command<br/>binary: diff<br/>options: { q: true }<br/>cmd: [a, b]"]
-  If --> Then["command<br/>binary: echo<br/>cmd: same"]
-  If --> Else["command<br/>binary: echo<br/>cmd: differ"]
-```
+## Walking the AST with context
 
-For an `Edit` tool call - there is no Bash sub-tree; the AST is a single typed leaf:
+The checker walks the tree tracking working directory and environment. Children run in order, so a `cd` or env assignment on one command affects checks on later commands in the same list. Rules on a node run after its children.
 
-```mermaid
-graph TD
-  E["edit<br/>file_path: /home/u/myapp/.env<br/>old_string: KEY=old<br/>new_string: KEY=new"]
-```
+`for` loops and subshells keep local changes inside the loop or `( ... )` block.
 
-Source files: [`src/parse-bash.ts`](https://github.com/ashleydavis/expressive-permissions/blob/main/src/parse-bash.ts), [`src/build-ast.ts`](https://github.com/ashleydavis/expressive-permissions/blob/main/src/build-ast.ts).
+Both sides of `&&`, `||`, and `|` are checked even when a real shell might skip one, so every command that could run gets a permission decision.
 
-## 3. Walking the AST with an Environment
+## Per-node rule evaluation
 
-The interpreter threads an immutable `Environment` (`{ cwd, cwdResolved, env }`) down through nodes. At each node it calls a visitor (which runs the rules), collects the visitor's env update, then recurses into children with the updated env. Env is always cloned - never mutated.
+At each node, rules run in load order (built-ins, then home config, then project config). For each rule:
 
-Sequence diagram for `cd /etc && rm -rf /` (starting cwd `/home/u`):
+1. **`decision` present**: recorded; on `deny`, later rules at this node are skipped.
+2. **no `decision`**: abstain; may still update `context` (e.g. `cd`).
 
-```mermaid
-sequenceDiagram
-  participant W as Walker
-  participant Cd as cd leaf
-  participant Rm as rm leaf
+Strictest-wins rank: `abstain (0) < allow (1) < ask (2) < deny (3)`.
 
-  Note over W: env0 = {cwd: /home/u}
-  W->>Cd: visit with env0
-  Cd-->>W: cdRule returns env updater (cwd → /etc)
-  Note over W: envOut from cd = {cwd: /etc}
-  W->>Rm: visit with {cwd: /etc}
-  Rm-->>W: blockRmRfRoot returns deny
-  Note over W: bubble deny upward through &&
-```
+Reasons from every rule that produced the winning action are joined with `"; "`.
 
-### Operator env semantics
+Inline env prefixes (`FOO=bar cmd`) are visible to bash rule matchers via `commandNode.envPrefix` even when they are not yet merged into `context.env`. Standalone `FOO=bar` is allowed by `EmptyCommandRule` and merged into `context.env` for later commands.
 
-| Operator | Left sees | Right sees | Env returned to parent |
-|---|---|---|---|
-| `seq` (`;`) | parent env | env after walking left | env after walking right |
-| `and` (`&&`) | parent env | env after walking left | env after walking right |
-| `or` (`\|\|`) | parent env | parent env (LHS may not have run) | parent env (conservative) |
-| `pipe` (`\|`) | parent env | parent env (each side is a subshell) | parent env |
+## Bubble-up at intermediate nodes
 
-`or` and `pipe` discard subtree env changes; `seq` and `and` propagate left→right→up.
+After children and own rules run:
 
-### Block construct env semantics
-
-| Construct | Children walked | Env into children | Env returned to parent |
-|---|---|---|---|
-| `for_loop` | `body` once per item, with `env[variable]` set to that item | parent env + the per-iteration loop variable | parent env (loop-local changes do not leak) |
-| `while_loop` | `condition`, then `body` once | condition sees parent env; body sees the env after the condition | env after the condition (iteration count is indeterminate) |
-| `if_statement` | `condition`, then `thenBranch`, then `elseBranch` (if present) | condition sees parent env; both branches see the env after the condition | env after the condition (the taken branch is indeterminate, so branch changes do not propagate) |
-| `case_statement` | every clause `body` | each clause sees parent env (clauses are alternatives) | parent env |
-| `group` (subshell) | `body` | parent env | parent env (a subshell isolates env changes) |
-| `group` (brace) | `body` | parent env | env after the body (a brace group runs in the current shell) |
-| `command` substitutions | each entry in `substitutions` | parent env | parent env (substitutions run in subshells; their env is discarded) |
-
-Every branch / clause / body is walked even though only some run at execution time: the analysis cannot know which path is taken, so a deny anywhere inside denies the whole construct (strictest-wins aggregation, same as any other intermediate node). A denial inside a command substitution likewise denies the command that contains it.
-
-## 4. Per-node rule evaluation
-
-At each node the visitor runs all registered rules in order. The flowchart below shows one node's evaluation:
-
-```mermaid
-flowchart TD
-  Start["visitor visits node"] --> R1["rule 1"]
-  R1 -->|abstain| R2["rule 2"]
-  R2 -->|allow → record| R3["rule 3"]
-  R3 -->|deny → SHORT-CIRCUIT| Out["return deny"]
-  R3 -.->|or continue| R4["... rule N"]
-  R4 --> Out2["return strictest non-deny"]
-```
-
-Per-rule actions in detail:
-
-1. **deny** - immediately short-circuits; no later rules run. The deny decision and the rule name are recorded.
-2. **ask** - recorded and protected. Later `allow` rules cannot downgrade it.
-3. **allow** - recorded only if nothing stricter (`ask` or `deny`) has been seen yet. Ties (same rank) go to the latest rule, so the explanation cites the most recently matched rule.
-4. **abstain** - skipped entirely; does not affect the running annotation.
-5. If no rule produced a concrete decision, the visitor returns `abstain`.
-
-Rank order for strictest-wins: `abstain (0) < allow (1) < ask (2) < deny (3)`.
-
-### `runningEnv` - cross-rule env visibility
-
-Rules at the same node share a `runningEnv`. Each rule that returns a `scopedEnv` or persistent `env` update mutates `runningEnv` for subsequent rules at *this node*. This lets `envPrefixRule` install `FOO=bar` into `runningEnv` so that a later permission rule at the same leaf can read `env.env.FOO`. Persistent `env` updates also propagate to siblings; `scopedEnv` updates do not.
-
-## 5. Bubble-up at intermediate nodes
-
-After visiting an intermediate node itself, the interpreter aggregates child outcomes and layers the visitor's result on top. Intermediate nodes include `binop`, `redirect`, `xargs`, `for_loop`, `while_loop`, `if_statement`, `case_statement`, and `group`.
-
-**Phase 1 — aggregate children:**
-
-| Condition | Result |
+| Situation | Result |
 |---|---|
-| Any child is `deny` | `deny` |
-| All children are `allow` | `allow` |
-| Otherwise | `ask` |
-
-**Phase 2 — layer the visitor's own decision on top:**
-
-| Visitor decision | Result |
-|---|---|
-| `deny` | `deny` (overrides everything) |
-| `ask` | `ask` (overrides all-allow children) |
-| `allow` | `allow` (overrides ask from children) |
-| `abstain` | Keep Phase 1 result |
+| Any child is `deny` | That child `deny` (own rules cannot override) |
+| Otherwise | `pickStrictest(ownDecisions)` if any own decision, else strictest child decision |
+| Node with no decisions | `ask` |
 
 Worked examples:
 
 | Command | What happens | Result |
 |---|---|---|
-| `cd /etc && rm -rf /` | `rm` leaf → deny; bubbles through `&&` | **deny** |
-| `git status` | single leaf → allow (via `allowGitReadOnly`); propagates through bash root | **allow** |
-| `git status \| wc -l` | children = [allow, ask]; not all-allow → ask | **ask** |
-| `git status && git diff` | both children → allow; all-allow | **allow** |
-| `npm test && rm -rf /` | `rm` leaf → deny; wins over allow from npm | **deny** |
+| `cd /etc && rm -rf /` (with an `rm -rf` deny rule) | `rm` → deny; bubbles through `&&` | **deny** |
+| `git status \| wc -l` (status allow, wc unmatched) | children = [allow, ask]; strictest is ask | **ask** |
+| `git status && git diff` (both allow) | both children → allow | **allow** |
 
-## 6. Built-in rules
+## Built-in rules
 
-These rules handle Bash semantics. Most only update `env` as a side effect and `abstain` on the decision, so they never block a call on their own. The exceptions are `envSetRule` and `exportRule`: a bare assignment or `export` runs no command, so they `allow` it outright (as well as updating `env`).
+Built-ins live under `src/rules/builtin/` and are prepended by `load` before any YAML rules.
 
-| Rule | File | Matches | Decision | Env effect |
+| Rule | File | Matches | Decision | Context effect |
 |---|---|---|---|---|
-| `cdRule` | `src/rules/builtin/cd.ts` | `cd <path>` | abstain | Updates `env.cwd` persistently via `&&` / `;` propagation |
-| `envPrefixRule` | `src/rules/builtin/env-prefix.ts` | `FOO=bar cmd` (non-empty binary + envPrefix) | abstain | Installs prefix vars into `env.env` for this command only (`scopedEnv` - transient) |
-| `envSetRule` | `src/rules/builtin/env-set.ts` | `FOO=bar` with no binary | allow | Updates `env.env` persistently |
-| `exportRule` | `src/rules/builtin/export.ts` | `export FOO=bar [BAZ=qux …]` | allow | Updates `env.env` persistently |
-| `xargsRule` | `src/rules/builtin/xargs.ts` | `IXargsNode` (any xargs command) | abstain | None -- child decision propagates |
+| `CdRule` | `cd-rule.ts` | `cd <path>` | abstain | Updates `cwd` (or sets `cwdResolved: false` when the target contains `$`) |
+| `EmptyCommandRule` | `empty-command-rule.ts` | empty `commandName` with a non-empty `envPrefix` | allow | Merges `envPrefix` into `context.env` |
+| `ExportRule` | `export-rule.ts` | `export KEY=VALUE …` | allow | Merges assignments into `context.env` |
 
-Built-ins are registered first in `src/rules/index.ts` so their env updates land in `runningEnv` before permission rules read them - e.g. `NODE_ENV=production npm start` makes `NODE_ENV` visible to a permission rule that wants to deny production runs.
-
-## 7. User extensibility
-
-### TypeScript rules
-
-A rule is a single function `(node: AstNode, env: Environment, call: ToolCall) => RuleOutcome`. Place it in its own file under `src/rules/`, add it to the array in `src/rules/index.ts`, write a paired test under `src/test/rules/`, then rebuild (`bun run bundle`).
-
-Rules should:
-- Return `ABSTAIN` for node types they don't care about (by `node.type`).
-- Read `node.options`, `node.binary`, `node.file_path`, etc. - whichever fields match the node type.
-- Read `env.cwd` / `env.cwdResolved` / `env.env` when the decision depends on where the call runs.
-- Return a persistent `env` update (not a decision) for side effects like tracking cwd changes.
-
-### YAML rules
-
-Drop a `.claude/permissions.yaml` in your project root (or `~/.claude/permissions.yaml` for user-global rules). You can also split rules across multiple files under `.claude/permissions.d/*.yaml` (and the home equivalent) — each drop-in file becomes its own isolated layer. YAML rules are compiled to `Rule` functions at startup and appended to the registry after the semantic built-ins. No rebuild required - just `/reload-plugins`.
-
-See [CONFIGURATION.md](CONFIGURATION.md) for the full conditions table and glob semantics.
-
-### Registry ordering and conflict resolution
-
-Rules are evaluated through a layered delegation chain:
-
-```
-Hook (interpret.ts) → RuleRegistry → RuleLayer | FileLayer → Rule
-```
-
-The layers in evaluation order:
-
-1. **Built-in layer** (`RuleLayer`) — cd, env-prefix, env-set, export. Static; never reloads. Runs first so env state is correct when YAML rules evaluate it.
-2. **Home main layer** (`FileLayer`) — compiled from `~/.claude/permissions.yaml` once at hook startup. Returns `[]` when `HOME` is unset or the file is absent.
-3. **Home drop-in layers** (one `FileLayer` per file) — every `~/.claude/permissions.d/*.yaml` or `.yml`, sorted alphabetically. Each file is its own isolated layer.
-4. **Project main layer** (`FileLayer`) — compiled from `.claude/permissions.yaml` (relative to `CLAUDE_PROJECT_DIR`) once at hook startup. Returns `[]` when `CLAUDE_PROJECT_DIR` is unset or the file is absent.
-5. **Project drop-in layers** (one `FileLayer` per file) — every `.claude/permissions.d/*.yaml` or `.yml` under `CLAUDE_PROJECT_DIR`, sorted alphabetically.
-
-All YAML config files are compiled independently — none overrides another. All rules from all files are evaluated. `RuleRegistry.runRules` iterates the layers in order, threads the persistent env from each layer's result into the next, and applies strictest-wins across layers. A deny in any layer short-circuits the remaining layers, so a `permissions.d/aws.yaml` deny wins over an allow in a sibling drop-in or the project main file evaluated later.
-
-The plugin ships with no default YAML rules. All permission decisions come from the user's config files. Within each layer, strictest-wins applies: a deny short-circuits later rules, and an ask cannot be downgraded by a later allow at the same node.
-
-## 8. Audit log
-
-Every hook invocation writes structured entries to `.claude/permissions-log/` inside the project root (`CLAUDE_PROJECT_DIR`). Files are partitioned by hour in local time:
-
-```
-.claude/permissions-log/
-└── YYYY-MM/
-    └── DD/
-        ├── HH.json   # JSON Lines — one entry per line, machine-readable
-        └── HH.log    # plain text — human-readable summary
-```
-
-### Entry types
-
-| Type | Written by | When |
-|---|---|---|
-| `tool_request` | `pre-hook.js` | Once per invocation, before any rule runs — captures the raw tool call |
-| `rule_match` | `pre-hook.js` | Once per non-abstaining rule at any AST node — records rule name, decision, and matched cmd |
-| `aggregation` | `pre-hook.js` | Once per intermediate node — records children decision, own decision, and combined result |
-| `final_decision` | `pre-hook.js` | Once per invocation, just before returning — the authoritative allow / deny / ask |
-| `tool_execution` | `post-hook.js` | Once per allowed tool execution — captures the tool response and whether it reported an error |
-
-### Retention
-
-The three most recent calendar months are kept. Months older than that are pruned automatically on each hook invocation. Files within a kept month are never deleted.
-
-## 9. Shared analysis core (`src/analyze.ts`)
-
-Both the REPL and the MCP server use the same `analyzePermission` function from `src/analyze.ts` rather than calling `decide()` directly. This guarantees they produce identical results to the live hook.
-
-`analyzePermission(input, cwd, projectDir)` does three things:
-
-1. **Parse input** -- `parseToolCallInput` converts a user string into a `ToolCall`. A bare string becomes a Bash call. Prefixed strings (`read <path>`, `write <path>`, `edit <path>`, `webfetch <url>`, `tool <name>`) become the corresponding typed tool call.
-2. **Build registry** -- `buildAnalysisRegistry` constructs the same three-layer `RuleRegistry` the live hook uses (built-ins → home config → project config), temporarily setting `CLAUDE_PROJECT_DIR` so the file loaders resolve paths correctly.
-3. **Run and capture** -- `decide()` is called with a `CapturingAuditLogger` that records every rule match, aggregation, and final decision. The logger's entries become the `trace` array in the returned `IAnalysisResult`.
-
-## 10. Permission REPL (`src/repl.ts`)
-
-The REPL is a thin shell around `analyzePermission`. It has two modes:
-
-- **Interactive** -- reads lines from stdin, calls `analyzePermission` for each, and prints the trace and final verdict in ANSI colour. The `:cwd <path>` command changes the working directory for subsequent evaluations; `:project <path>` (alias `:proj <path>`) changes both the project dir (used to expand `${{PROJECT_DIR}}`) and the cwd together; `:quit` or Ctrl-D exits.
-- **One-shot** -- when a command is passed as `process.argv[2]`, the REPL calls `analyzePermission` once, prints the result, and exits with code 0 (allow), 1 (deny), or 2 (ask). This is what `scripts/repl-smoke-tests.sh` uses.
-
-Neither mode touches the live hook or writes to the audit log. The `CapturingAuditLogger` inside `analyzePermission` captures all trace entries in memory and they are discarded after printing.
-
-## 11. Permission Analyzer MCP server (`src/mcp-server.ts`)
-
-The MCP server exposes a single tool, `analyze_permission`, over stdio using the `@modelcontextprotocol/sdk` `StdioServerTransport`. Claude Code registers it via `.mcp.json` and calls it automatically when you ask permission questions in natural language.
-
-When `analyze_permission` is called:
-
-1. `analyzePermission(command, cwd, projectDir)` is called with the arguments from the tool input (defaulting `cwd` and `projectDir` to `CLAUDE_PROJECT_DIR` or `process.cwd()`).
-2. The result is formatted as a text block: decision, reason, and a filtered trace. `config_load` and `tool_request` entries are stripped because they appear on every call and do not help explain why a rule matched.
-3. The text block is returned as the tool response. Claude reads it and explains the result in natural language.
-
-The server is bundled into `plugin/dist/mcp-server.js` for distribution. Plugin users get it automatically via `plugin/.mcp.json`; repository developers use the repo-root `.mcp.json` which points at the TypeScript source directly.
+There is no separate env-prefix built-in for `FOO=bar cmd`: matchers read `envPrefix` on the command node. There is no separate `xargs` permission built-in; `xargs` is an AST node whose child is evaluated normally.

@@ -1,14 +1,16 @@
 import { mkdtemp, mkdir, readdir, readFile, rm, stat, utimes, writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
-import { buildAst } from "../build-ast";
-import { NullAuditLogger } from "../audit-log";
-import { decide } from "../interpret";
-import { RuleLayer, RuleRegistry } from "../rule-registry";
-import { builtinRules } from "../rules";
+import { parse } from "../parse";
+import { IAstNode } from "../ast";
+import { IContext } from "../context";
+import { CommandAstNode } from "../ast-nodes/command-ast-node";
+import { BinopAstNode } from "../ast-nodes/binop-ast-node";
+import { BashTokenKind } from "../tokenizer";
+import { ICommandOutcome } from "../audit-log";
 import {
     buildPendingPromptFileName,
-    buildLeafOutcomeMap,
+    buildCommandDecisionMap,
     cleanupStalePendingPrompts,
     formatContextBlock,
     formatPendingPromptFileTimestamp,
@@ -16,11 +18,10 @@ import {
     resolvePendingDir,
     resolvePendingPromptFilePath,
     sanitizePendingPromptDescription,
-    simulateLeafEnvironments,
     STALE_PENDING_PROMPT_MAX_AGE_DAYS,
     writePendingPrompt,
 } from "../pending-prompt-log";
-import { IToolCall, IEnvironment, ABSTAIN } from "../types";
+import { IToolCall } from "../types";
 
 // tempDir creates a temporary directory and returns its path and a cleanup function.
 async function tempDir(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
@@ -39,6 +40,21 @@ function makeBashCall(command: string, cwd: string): IToolCall {
 // makeReadCall builds a minimal Read IToolCall.
 function makeReadCall(filePath: string, cwd: string): IToolCall {
     return { tool_name: "Read", tool_input: { file_path: filePath }, cwd };
+}
+
+// parseBashCall parses a Bash tool call into the new AST.
+async function parseBashCall(call: IToolCall): Promise<IAstNode> {
+    const toolInput: Record<string, string> = {};
+    for (const [key, value] of Object.entries(call.tool_input)) {
+        if (typeof value === "string") {
+            toolInput[key] = value;
+        }
+    }
+    return parse({
+        tool_name: call.tool_name,
+        tool_input: toolInput,
+        cwd: call.cwd,
+    }, new Map());
 }
 
 test("STALE_PENDING_PROMPT_MAX_AGE_DAYS is one day", () => {
@@ -126,94 +142,59 @@ test("buildPendingPromptFileName falls back to tool when input has no command or
     expect(fileName).toBe("2026-06-25-10-08-tasklist.md");
 });
 
-test("simulateLeafEnvironments threads cwd through cd in a && chain", () => {
-    const call = makeBashCall("cd /tmp && curl https://example.com", "/home/user/project");
-    const root = buildAst(call, new Map());
-    const env0: IEnvironment = { cwd: call.cwd, cwdResolved: true, env: {} };
-    const leafContextMap = simulateLeafEnvironments(root, env0);
-    const curlContext = leafContextMap.get("curl https://example.com");
-    expect(curlContext).toBeDefined();
-    expect(curlContext?.cwd).toBe("/tmp");
-});
-
-test("simulateLeafEnvironments does not thread cwd through a pipe", () => {
-    const call = makeBashCall("cd /tmp | curl https://example.com", "/home/user/project");
-    const root = buildAst(call, new Map());
-    const env0: IEnvironment = { cwd: call.cwd, cwdResolved: true, env: {} };
-    const leafContextMap = simulateLeafEnvironments(root, env0);
-    const curlContext = leafContextMap.get("curl https://example.com");
-    expect(curlContext).toBeDefined();
-    expect(curlContext?.cwd).toBe("/home/user/project");
-});
-
 test("formatContextBlock returns hook cwd only when there are no hook-time env vars", () => {
     const call = makeBashCall("export AWS_PROFILE=prod && curl https://example.com", "/home/user/project");
-    const env0: IEnvironment = { cwd: call.cwd, cwdResolved: true, env: {} };
-    const block = formatContextBlock(call, env0);
+    const context0: IContext = { cwd: call.cwd, cwdResolved: true, env: {} };
+    const block = formatContextBlock(call, context0);
     expect(block).toBe("/home/user/project");
 });
 
 test("formatContextBlock includes hook-time env vars without command assignments", () => {
     const call = makeBashCall("curl https://example.com", "/home/user/project");
-    const env0: IEnvironment = {
+    const context0: IContext = {
         cwd: call.cwd,
         cwdResolved: true,
         env: { AWS_PROFILE: "prod" },
     };
-    const block = formatContextBlock(call, env0);
+    const block = formatContextBlock(call, context0);
     expect(block).toContain("/home/user/project");
     expect(block).toContain("AWS_PROFILE=prod");
 });
 
-test("decide returns leafEvaluations for pending prompt formatting", () => {
-    const call = makeBashCall("curl https://example.com", "/home/user/project");
-    const logger = new NullAuditLogger();
-    const registry = new RuleRegistry([
-        new RuleLayer(builtinRules),
-        new RuleLayer([
-            (node, _env, _call) => {
-                if (node.type === "command" && node.binary === "curl") {
-                    return { decision: { action: "ask", reason: "network access requires approval" } };
-                }
-                return ABSTAIN;
-            },
-        ]),
-    ]);
-    const decideResult = decide(call, logger, registry, new Map());
-    expect(decideResult.leafEvaluations.length).toBeGreaterThan(0);
-    const curlEvaluation = decideResult.leafEvaluations.find(
-        evaluation => evaluation.cmd === "curl https://example.com"
-    );
-    expect(curlEvaluation).toBeDefined();
-    expect(curlEvaluation?.decision).toBe("ASK");
-    expect(curlEvaluation?.reason).toBe("network access requires approval");
+test("command nodes omit children", () => {
+    const commandNode = new CommandAstNode("ls", {}, [], {}, "ls");
+    expect(commandNode.children).toBeUndefined();
 });
 
-test("formatPendingPromptMarkdown includes verdict-first layout with labeled tree outcomes", () => {
+test("binop nodes have children (structural non-leaves)", () => {
+    const left = new CommandAstNode("ls", {}, [], {}, "ls");
+    const right = new CommandAstNode("pwd", {}, [], {}, "pwd");
+    const binop = new BinopAstNode(BashTokenKind.And, { left, right }, "ls && pwd");
+    expect(binop.children).toBeDefined();
+});
+
+test("formatPendingPromptMarkdown includes verdict-first layout with labeled tree outcomes", async () => {
     const call = makeBashCall(
         "export AWS_PROFILE=prod && cd /tmp && curl https://example.com",
         "/home/user/project"
     );
-    const root = buildAst(call, new Map());
-    const logger = new NullAuditLogger();
-    const registry = new RuleRegistry([
-        new RuleLayer(builtinRules),
-        new RuleLayer([
-            (node, _env, _call) => {
-                if (node.type === "command" && node.binary === "curl") {
-                    return { decision: { action: "ask", reason: "network access requires approval" } };
-                }
-                return ABSTAIN;
-            },
-        ]),
-    ]);
-    const decideResult = decide(call, logger, registry, new Map());
-    const markdown = formatPendingPromptMarkdown(
+    const root = await parseBashCall(call);
+    const commandOutcomes: ICommandOutcome[] = [
+        {
+            cmd: "curl https://example.com",
+            decision: "ASK",
+            reason: "network access requires approval",
+            source: "matched-rule",
+            cwd: "/tmp",
+            env: { AWS_PROFILE: "prod" },
+        },
+    ];
+    const markdown = await formatPendingPromptMarkdown(
         call,
-        decideResult.root,
-        decideResult.leafEvaluations,
-        decideResult.decision.action,
-        "reason" in decideResult.decision ? decideResult.decision.reason : undefined,
+        root,
+        commandOutcomes,
+        "ask",
+        "network access requires approval",
         new Date(2026, 5, 19, 18, 9, 12, 4)
     );
     expect(markdown).toContain("Pending since 2026-06-19T18:09:12.004");
@@ -225,15 +206,23 @@ test("formatPendingPromptMarkdown includes verdict-first layout with labeled tre
     expect(markdown).toContain("decision: ASK");
 });
 
-test("formatPendingPromptMarkdown shows no rule matched for default ask", () => {
+test("formatPendingPromptMarkdown shows no rule matched for default ask", async () => {
     const call = makeBashCall("unknown-cmd-xyz", "/home/user/project");
-    const root = buildAst(call, new Map());
-    const decideResult = decide(call, new NullAuditLogger(), new RuleRegistry([new RuleLayer(builtinRules)]), new Map());
-    const markdown = formatPendingPromptMarkdown(
+    const root = await parseBashCall(call);
+    const commandOutcomes: ICommandOutcome[] = [
+        {
+            cmd: "unknown-cmd-xyz",
+            decision: "NOMATCH",
+            source: "no-rule-match",
+            cwd: "/home/user/project",
+            env: {},
+        },
+    ];
+    const markdown = await formatPendingPromptMarkdown(
         call,
-        decideResult.root,
-        decideResult.leafEvaluations,
-        decideResult.decision.action,
+        root,
+        commandOutcomes,
+        "ask",
         undefined,
         new Date("2026-06-19T18:09:12.004+10:00")
     );
@@ -242,28 +231,25 @@ test("formatPendingPromptMarkdown shows no rule matched for default ask", () => 
     expect(markdown).toContain("cmd: unknown-cmd-xyz");
 });
 
-test("formatPendingPromptMarkdown includes sections for an ask decision", () => {
+test("formatPendingPromptMarkdown includes sections for an ask decision", async () => {
     const call = makeBashCall("curl https://example.com", "/home/user/project");
-    const root = buildAst(call, new Map());
-    const logger = new NullAuditLogger();
-    const registry = new RuleRegistry([
-        new RuleLayer(builtinRules),
-        new RuleLayer([
-            (node, _env, _call) => {
-                if (node.type === "command" && node.binary === "curl") {
-                    return { decision: { action: "ask", reason: "network access requires approval" } };
-                }
-                return ABSTAIN;
-            },
-        ]),
-    ]);
-    const decideResult = decide(call, logger, registry, new Map());
-    const markdown = formatPendingPromptMarkdown(
+    const root = await parseBashCall(call);
+    const commandOutcomes: ICommandOutcome[] = [
+        {
+            cmd: "curl https://example.com",
+            decision: "ASK",
+            reason: "network access requires approval",
+            source: "matched-rule",
+            cwd: "/home/user/project",
+            env: {},
+        },
+    ];
+    const markdown = await formatPendingPromptMarkdown(
         call,
-        decideResult.root,
-        decideResult.leafEvaluations,
-        decideResult.decision.action,
-        "reason" in decideResult.decision ? decideResult.decision.reason : undefined,
+        root,
+        commandOutcomes,
+        "ask",
+        "network access requires approval",
         new Date("2026-06-19T18:09:12.004+10:00")
     );
     expect(markdown).toContain("# Bash — ASK");
@@ -279,8 +265,8 @@ test("writePendingPrompt creates a dated pending detail file", async () => {
     const { dir, cleanup } = await tempDir();
     try {
         const call = makeBashCall("curl https://example.com", dir);
-        const root = buildAst(call, new Map());
-        const leafEvaluations = [
+        const root = await parseBashCall(call);
+        const commandOutcomes = [
             {
                 cmd: "curl https://example.com",
                 decision: "ASK",
@@ -288,10 +274,12 @@ test("writePendingPrompt creates a dated pending detail file", async () => {
                 ruleLine: 12,
                 reason: "network access requires approval",
                 source: "matched-rule" as const,
+                cwd: "/home/user/project",
+                env: {},
             },
         ];
         const pendingSince = new Date(2026, 5, 25, 10, 19, 8);
-        await writePendingPrompt(dir, call, root, leafEvaluations, "ask", "network access requires approval", pendingSince);
+        await writePendingPrompt(dir, call, root, commandOutcomes, "ask", "network access requires approval", pendingSince);
         const pendingFiles = await readdir(resolvePendingDir(dir));
         expect(pendingFiles).toContain("2026-06-25-10-08-curl-https-example-com.md");
         const content = await readFile(join(resolvePendingDir(dir), "2026-06-25-10-08-curl-https-example-com.md"), "utf-8");
@@ -306,7 +294,7 @@ test("writePendingPrompt avoids filename collisions within the same second", asy
     const { dir, cleanup } = await tempDir();
     try {
         const call = makeBashCall("curl https://example.com", dir);
-        const root = buildAst(call, new Map());
+        const root = await parseBashCall(call);
         const pendingSince = new Date(2026, 5, 25, 10, 19, 8);
         await writePendingPrompt(dir, call, root, [], "ask", undefined, pendingSince);
         await writePendingPrompt(dir, call, root, [], "ask", undefined, pendingSince);
@@ -323,7 +311,7 @@ test("cleanupStalePendingPrompts removes files older than the threshold", async 
     const { dir, cleanup } = await tempDir();
     try {
         const call = makeBashCall("curl https://example.com", dir);
-        const root = buildAst(call, new Map());
+        const root = await parseBashCall(call);
         await writePendingPrompt(dir, call, root, [], "ask", undefined, new Date());
         const pendingFiles = await readdir(resolvePendingDir(dir));
         expect(pendingFiles.length).toBe(1);
@@ -349,11 +337,10 @@ test("cleanupStalePendingPrompts keeps files newer than the threshold", async ()
     const { dir, cleanup } = await tempDir();
     try {
         const call = makeBashCall("curl https://example.com", dir);
-        const root = buildAst(call, new Map());
+        const root = await parseBashCall(call);
         await writePendingPrompt(dir, call, root, [], "ask", undefined, new Date());
         const pendingFiles = await readdir(resolvePendingDir(dir));
         expect(pendingFiles.length).toBe(1);
-        const filePath = join(resolvePendingDir(dir), pendingFiles[0]);
         await cleanupStalePendingPrompts(dir, new Date(), STALE_PENDING_PROMPT_MAX_AGE_DAYS);
         const remainingFiles = await readdir(resolvePendingDir(dir));
         expect(remainingFiles).toEqual(pendingFiles);
@@ -363,8 +350,8 @@ test("cleanupStalePendingPrompts keeps files newer than the threshold", async ()
     }
 });
 
-test("buildLeafOutcomeMap indexes leaf evaluation records", () => {
-    const outcomeMap = buildLeafOutcomeMap([
+test("buildCommandDecisionMap indexes command outcome records", () => {
+    const outcomeMap = buildCommandDecisionMap([
         {
             cmd: "curl https://example.com",
             decision: "ASK",
@@ -372,11 +359,15 @@ test("buildLeafOutcomeMap indexes leaf evaluation records", () => {
             ruleLine: 12,
             reason: "network access requires approval",
             source: "matched-rule",
+            cwd: "/home/user/project",
+            env: {},
         },
         {
             cmd: "pwd",
             decision: "NOMATCH",
             source: "no-rule-match",
+            cwd: "/home/user/project",
+            env: {},
         },
     ]);
     expect(outcomeMap.get("curl https://example.com")?.decision).toBe("ASK");

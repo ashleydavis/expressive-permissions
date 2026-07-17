@@ -1,20 +1,34 @@
-import { decide } from "./interpret";
-import { createLogger, ensureLogDirIgnored, resolveLogBaseDir } from "./audit-log";
+import { parseToolCallToAst } from "./analyze";
+import { decide } from "./decision";
+import { load } from "./load";
+import {
+    CapturingAuditLogger,
+    createLogger,
+    ensureLogDirIgnored,
+    resolveLogBaseDir,
+    toLocalISOString,
+} from "./audit-log";
 import { IToolCall } from "./types";
-import { cleanupStalePendingPrompts, STALE_PENDING_PROMPT_MAX_AGE_DAYS, writePendingPrompt } from "./pending-prompt-log";
+import {
+    cleanupStalePendingPrompts,
+    commandOutcomesFromAuditEntries,
+    STALE_PENDING_PROMPT_MAX_AGE_DAYS,
+    writePendingPrompt,
+} from "./pending-prompt-log";
 // Debug log file production disabled. Restore to re-enable the debug log.
 // import { resolveDebugLogPath, appendDebugBlock, logDebugError, IDebugField } from "./debug-log";
-import { RuleLayer, FileLayer, IRuleLayer, RuleRegistry } from "./rule-registry";
-import { builtinRules } from "./rules";
-import { loadHomeConfigRules, loadProjectConfigRules, discoverHomeConfigDirFiles, discoverProjectConfigDirFiles, makeConfigFileLoader } from "./load-config";
-import { loadCommandDescriptors } from "./load-commands";
 import { homedir } from "os";
 
 // hookEventName identifies the Claude Code hook event this runner handles.
 const hookEventName = "PreToolUse";
 
-// homeDir is resolved once at module load time so all invocations within this process share it.
-const homeDir = homedir();
+// Resolve the home directory for config loading. Prefer HOME so tests and overrides work.
+export function resolveHomeDir(): string {
+    if (process.env["HOME"]) {
+        return process.env["HOME"];
+    }
+    return homedir();
+}
 
 // readStdin reads all of stdin and returns it as a UTF-8 string.
 export async function readStdin(): Promise<string> {
@@ -37,6 +51,7 @@ export async function runHook(): Promise<void> {
         if (!projectDir) {
             throw new Error("CLAUDE_PROJECT_DIR is not set");
         }
+        const homeDir = resolveHomeDir();
         // Debug log file production disabled. Restore to re-enable the debug log.
         // logPath = resolveDebugLogPath(projectDir);
         // await appendDebugBlock(logPath, "[PRE-HOOK ENTRY]", [
@@ -47,41 +62,51 @@ export async function runHook(): Promise<void> {
         const logger = createLogger(projectDir, new Date());
         await ensureLogDirIgnored(resolveLogBaseDir(projectDir));
         await cleanupStalePendingPrompts(projectDir, new Date(), STALE_PENDING_PROMPT_MAX_AGE_DAYS);
-        const layers: IRuleLayer[] = [
-            new RuleLayer(builtinRules),
-            new FileLayer(loadHomeConfigRules, "~/.claude/permissions.yaml", logger),
-        ];
-        for (const homeDropInSource of discoverHomeConfigDirFiles()) {
-            layers.push(new FileLayer(makeConfigFileLoader(homeDropInSource), homeDropInSource.displayPath, logger));
+        logger.log({
+            type: "tool_request",
+            timestamp: toLocalISOString(new Date()),
+            tool: call.tool_name,
+            input: call.tool_input as Record<string, unknown>,
+            cwd: call.cwd,
+        });
+        const ast = await parseToolCallToAst(call, homeDir, projectDir);
+        const rules = await load(projectDir, homeDir, logger);
+        const startingContext = { cwd: call.cwd, cwdResolved: true, env: {} };
+        const capturingLogger = new CapturingAuditLogger();
+        const decision = await decide(ast, rules, startingContext, capturingLogger);
+        for (const entry of capturingLogger.getEntries()) {
+            logger.log(entry);
         }
-        layers.push(new FileLayer(loadProjectConfigRules, ".claude/permissions.yaml", logger));
-        for (const projectDropInSource of discoverProjectConfigDirFiles()) {
-            layers.push(new FileLayer(makeConfigFileLoader(projectDropInSource), projectDropInSource.displayPath, logger));
-        }
-        const registry = new RuleRegistry(layers);
-        const descriptors = await loadCommandDescriptors(homeDir, projectDir);
-        const decideResult = decide(call, logger, registry, descriptors);
-        const permissionDecision = decideResult.decision.action;
-        const permissionDecisionReason = "reason" in decideResult.decision ? decideResult.decision.reason : undefined;
-        if (decideResult.decision.action === "ask") {
+        const commandOutcomes = commandOutcomesFromAuditEntries(capturingLogger.getEntries());
+        const permissionDecision = decision !== undefined ? decision.action : "ask";
+        const permissionDecisionReason = decision !== undefined ? decision.reason : undefined;
+        logger.log({
+            type: "final_decision",
+            timestamp: toLocalISOString(new Date()),
+            tool: call.tool_name,
+            cmd: ast.source,
+            decision: permissionDecision,
+            reason: permissionDecisionReason,
+        });
+        if (permissionDecision === "ask") {
             await writePendingPrompt(
                 projectDir,
                 call,
-                decideResult.root,
-                decideResult.leafEvaluations,
-                decideResult.decision.action,
+                ast,
+                commandOutcomes,
+                permissionDecision,
                 permissionDecisionReason,
                 new Date()
             );
         }
-        // Debug log file production disabled. Restore to re-enable the debug log.
-        // const exitFields: IDebugField[] = [{ key: "decision", value: permissionDecision }];
-        // if (permissionDecisionReason !== undefined) {
-        //     exitFields.push({ key: "reason", value: permissionDecisionReason });
-        // }
-        // await appendDebugBlock(logPath, "[PRE-HOOK EXIT]", exitFields);
         process.stdout.write(
-            JSON.stringify({ hookSpecificOutput: { hookEventName, permissionDecision, permissionDecisionReason } }) + "\n"
+            JSON.stringify({
+                hookSpecificOutput: {
+                    hookEventName,
+                    permissionDecision: permissionDecision,
+                    permissionDecisionReason: permissionDecisionReason,
+                },
+            }) + "\n"
         );
         process.exit(0);
     }

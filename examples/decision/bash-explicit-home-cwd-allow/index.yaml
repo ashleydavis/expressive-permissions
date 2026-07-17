@@ -1,0 +1,16 @@
+description: "bash: ls with cmd arg under HOME matches rule cmd: ${{HOME}}/**"
+source_e2e: e2e/bash/bash-explicit-home-cwd-allow/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: ls ${PROJECT_DIR}/../home/docs
+  cwd: ${PROJECT_DIR}
+rules: {}
+expected:
+  decision: allow
+home_dir_files:
+  bash-explicit-home-cmd.yaml:
+    bash:
+      ls:
+        cmd: ${{HOME}}/**
+        decide: allow

@@ -1,0 +1,15 @@
+description: "bash: cwd rule does not match after unresolvable cd"
+source_e2e: e2e/bash/bash-cwd-when-unresolved-ask/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: cd $UNKNOWN; rm sensitive.txt
+  cwd: /home/user/project
+rules:
+  bash:
+    rm:
+      cwd: /home/user/**
+      decide: deny
+      reason: deny in known dir
+expected:
+  decision: ask

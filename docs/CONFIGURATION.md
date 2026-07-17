@@ -1,13 +1,13 @@
 # Configuration
 
-Rules are declared in `.claude/permissions.yaml` in your project root, or `~/.claude/permissions.yaml` for user-global rules. Run `/reload-plugins` to pick up changes.
+This doc explains the configuration of your permissions rules.
 
----
 
 - [Structure overview](#structure-overview)
+- [Rule load order](#rule-load-order)
+- [Main file (`permissions.yaml`)](#main-file-permissionsyaml)
 - [Layered files (`permissions.d/`)](#layered-files-permissionsd)
 - [Command descriptor files (`commands/`)](#command-descriptor-files-commands)
-- [Single rule vs list](#single-rule-vs-list)
 - [Pattern matching](#pattern-matching)
 - [Matching field values](#matching-field-values)
 - [Short and long flag forms](#short-and-long-flag-forms)
@@ -15,6 +15,7 @@ Rules are declared in `.claude/permissions.yaml` in your project root, or `~/.cl
 - [Positional argument matching](#positional-argument-matching)
 - [Matching field values with OR](#matching-field-values-with-or)
 - [Matching environment variables](#matching-environment-variables)
+- [Matching the working directory](#matching-the-working-directory)
 - [Matching file contents](#matching-file-contents)
 - [Inverting matches](#inverting-matches)
 - [Matching one of multiple rules](#matching-one-of-multiple-rules)
@@ -23,37 +24,85 @@ Rules are declared in `.claude/permissions.yaml` in your project root, or `~/.cl
 - [File tool rules](#file-tool-rules-read-write-edit-multi_edit)
 - [WebFetch rules](#webfetch-rules)
 - [Redirect path rules](#redirect-path-rules)
-- [Tool-name rules](#tool-name-rules)
-- [Matching the working directory](#matching-the-working-directory)
+- [Grep rules](#grep-rules)
+- [Generic tool rules](#generic-tool-rules)
 - [Decision values](#decision-values)
 - [Strictest wins](#strictest-wins)
 - [Field form reference](#field-form-reference)
 - [Field reference](#field-reference)
-- [Troubleshooting](#troubleshooting)
-- [Debugging and testing rules](#debugging-and-testing-rules)
 
----
 
 ## Structure overview
 
-The top-level keys are either **section names** (`bash`, `read`, `write`, `edit`, `multi_edit`, `webfetch`, `redirect`) or **tool name patterns** for everything else (`Grep`, `ToolSearch`, `"mcp__*__delete_*"`, ...). Bash rules nest under the `bash:` section keyed by command name.
+The top-level keys are either **section names** (`bash`, `read`, `write`, `edit`, `multi_edit`, `webfetch`, `redirect`, `Grep`) or **generic tool patterns** for everything else (`ToolSearch`, `"mcp__*__delete_*"`, ...). Bash rules nest under the `bash:` section keyed by command name.
 
 For commands that take subcommands (e.g. `git`, `npm`), nest rules under the subcommand name. For commands without subcommands (e.g. `rm`, `sudo`), put rules directly under the command name.
 
-A **rule** is an object with zero or more fields plus a `decide` field (`allow`, `deny`, or `ask`) and an optional `reason` string.
+```yaml
+bash:
+  # Shell command
+  ls:
+    decide: allow          # allow | deny | ask
+    reason: List directory # optional; shown to the user
+
+  git:
+    status:                # subcommand
+      decide: allow
+      reason: Readonly git status
+
+# File tool section (also write, edit, multi_edit)
+read:
+  path: "${{PROJECT_DIR}}/**"
+  decide: allow
+  reason: Read files in the project
+
+# WebFetch section: match by hostname
+WebFetch:
+  host: docs.anthropic.com
+  decide: allow
+  reason: Official docs
+
+# Generic tool: top-level key is the tool name (or a glob)
+ToolSearch:
+  decide: allow
+  reason: Search available tools
+```
+
+Configuration is reloaded automatically on the next hook run, so edits apply without `/reload-plugins`.
+
+## Rule load order
+
+Rules load in this order:
+
+1. Built-ins (semantic rules for `cd`, `export`, and env-prefix handling; see [Built-in rules](HOW_IT_WORKS.md#built-in-rules))
+2. Home main (`~/.claude/permissions.yaml`) → home `permissions.d` files (alphabetical)
+3. Project main (`.claude/permissions.yaml`) → project `permissions.d` files (alphabetical)
+
+All rules end up in one flat list. At each AST node, rules run in this order. A `deny` decision short-circuits remaining rules at the same node. For how multiple matching decisions combine, see [Strictest wins](#strictest-wins).
+
+## Main file (`permissions.yaml`)
+
+The main permissions file is a single YAML document:
+
+- `.claude/permissions.yaml` (project)
+- `~/.claude/permissions.yaml` (user-global)
+
+Use this when you want one place for all rules. A missing file is fine; rules can live only in `permissions.d/` instead.
+
+Project main rules load after home main rules. See [Layered files](#layered-files-permissionsd) for how `permissions.d` files fit into the full order.
 
 ## Layered files (`permissions.d/`)
 
-In addition to the main `permissions.yaml` files, you can split rules across multiple YAML files inside a `permissions.d/` drop-in directory:
+In addition to the main `permissions.yaml` files, you can split rules across multiple YAML files inside a `permissions.d/` directory:
 
-- `~/.claude/permissions.d/*.yaml` (home-level drop-ins)
-- `$CLAUDE_PROJECT_DIR/.claude/permissions.d/*.yaml` (project-level drop-ins)
+- `~/.claude/permissions.d/*.yaml` (home-level `permissions.d` files)
+- `<project-dir>/.claude/permissions.d/*.yaml` (project-level `permissions.d` files)
 
-Each drop-in file is loaded as its own isolated layer:
+Each `permissions.d` file is loaded as its own isolated layer:
 
 - **Discovery**: files ending in `.yaml` or `.yml` are picked up. Dotfiles and subdirectories are ignored. Files are loaded in lexicographic order (`aws.yaml`, `bun.yaml`, `git.yaml`).
-- **Per-file isolation**: each file is its own layer. Strictest-wins applies inside a file, deny short-circuits across files. A `deny` rule in any drop-in always wins over `allow` rules in sibling drop-ins.
-- **Layer order**: within each location, drop-ins run **after** the corresponding main `permissions.yaml`. The full order is: home main → home drop-ins (alphabetical) → project main → project drop-ins (alphabetical). Deny anywhere in the chain short-circuits the rest.
+- **Per-file isolation**: each file is its own layer. Strictest-wins applies inside a file, deny short-circuits across files. A `deny` rule in any `permissions.d` file always wins over `allow` rules in sibling `permissions.d` files.
+- **Layer order**: within each location, `permissions.d` files run **after** the corresponding main `permissions.yaml`. The full order is: home main → home `permissions.d` files (alphabetical) → project main → project `permissions.d` files (alphabetical). Deny anywhere in the chain short-circuits the rest.
 
 This lets you copy a single curated file (e.g. `aws.yaml`, `git.yaml`) into the directory rather than hand-merging a monolithic config.
 
@@ -61,10 +110,10 @@ This lets you copy a single curated file (e.g. `aws.yaml`, `git.yaml`) into the 
 
 The Bash parser needs to know which flags consume a value (arity 1) versus which are boolean (arity 0, this is the default). It also needs to know which positional arguments are file paths (subject to `${{PROJECT_DIR}}` expansion and `cmd` glob matching) versus plain strings. This information comes from **command descriptor YAML files**.
 
-Descriptor files live in the `commands/` subdirectory under the standard drop-in directories:
+Descriptor files live in the `commands/` subdirectory under the standard `permissions.d` directories:
 
 - `~/.claude/permissions.d/commands/<command>.yaml` -- home-level (global)
-- `$PROJECT_DIR/.claude/permissions.d/commands/<command>.yaml` -- project-level
+- `<project-dir>/.claude/permissions.d/commands/<command>.yaml` -- project-level
 
 The project layer wins: if both define a flag, the project descriptor takes precedence.
 
@@ -145,35 +194,6 @@ kubectl:
 ```
 
 With this file in place, `kubectl delete pod mypod --context prod-cluster` correctly sets `options.context = "prod-cluster"` and `cmd = ["delete", "pod", "mypod"]`.
-
-## Single rule vs list
-
-You can write a single rule (object) or a list of rules for the same entry. Use a list when you need multiple rules at the same subcommand level.
-
-Single rule:
-
-```yaml
-bash:
-  rm:
-    decide: deny
-    reason: rm is not allowed
-```
-
-List of rules:
-
-```yaml
-bash:
-  rm:
-    - options:
-        - r|recursive
-        - f|force
-      decide: deny
-      reason: rm -rf is not allowed
-    - options:
-        - r|recursive
-      decide: ask
-      reason: Confirm before removing recursively
-```
 
 ## Pattern matching
 
@@ -433,6 +453,85 @@ bash:
 
 Values follow the same pattern matching rules as other fields: exact string, glob, or `/regex/`.
 
+## Matching the working directory
+
+The `cwd` field accepts any pattern form.
+
+### Anchoring rules to the project directory
+
+Use `${{PROJECT_DIR}}` to anchor a rule to the project root. The engine substitutes the token with the value of `CLAUDE_PROJECT_DIR` before any pattern matching runs:
+
+```yaml
+bash:
+  git:
+    add:
+      cwd: ${{PROJECT_DIR}}/**
+      decide: allow
+    commit:
+      cwd: ${{PROJECT_DIR}}/**
+      decide: allow
+    push:
+      cwd: ${{PROJECT_DIR}}/**
+      decide: ask
+      reason: Confirm push from project directory
+```
+
+That example allows `git add` and `commit` within the project you are currently working in (and no other project on your computer). `git push` is set to always `ask`.
+
+Similarly, `${{HOME}}` expands to the value of the `HOME` environment variable:
+
+```yaml
+bash:
+  rm:
+    cwd: ${{HOME}}/**
+    decide: ask
+    reason: Confirm before deleting from home directories
+```
+
+For positional `cmd` patterns, a leading `./` anchors to `${{PROJECT_DIR}}` (or the cwd when that env var is unset). Prefer `${{PROJECT_DIR}}` in `cwd:` patterns.
+
+A glob matches any path under a directory:
+
+```yaml
+bash:
+  rm:
+    cwd: /home/**
+    decide: ask
+    reason: Confirm before deleting from home directories
+```
+
+A regex can match patterns that globs cannot express:
+
+```yaml
+bash:
+  rm:
+    cwd: /\/projects\/[^/]+-prod\//
+    decide: deny
+    reason: No deletions in production project directories
+```
+
+Use `cwd-in` to match any one of several directories:
+
+```yaml
+bash:
+  rm:
+    cwd-in:
+      - /etc/**
+      - /usr/**
+    decide: deny
+    reason: No deleting from system directories
+```
+
+Use absolute globs for system-wide restrictions:
+
+```yaml
+bash:
+  rm:
+    cmd: /etc/**
+    decide: deny
+    reason: No deleting from /etc
+```
+
 ## Matching file contents
 
 Use `file` to match based on the existence or contents of a file on disk. The key is the file path (tilde-expanded).
@@ -476,7 +575,7 @@ The rule matches when the file exists and (if `contains:` is set) its contents m
 
 ## Inverting matches
 
-Use `not:` to invert a set of conditions. Any combination of rule fields (`cmd`, `env`, `options`, `cwd`, `path`, `file`) can appear under `not:`. The rule matches when the fields inside `not:` do **not** all match simultaneously.
+Use `not:` on bash entries to invert a set of conditions. Only these fields are allowed under `not:`: `env`, `file`, `cmd-in`, `options` (flag names as an array; presence AND), and `options-in` (flag names; presence OR). The rule matches when the fields inside `not:` do **not** all match simultaneously.
 
 Invert an environment variable match:
 
@@ -492,20 +591,17 @@ bash:
 
 This matches any `aws` command where `AWS_PROFILE` is not `sandbox`.
 
-Invert a combination of fields:
+Invert a positional match with `cmd-in`:
 
 ```yaml
 bash:
   kubectl:
     - not:
-        cmd: get
-        env:
-          KUBECONFIG: sandbox
+        cmd-in:
+          - get
       decide: ask
-      reason: Confirm kubectl outside sandbox
+      reason: Confirm kubectl when get is not among the positionals
 ```
-
-This matches when it is not the case that both `cmd` is `get` and `KUBECONFIG` is `sandbox` simultaneously.
 
 Invert a file condition:
 
@@ -524,7 +620,34 @@ This matches when `~/.kube/config` exists but does not contain the given string.
 
 ## Matching one of multiple rules
 
-To match on any of several distinct cases, use a list of rules. The strictest matching decision wins across all rules that match (deny beats ask beats allow beats abstain):
+You can write a single rule (object) or a list of rules for the same entry. Use a list when you need multiple rules at the same subcommand level, for example to cover several distinct cases. The strictest matching decision wins across all rules that match (deny beats ask beats allow beats abstain).
+
+Single rule:
+
+```yaml
+bash:
+  rm:
+    decide: deny
+    reason: rm is not allowed
+```
+
+List of rules:
+
+```yaml
+bash:
+  rm:
+    - options:
+        - r|recursive
+        - f|force
+      decide: deny
+      reason: rm -rf is not allowed
+    - options:
+        - r|recursive
+      decide: ask
+      reason: Confirm before removing recursively
+```
+
+Distinct matchers in one list:
 
 ```yaml
 bash:
@@ -610,11 +733,11 @@ bash:
     reason: sudo is not allowed
 
   curl:
-    host: "*.internal.example.com"
+    cmd: "https://*.internal.example.com/*"
     decide: allow
 ```
 
-### Binary with subcommands
+### Command with subcommands
 
 Rules nest one level deeper under the subcommand name:
 
@@ -633,7 +756,7 @@ bash:
       reason: Pushing is not allowed
 ```
 
-### Binaries with multi-word subcommand paths
+### Commands with multi-word subcommand paths
 
 For commands like `docker compose build` where the subcommand is multiple words, nest keys as deep as needed. Each key level consumes one positional word from the command line:
 
@@ -731,14 +854,14 @@ read:
   - decide: allow
 ```
 
-`multi_edit` works the same way as `edit`.
+`multi_edit` works the same way as `edit`. File-tool entries support `path` / `path-in`, `cwd`, `decide`, `reason`, and nested `rules:` only (no `env` or `not:`).
 
 ## WebFetch rules
 
-Match on `host` or `host-in`. Multiple rules let you allow known hosts while unknown hosts fall through to the default `ask`:
+`WebFetch` is a single object (not a list). Match on optional `host` or `host-in`. Omit both to match every WebFetch call. Unknown hosts fall through to the default `ask` when no rule matches:
 
 ```yaml
-webfetch:
+WebFetch:
   host-in:
     - docs.anthropic.com
     - "*.github.com"
@@ -746,22 +869,28 @@ webfetch:
   decide: allow
 ```
 
-Glob hosts:
+Allow any URL:
 
 ```yaml
-webfetch:
-  - host: "*.internal.corp"
-    decide: deny
-    reason: Internal hosts not accessible externally
-  - host: docs.anthropic.com
-    decide: allow
+WebFetch:
+  decide: allow
+  reason: Allow fetching any URL
+```
+
+Glob hosts with a single pattern:
+
+```yaml
+WebFetch:
+  host: "*.internal.corp"
+  decide: deny
+  reason: Internal hosts not accessible externally
 ```
 
 ## Redirect path rules
 
-Shell redirects (`>`, `>>`, `<`, `2>`, `&>`, `2>&1`, and similar) write to or read from file paths. Redirect path rules let you allow or deny those file targets globally, without writing a separate rule for every binary that might redirect (`echo`, `tee`, `cat`, and so on).
+Shell redirects (`>`, `>>`, `<`, `2>`, `&>`, `2>&1`, and similar) write to or read from file paths. Redirect path rules let you allow or deny those file targets globally, without writing a separate rule for every command that might redirect (`echo`, `tee`, `cat`, and so on).
 
-The permission engine parses each redirect into an intermediate **`redirect` AST node** that wraps the inner command. Rules can match on the redirect operator and the resolved file path.
+Rules can match on the redirect operator and the resolved file path. Within `redirect.out` and within `redirect.in`, entries are evaluated in list order and **first match wins**.
 
 ### Shell operators and directions
 
@@ -770,11 +899,11 @@ The permission engine parses each redirect into an intermediate **`redirect` AST
 | **out** (write) | `>`, `>>`, `2>`, `&>` |
 | **in** (read) | `<` |
 
-**Fd merges** such as `2>&1` are parsed as redirect nodes whose target is a file descriptor number (for example `"1"`). Redirect path matchers ignore fd merges; only file-path targets are checked.
+**Fd merges** such as `2>&1` redirect to a file descriptor number (for example `"1"`), not a file path. Redirect path matchers ignore fd merges; only file-path targets are checked.
 
 ### Global `redirect:` section
 
-Add a top-level `redirect:` section with `out:` and `in:` subsections. Each subsection accepts a single rule object or a list of rules (same list semantics as `write:` or `read:`). Use `path` and `path-in` to match redirect file targets — the same fields as file-tool rules. Direction comes from the subsection (`redirect.out` for write redirects, `redirect.in` for read redirects).
+Add a top-level `redirect:` section with `out:` and `in:` subsections. Each subsection accepts a single rule object or a list of rules (same list semantics as `write:` or `read:`). Use `path` and `path-in` to match redirect file targets: the same fields as file-tool rules. Direction comes from the subsection (`redirect.out` for write redirects, `redirect.in` for read redirects).
 
 ```yaml
 redirect:
@@ -794,7 +923,7 @@ Global redirect rules apply to **every** Bash command that uses a redirect of th
 
 Rule names in the audit log look like `yaml:redirect:out:allow`, `yaml:redirect:in:ask`, and so on.
 
-Redirect path rules match **`redirect` AST nodes**, not `bash:` entries. Use `bash:` for the inner `command` leaf (binary, `cmd`, `options`, and so on) as usual.
+Redirect path rules match redirect file targets, not the command itself. Use `bash:` for the command (`cmd`, `options`, and so on) as usual. Redirect entries support only `path` / `path-in`, `decide`, and optional `reason` (no `not:`).
 
 ### Matcher semantics
 
@@ -809,39 +938,18 @@ Example: `cmd > /tmp/a > /etc/b` has two out-redirects. A rule with `path-in: ["
 
 Redirect targets are resolved before pattern matching: expand `$VAR` when present in the tracked environment, resolve relative paths against `env.cwd`, leave absolute paths unchanged, and expand a leading `~` to the home directory. Targets that still contain unexpanded `$VAR` or `$(...)` after resolution fail to match path patterns (same posture as `cmd` env expansion). Patterns support the same forms as other path fields.
 
-Invert redirect matchers with `not:` on `redirect:` entries:
+Catch-alls at the end of the list cover paths that earlier entries missed (first match wins):
 
 ```yaml
 redirect:
   out:
-    - not:
-        path-in: ["/tmp/**", "${{PROJECT_DIR}}/**"]
-      decide: ask
+    - path-in: ["/tmp/**", "${{PROJECT_DIR}}/**"]
+      decide: allow
+    - decide: ask
       reason: Shell write outside allowed dirs
-    - decide: allow
 ```
 
-### How redirects appear in the AST
-
-The engine represents each shell redirect as a `redirect` node wrapping the inner command. Multiple redirects nest outward; the innermost redirect sits closest to the `command` leaf.
-
-```
-redirect  op: >
-├── command
-│   └── echo foo
-└── target: bar.txt
-```
-
-```
-redirect  op: 2>&
-├── redirect  op: >
-│   ├── command
-│   │   └── cmd
-│   └── target: out.log
-└── target: 1
-```
-
-Permission decisions on the inner `command` leaf, each `redirect` node, and parent compounds aggregate via strictest-wins as the walker moves up the tree. A `redirect.out` rule fires on the `redirect` node; a `bash.echo` rule fires on the inner `command` leaf inside the wrapper.
+How redirects interact with `bash:` rules (and how decisions combine) is covered in [HOW_IT_WORKS.md](HOW_IT_WORKS.md#how-redirects-appear-in-the-ast).
 
 ### Examples
 
@@ -875,9 +983,19 @@ redirect:
 
 - `echo hi > /etc/shadow` → **deny**
 
-## Tool-name rules
+## Grep rules
 
-Top-level YAML keys that are not section names (`bash`, `read`, `write`, `edit`, `multi_edit`, `webfetch`, `redirect`) are interpreted as tool-name patterns matched against the Claude Code tool name. The key itself is the matcher; quote the key when it contains glob characters.
+`Grep` is a dedicated section (capital `G`, matching the Claude Code tool name). It is a single object with `decide` and optional `reason`. There are no path or cwd matchers; the rule applies to every Grep tool call.
+
+```yaml
+Grep:
+  decide: allow
+  reason: Grep is read-only
+```
+
+## Generic tool rules
+
+Top-level YAML keys that are not section names (`bash`, `read`, `write`, `edit`, `multi_edit`, `webfetch`, `redirect`, `Grep`) are interpreted as generic tool-name patterns matched against the Claude Code tool name. The key itself is the matcher; quote the key when it contains glob characters. Each entry is a single object (not a list) with `decide`, optional `reason`, and optional `tool` / `tool-in`.
 
 Exact match against a single tool:
 
@@ -894,15 +1012,6 @@ Glob match across multiple tools (the key must be quoted because of `*`):
   reason: Delete operations not allowed
 ```
 
-List form: multiple rules under the same key:
-
-```yaml
-Grep:
-  - cwd: ./**
-    decide: allow
-  - decide: ask
-```
-
 When the YAML key is just a label and the matching is driven by an explicit `tool` or `tool-in` field, the key becomes a human-readable identifier in audit logs:
 
 ```yaml
@@ -912,87 +1021,6 @@ github-write:
     - mcp__github__create_pull_request
   decide: ask
   reason: Confirm before creating GitHub resources
-```
-
-Sub-rules under a scoped tool-name entry inherit the parent key as their tool matcher, so `Grep: { rules: [...] }` applies to `Grep` only.
-
-## Matching the working directory
-
-The `cwd` field accepts any pattern form.
-
-### Anchoring rules to the project directory
-
-Use `${{PROJECT_DIR}}` to anchor a rule to the project root. The engine substitutes the token with the value of `CLAUDE_PROJECT_DIR` before any pattern matching runs:
-
-```yaml
-bash:
-  git:
-    add:
-      cwd: ${{PROJECT_DIR}}/**
-      decide: allow
-    commit:
-      cwd: ${{PROJECT_DIR}}/**
-      decide: allow
-    push:
-      cwd: ${{PROJECT_DIR}}/**
-      decide: ask
-      reason: Confirm push from project directory
-```
-
-That example allows `git add` and `commit` within the project you are currently working in (and no other project on your computer). `git push` is set to always `ask`.
-
-Similarly, `${{HOME}}` expands to the value of the `HOME` environment variable:
-
-```yaml
-bash:
-  rm:
-    cwd: ${{HOME}}/**
-    decide: ask
-    reason: Confirm before deleting from home directories
-```
-
-**Legacy shorthand**: `./` at the start of a `cwd:` pattern is still supported and resolves to the directory containing the YAML file. For most cases the explicit `${{PROJECT_DIR}}` is clearer and less surprising.
-
-A glob matches any path under a directory:
-
-```yaml
-bash:
-  rm:
-    cwd: /home/**
-    decide: ask
-    reason: Confirm before deleting from home directories
-```
-
-A regex can match patterns that globs cannot express:
-
-```yaml
-bash:
-  rm:
-    cwd: /\/projects\/[^/]+-prod\//
-    decide: deny
-    reason: No deletions in production project directories
-```
-
-Use `cwd-in` to match any one of several directories:
-
-```yaml
-bash:
-  rm:
-    cwd-in:
-      - /etc/**
-      - /usr/**
-    decide: deny
-    reason: No deleting from system directories
-```
-
-Use absolute globs for system-wide restrictions:
-
-```yaml
-bash:
-  rm:
-    cmd: /etc/**
-    decide: deny
-    reason: No deleting from /etc
 ```
 
 ## Decision values
@@ -1029,7 +1057,7 @@ bash:
       - decide: allow    # only matches when the deny above does NOT match
 ```
 
-For more on how decisions aggregate across the AST when commands are chained with `&&`, `|`, or `;`, see [HOW_IT_WORKS.md](HOW_IT_WORKS.md).
+For more on how decisions combine when commands are chained with `&&`, `|`, or `;`, see [HOW_IT_WORKS.md](HOW_IT_WORKS.md).
 
 ## Field form reference
 
@@ -1053,98 +1081,17 @@ Every field follows this unified pattern:
 | `options` | array | Bash | All listed flags must be present (AND). |
 | `options-in` | array | Bash | Any listed flag must be present (OR). |
 | `options` | object | Bash | All key/value pairs must match (AND). |
-| `cwd` | string | any | cwd matches the pattern. |
-| `cwd-in` | array | any | cwd matches any pattern (OR). |
-| `path` | string | read, write, edit, multi_edit, `redirect.out`, `redirect.in` | path matches the pattern. Under `redirect.out` / `redirect.in`, matches the redirect file target on a `redirect` AST node. |
-| `path-in` | array | read, write, edit, multi_edit, `redirect.out`, `redirect.in` | path matches any pattern (OR). Under `redirect.out` / `redirect.in`, matches redirect file targets on `redirect` AST nodes. |
-| `env` | object | any | All key/value pairs must be present (AND). |
-| `file` | object | any | File at the given path must exist. If `contains:` is set, the file's contents must also match the pattern (exact string, glob, or `/regex/`). |
-| `cwd_resolved` | boolean | any | When true, only matches when cwd is known to be accurate. When false, only matches when cwd tracking was broken by an unresolvable `cd`. Omit to match either. |
+| `cwd` | string | bash, read, write, edit, multi_edit | cwd matches the pattern. |
+| `cwd-in` | array | bash | cwd matches any pattern (OR). |
+| `path` | string | read, write, edit, multi_edit, `redirect.out`, `redirect.in` | path matches the pattern. Under `redirect.out` / `redirect.in`, matches the redirect file target. |
+| `path-in` | array | read, write, edit, multi_edit, `redirect.out`, `redirect.in` | path matches any pattern (OR). Under `redirect.out` / `redirect.in`, matches redirect file targets. |
+| `env` | object | bash | All key/value pairs must be present (AND). |
+| `file` | object | bash | File at the given path must exist. If `contains:` is set, the file's contents must also match the pattern (exact string, glob, or `/regex/`). |
 | `host` | string | webfetch | Exact or glob match against the URL host. |
 | `host-in` | array | webfetch | Host matches any entry (OR). |
-| `tool` | string | any top-level tool-name rule | Glob match against the full tool name (e.g. `mcp__github__list_repos`). Use `mcp__*__list_*` to match all list operations across any server. When set, replaces the YAML key as the matcher; the key becomes a label only. |
-| `tool-in` | array | any top-level tool-name rule | Tool name matches any entry (OR). When set, replaces the YAML key as the matcher; the key becomes a label only. |
+| `tool` | string | generic tool rule | Glob match against the full tool name (e.g. `mcp__github__list_repos`). Use `mcp__*__list_*` to match all list operations across any server. When set, replaces the YAML key as the matcher; the key becomes a label only. |
+| `tool-in` | array | generic tool rule | Tool name matches any entry (OR). When set, replaces the YAML key as the matcher; the key becomes a label only. |
 
-`path` / `path-in` on file-tool sections match tool input paths. Under `redirect.out` / `redirect.in`, they match redirect file targets on `redirect` AST nodes.
+`path` / `path-in` on file-tool sections match tool input paths. Under `redirect.out` / `redirect.in`, they match redirect file targets.
 
-## Troubleshooting
-
-### Finding tool calls that no rule matched
-
-When a tool call falls through to `ask` because no rule recognised it, the audit log records a `NOMATCH` line for every leaf AST node that every rule abstained on. The fastest way to discover the gaps in your `permissions.yaml` is to read the `.log` files under `.claude/permissions-log/`.
-
-Open the current hour's log:
-
-```sh
-tail -f .claude/permissions-log/$(date +%Y-%m/%d/%H).log
-```
-
-A `NOMATCH` line looks like this — the second column is the AST node type (`command`, `read`, `write`, `edit`, `multiedit`, `other`), the third is the leaf string the engine tried to match:
-
-```
-10:23:01  TOOL     Bash      "ls && pwd"
-10:23:01  RULE               "ls" → .claude/permissions.yaml:4 → allow
-10:23:01  NOMATCH  command   "pwd"
-10:23:01  NODE               "ls && pwd" → ask
-10:23:01  RESULT   Bash      "ls && pwd" → ASK
-```
-
-To list every unmatched leaf across recent logs:
-
-```sh
-grep NOMATCH .claude/permissions-log/**/*.log
-```
-
-Each `NOMATCH` line is a candidate for a new rule. For Bash compounds like `cmd1 && cmd2`, only the unmatched sub-command is logged, so you can target the specific command or subcommand that needs a rule.
-
-### My rule isn't matching — what should I check?
-
-If a leaf you expected to match still appears as `NOMATCH`, the rule is loaded but its fields are not all matching simultaneously:
-
-- All fields in a rule are AND'd together — a single mismatched `cwd`, `env`, or `options` entry causes the whole rule to abstain. See [Matching multiple fields](#matching-multiple-fields).
-- For binaries with subcommands, rules nest under the subcommand name. A rule under `git:` (no subcommand level) does not match `git push`. See [Subcommand matching](#subcommand-matching).
-- For deeply-nested subcommand paths like `docker compose build`, every key level consumes one positional word from the command line. A `cmd:` matcher inside addresses arguments _after_ the subcommand path words.
-- Glob patterns must be quoted in YAML when they start with `*` or contain `:`.
-- Regex patterns must be wrapped in `/.../` slashes; otherwise they are treated as literal strings.
-
-### Confirming the config is loaded
-
-Each `permissions.yaml` load is recorded as a `CONFIG` line at the top of every hour's log:
-
-```
-10:00:00  CONFIG             LOADED .claude/permissions.yaml (12 rules)
-```
-
-If the rule count is lower than expected, the YAML probably contains a malformed entry that was silently dropped. If no `CONFIG` line appears for the file you edited, the path is wrong or `/reload-plugins` was not run after the edit.
-
-For more on log entry types, see [AUDIT-LOG.md](AUDIT-LOG.md).
-
-## Debugging and testing rules
-
-Two tools are available for understanding why the engine allows, denies, or asks about a particular command.
-
-### Permission REPL
-
-The REPL is an interactive terminal session where you type commands and see the rule trace and decision immediately. It rebuilds the registry on every input, so edits to `permissions.yaml` are picked up without restarting.
-
-Quick start:
-
-```sh
-bun run repl
-```
-
-One-shot (useful in scripts):
-
-```sh
-bun run repl "git push --force"
-```
-
-To test non-Bash tool calls, use a prefix: `read /etc/passwd`, `write /tmp/out`, `webfetch https://api.example.com`, `tool mcp__github__delete_repo`.
-
-See [REPL.md](REPL.md) for full details including `:project` / `:cwd` and one-shot mode.
-
-### Permission Analyzer MCP server
-
-The MCP server lets you ask Claude in natural language: "Why is `kubectl delete pod` being denied?" Claude calls the `analyze_permission` tool and explains the trace. The server is registered via `.mcp.json` at the project root and requires no extra setup beyond `/reload-plugins`.
-
-See [MCP-SERVER.md](MCP-SERVER.md) for full details.
+For debugging unmatched rules, the REPL, and the MCP analyzer, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).

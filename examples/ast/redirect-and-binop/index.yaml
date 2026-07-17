@@ -1,28 +1,35 @@
 tool_call:
-  tool_name: "Bash"
+  tool_name: Bash
   tool_input:
-    command: "cd /tmp && echo hi > out.txt"
+    command: cd /tmp && echo hi > out.txt
 ast:
-  type: "bash"
-  raw: "cd /tmp && echo hi > out.txt"
-  ast:
-    type: "binop"
-    op: "&&"
-    left:
-      type: "command"
-      binary: "cd"
-      options: {}
-      cmd: "/tmp"
-      envPrefix: {}
-      raw: "cd /tmp"
-    right:
-      type: "redirect"
-      op: ">"
-      command:
-        type: "command"
-        binary: "echo"
-        options: {}
-        cmd: "hi"
-        envPrefix: {}
-        raw: "echo hi > out.txt"
-      target: "out.txt"
+  type: bash
+  source: cd /tmp && echo hi > out.txt
+  children:
+    command:
+      type: binop
+      source: cd /tmp && echo hi > out.txt
+      children:
+        left:
+          type: command
+          source: cd /tmp
+          commandName: cd
+          options: {}
+          positionals:
+            - /tmp
+          envPrefix: {}
+        right:
+          type: redirect
+          source: echo hi > out.txt
+          children:
+            command:
+              type: command
+              source: echo hi > out.txt
+              commandName: echo
+              options: {}
+              positionals:
+                - hi
+              envPrefix: {}
+          op: ">"
+          target: out.txt
+      op: "&&"

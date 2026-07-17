@@ -1,26 +1,31 @@
 tool_call:
-  tool_name: "Bash"
+  tool_name: Bash
   tool_input:
-    command: "cd /tmp && rm -rf *"
+    command: cd /tmp && rm -rf *
 ast:
-  type: "bash"
-  raw: "cd /tmp && rm -rf *"
-  ast:
-    type: "binop"
-    op: "&&"
-    left:
-      type: "command"
-      binary: "cd"
-      options: {}
-      cmd: "/tmp"
-      envPrefix: {}
-      raw: "cd /tmp"
-    right:
-      type: "command"
-      binary: "rm"
-      options:
-        r: true
-        f: true
-      cmd: "*"
-      envPrefix: {}
-      raw: "rm -rf *"
+  type: bash
+  source: cd /tmp && rm -rf *
+  children:
+    command:
+      type: binop
+      source: cd /tmp && rm -rf *
+      children:
+        left:
+          type: command
+          source: cd /tmp
+          commandName: cd
+          options: {}
+          positionals:
+            - /tmp
+          envPrefix: {}
+        right:
+          type: command
+          source: rm -rf *
+          commandName: rm
+          options:
+            r: true
+            f: true
+          positionals:
+            - "*"
+          envPrefix: {}
+      op: "&&"

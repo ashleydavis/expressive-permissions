@@ -1,0 +1,17 @@
+description: "protecting-production: kubectl exec → deny (PROTECTING-PRODUCTION.md Block write and exec operations)"
+input:
+  tool_name: Bash
+  tool_input:
+    command: kubectl exec my-pod -- ls
+  cwd: /home/user/project
+rules:
+  bash:
+    kubectl:
+      - exec:
+          decide: deny
+          reason: Direct pod shell access bypasses audit logging and security controls.
+      - get:
+          decide: allow
+expected:
+  decision: deny
+  reason: Direct pod shell access bypasses audit logging and security controls.

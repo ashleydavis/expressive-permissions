@@ -1,0 +1,14 @@
+description: "file: read path ${{PROJECT_DIR}}/** expands and matches project files"
+input:
+  tool_name: Read
+  tool_input:
+    file_path: ${PROJECT_DIR}/src/index.ts
+  cwd: ${PROJECT_DIR}
+rules:
+  read:
+    path: ${{PROJECT_DIR}}/**
+    decide: allow
+    reason: OK to read any files in the current project
+expected:
+  decision: allow
+  reason: OK to read any files in the current project

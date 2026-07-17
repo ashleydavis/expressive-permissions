@@ -1,18 +1,22 @@
 tool_call:
-  tool_name: "Bash"
+  tool_name: Bash
   tool_input:
-    command: "echo foo > bar.txt"
+    command: echo foo > bar.txt
 ast:
-  type: "bash"
-  raw: "echo foo > bar.txt"
-  ast:
-    type: "redirect"
-    op: ">"
+  type: bash
+  source: echo foo > bar.txt
+  children:
     command:
-      type: "command"
-      binary: "echo"
-      options: {}
-      cmd: "foo"
-      envPrefix: {}
-      raw: "echo foo > bar.txt"
-    target: "bar.txt"
+      type: redirect
+      source: echo foo > bar.txt
+      children:
+        command:
+          type: command
+          source: echo foo > bar.txt
+          commandName: echo
+          options: {}
+          positionals:
+            - foo
+          envPrefix: {}
+      op: ">"
+      target: bar.txt

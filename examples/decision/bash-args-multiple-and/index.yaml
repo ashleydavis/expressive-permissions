@@ -1,0 +1,18 @@
+description: "bash: multiple flags all required (AND)"
+source_e2e: e2e/bash/bash-args-multiple-and/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: rm -r -f dir
+  cwd: /home/user/project
+rules:
+  bash:
+    rm:
+      options:
+        - r
+        - f
+      decide: deny
+      reason: rm -rf denied
+expected:
+  decision: deny
+  reason: rm -rf denied

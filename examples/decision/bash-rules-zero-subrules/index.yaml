@@ -1,0 +1,16 @@
+description: "bash rules: empty rules list → no sub-rule decides → ABSTAIN
+  (system default ask)"
+source_e2e: e2e/bash/bash-rules-zero-subrules/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: AWS_PROFILE=prod aws ec2 describe-instances
+  cwd: /home/user/project
+rules:
+  bash:
+    aws:
+      - env:
+          AWS_PROFILE: /^(?!sandbox$)/
+        rules: []
+expected:
+  decision: ask

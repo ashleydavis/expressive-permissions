@@ -1,0 +1,28 @@
+description: "bash rules: five-level nesting, all ancestor env scopes propagate to innermost deny"
+input:
+  tool_name: Bash
+  tool_input:
+    command: AWS_PROFILE=prod AWS_REGION=us-east-1 DEPLOY_ENV=production SERVICE=vpc aws ec2 delete-vpc --vpc-id vpc-123
+  cwd: /home/user/project
+rules:
+  bash:
+    aws:
+      - env:
+          AWS_PROFILE: /^(?!sandbox$)/
+        rules:
+          - env:
+              AWS_REGION: us-east-1
+            rules:
+              - env:
+                  DEPLOY_ENV: production
+                rules:
+                  - env:
+                      SERVICE: vpc
+                    rules:
+                      - cmd: "* delete-*"
+                        decide: deny
+                        reason: Destructive delete blocked for vpc in production us-east-1
+          - decide: ask
+expected:
+  decision: deny
+  reason: Destructive delete blocked for vpc in production us-east-1

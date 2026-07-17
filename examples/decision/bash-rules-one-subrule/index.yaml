@@ -1,0 +1,19 @@
+description: "bash rules: single deny sub-rule matches → deny"
+source_e2e: e2e/bash/bash-rules-one-subrule/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: AWS_PROFILE=prod aws ec2 delete-instance --instance-id i-123
+  cwd: /home/user/project
+rules:
+  bash:
+    aws:
+      - env:
+          AWS_PROFILE: /^(?!sandbox$)/
+        rules:
+          - cmd: "* delete-*"
+            decide: deny
+            reason: Destructive deletes blocked on non-sandbox profile
+expected:
+  decision: deny
+  reason: Destructive deletes blocked on non-sandbox profile

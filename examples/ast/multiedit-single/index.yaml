@@ -2,10 +2,10 @@ tool_call:
   tool_name: MultiEdit
   tool_input:
     file_path: /tmp/foo.ts
-    edits: &a1
+    edits:
       - old_string: foo
         new_string: bar
 ast:
   type: multiedit
+  source: MultiEdit /tmp/foo.ts
   file_path: /tmp/foo.ts
-  edits: *a1

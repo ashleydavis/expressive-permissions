@@ -1,0 +1,32 @@
+description: "protecting-production: kubectl get outside sandbox kubeconfig with allow + catch-all ask in rules → allow (PROTECTING-PRODUCTION.md Kubectl: matching on the current context via kubeconfig)"
+input:
+  tool_name: Bash
+  tool_input:
+    command: kubectl get pods
+  cwd: /home/user/project
+rules:
+  bash:
+    kubectl:
+      - file:
+          fixtures/kubeconfig-prod.yaml:
+            contains: "current-context: sandbox"
+        decide: allow
+      - not:
+          file:
+            fixtures/kubeconfig-prod.yaml:
+              contains: "current-context: sandbox"
+        rules:
+          - cmd: get
+            decide: allow
+            reason: Read-only resource listing.
+          - cmd: describe
+            decide: allow
+            reason: Read-only resource inspection.
+          - cmd: delete
+            decide: deny
+            reason: Deleted resources outside sandbox may not be recoverable.
+          - decide: ask
+            reason: Confirm kubectl operation outside sandbox
+expected:
+  decision: allow
+  reason: Read-only resource listing.

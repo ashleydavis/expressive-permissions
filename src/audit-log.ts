@@ -36,18 +36,26 @@ export interface IRuleMatchEntry extends IAuditLogEntryBase {
     reason?: string;
     // The reconstructed sub-command or path that this rule was matched against.
     cmd?: string;
+    // Effective cwd when this match was recorded.
+    cwd?: string;
+    // Effective env when this match was recorded.
+    env?: Record<string, string>;
 }
 
-// Logged once per leaf AST node when every rule abstained, signalling that no rule
+// Logged once when every rule abstained on a node with no children, signalling that no rule
 // recognised the node and the engine fell back to the default ask. Surfaces gaps
 // in the user's permissions.yaml.
 export interface INoRuleMatchEntry extends IAuditLogEntryBase {
     // Discriminator for the no_rule_match variant.
     type: "no_rule_match";
-    // The discriminator of the leaf AST node (e.g. "command", "read", "other").
+    // The discriminator of the AST node (e.g. "command", "read", "other").
     nodeType: string;
     // The reconstructed sub-command or path that no rule matched.
     cmd: string;
+    // Effective cwd when the node was evaluated.
+    cwd: string;
+    // Effective env when the node was evaluated.
+    env: Record<string, string>;
 }
 
 // Logged once per intermediate node after combining children and own-rule results.
@@ -109,6 +117,37 @@ export type IAuditLogEntry = IToolRequestEntry | IRuleMatchEntry | INoRuleMatchE
 export interface IAuditLogger {
     // Appends one entry to the audit log.
     log(entry: IAuditLogEntry): void;
+}
+
+// ICommandOutcomeSource identifies why a command received its decision label.
+export type ICommandOutcomeSource = "matched-rule" | "no-rule-match" | "deny-rule";
+
+// ICommandOutcome records one command outcome for pending prompt formatting.
+export interface ICommandOutcome {
+
+    // Reconstructed command string for this node.
+    cmd: string;
+
+    // Uppercase decision label: ALLOW, DENY, ASK, or NOMATCH.
+    decision: string;
+
+    // Source file of the matched rule, when present.
+    ruleFile?: string;
+
+    // 1-based line number in ruleFile, when present.
+    ruleLine?: number;
+
+    // Human-readable reason from the rule evaluation.
+    reason?: string;
+
+    // Why this outcome was assigned.
+    source: ICommandOutcomeSource;
+
+    // Effective working directory when the command is evaluated.
+    cwd: string;
+
+    // Environment variables visible when the command is evaluated.
+    env: Record<string, string>;
 }
 
 // toLocalISOString formats a Date as an ISO 8601 string in local time with timezone offset

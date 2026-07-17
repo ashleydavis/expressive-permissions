@@ -1,24 +1,27 @@
 tool_call:
-  tool_name: "Bash"
+  tool_name: Bash
   tool_input:
-    command: "server & client"
+    command: server & client
 ast:
-  type: "bash"
-  raw: "server & client"
-  ast:
-    type: "binop"
-    op: ";"
-    left:
-      type: "command"
-      binary: "server"
-      options: {}
-      cmd: []
-      envPrefix: {}
-      raw: "server"
-    right:
-      type: "command"
-      binary: "client"
-      options: {}
-      cmd: []
-      envPrefix: {}
-      raw: "client"
+  type: bash
+  source: server & client
+  children:
+    command:
+      type: binop
+      source: server ; client
+      children:
+        left:
+          type: command
+          source: server
+          commandName: server
+          options: {}
+          positionals: []
+          envPrefix: {}
+        right:
+          type: command
+          source: client
+          commandName: client
+          options: {}
+          positionals: []
+          envPrefix: {}
+      op: ;

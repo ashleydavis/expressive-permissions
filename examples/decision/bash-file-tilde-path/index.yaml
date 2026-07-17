@@ -1,0 +1,22 @@
+description: "bash file: tilde path should expand to HOME (CONFIGURATION.md Matching file contents)"
+input:
+  tool_name: Bash
+  tool_input:
+    command: kubectl delete pod mypod
+  cwd: /home/user/project
+rules:
+  bash:
+    kubectl:
+      - file:
+          ~/.kube/config:
+            contains: "current-context: sandbox"
+        decide: allow
+        reason: Anything goes in the sandbox context
+expected:
+  decision: allow
+  reason: Anything goes in the sandbox context
+home_files:
+  .kube/config: |
+    apiVersion: v1
+    kind: Config
+    current-context: sandbox

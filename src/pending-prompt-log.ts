@@ -1,17 +1,18 @@
 import { mkdir, readdir, stat, unlink, writeFile } from "fs/promises";
 import { join } from "path";
-import { describeNode } from "./build-ast";
-import { ILeafEvaluation, isLeaf } from "./interpret";
-import { cdRule } from "./rules/builtin/cd";
-import { envPrefixRule } from "./rules/builtin/env-prefix";
-import { envSetRule } from "./rules/builtin/env-set";
-import { exportRule } from "./rules/builtin/export";
 import {
-    AstNode,
-    IBinOp,
-    IEnvironment,
-    IToolCall,
-} from "./types";
+    IAuditLogEntry,
+    ICommandOutcome,
+    ICommandOutcomeSource,
+    IRuleMatchEntry,
+} from "./audit-log";
+import { IAstNode } from "./ast";
+import { BinopAstNode } from "./ast-nodes/binop-ast-node";
+import { BashAstNode } from "./ast-nodes/bash-ast-node";
+import { pickStrictest } from "./ast-nodes/ast-node";
+import { IContext } from "./context";
+import { IDecision } from "./rules/rule";
+import { IToolCall } from "./types";
 
 // STALE_PENDING_PROMPT_MAX_AGE_DAYS is how long denied or ignored pending files are kept.
 export const STALE_PENDING_PROMPT_MAX_AGE_DAYS = 1;
@@ -19,11 +20,11 @@ export const STALE_PENDING_PROMPT_MAX_AGE_DAYS = 1;
 // PENDING_PROMPT_DESCRIPTION_MAX_LENGTH caps the command summary segment in pending filenames.
 const PENDING_PROMPT_DESCRIPTION_MAX_LENGTH = 60;
 
-// ILeafOutcomeSource identifies why a leaf received its decision label.
-export type ILeafOutcomeSource = "matched-rule" | "no-rule-match" | "deny-rule";
+// ICommandDecisionSource identifies why a command received its decision label.
+export type ICommandDecisionSource = "matched-rule" | "no-rule-match" | "deny-rule";
 
-// ILeafOutcome holds the permission label and rule attribution for one leaf sub-command.
-export interface ILeafOutcome {
+// ICommandDecision holds the permission label and rule attribution for one command.
+export interface ICommandDecision {
     // Uppercase decision label: ALLOW, DENY, ASK, or NOMATCH.
     decision: string;
     // Source file of the matched rule, when present.
@@ -33,14 +34,14 @@ export interface ILeafOutcome {
     // Human-readable reason from the rule or trace entry.
     reason?: string;
     // Why this outcome was assigned.
-    source?: ILeafOutcomeSource;
+    source?: ICommandDecisionSource;
 }
 
-// ILeafContext holds simulated cwd and env at the point a leaf command runs.
-export interface ILeafContext {
-    // Effective working directory when the leaf executes.
+// ICommandContext holds simulated cwd and env at the point a command runs.
+export interface ICommandContext {
+    // Effective working directory when the command executes.
     cwd: string;
-    // Environment variables visible to the leaf.
+    // Environment variables visible to the command.
     env: Record<string, string>;
 }
 
@@ -54,22 +55,39 @@ export interface IVerdictTrigger {
     reason: string | undefined;
     // Effective cwd of the trigger when it differs from the hook cwd.
     cwd: string | undefined;
-    // Environment variables visible at the trigger leaf, when non-empty.
+    // Environment variables visible at the trigger command, when non-empty.
     env: Record<string, string> | undefined;
-    // Outcome recorded for the trigger leaf.
-    outcome: ILeafOutcome | undefined;
+    // Outcome recorded for the trigger command.
+    outcome: ICommandDecision | undefined;
 }
-
-// EMPTY_TOOL_CALL is a placeholder for builtin rule invocations during env simulation.
-const EMPTY_TOOL_CALL: IToolCall = {
-    tool_name: "Bash",
-    tool_input: { command: "" },
-    cwd: "/",
-};
 
 // resolvePendingDir returns the directory for pending approval detail files.
 export function resolvePendingDir(projectDir: string): string {
     return join(projectDir, ".claude", "permissions-log", "pending");
+}
+
+// Return the AST child nodes in walk order.
+function childNodes(node: IAstNode): IAstNode[] {
+
+    if (!node.children) {
+        return [];
+    }
+
+    if ("_" in node.children) {
+        const positionalChildren = node.children._;
+        if (Array.isArray(positionalChildren)) {
+            return positionalChildren;
+        }
+    }
+
+    const namedChildren: IAstNode[] = [];
+    for (const childValue of Object.values(node.children)) {
+        if (childValue && !Array.isArray(childValue)) {
+            namedChildren.push(childValue);
+        }
+    }
+
+    return namedChildren;
 }
 
 // formatPendingPromptFileTimestamp renders yyyy-mm-dd-hh-ss for pending detail filenames.
@@ -90,12 +108,11 @@ export function sanitizePendingPromptDescription(text: string): string {
     sanitized = sanitized.replace(/^-|-$/g, "");
     if (sanitized.length > PENDING_PROMPT_DESCRIPTION_MAX_LENGTH) {
         sanitized = sanitized.slice(0, PENDING_PROMPT_DESCRIPTION_MAX_LENGTH);
-        sanitized = sanitized.replace(/-$/, "");
     }
     return sanitized;
 }
 
-// buildPendingPromptFileName returns a dated, human-readable pending detail filename.
+// buildPendingPromptFileName builds `<timestamp>-<sanitized-summary>.md` for a pending detail file.
 export function buildPendingPromptFileName(call: IToolCall, pendingSince: Date): string {
     const timestampPart = formatPendingPromptFileTimestamp(pendingSince);
     const commandSummary = summarizeToolInput(call);
@@ -127,7 +144,7 @@ export async function resolvePendingPromptFilePath(pendingDir: string, baseFileN
     }
 }
 
-// summarizeToolInput extracts a single-line summary from a tool call input.
+// summarizeToolInput picks a short human-readable summary from tool input fields.
 function summarizeToolInput(call: IToolCall): string {
     if (typeof call.tool_input["command"] === "string") {
         return call.tool_input["command"];
@@ -155,9 +172,9 @@ function formatLocalTimestamp(date: Date): string {
     return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${millis}${sign}${offsetHours}:${offsetMins}`;
 }
 
-// buildLeafOutcomeMap indexes leaf outcomes from evaluation records collected during interpret.
-export function buildLeafOutcomeMap(evaluations: ILeafEvaluation[]): Map<string, ILeafOutcome> {
-    const outcomeMap = new Map<string, ILeafOutcome>();
+// buildCommandDecisionMap indexes command decisions from evaluation records.
+export function buildCommandDecisionMap(evaluations: ICommandOutcome[]): Map<string, ICommandDecision> {
+    const outcomeMap = new Map<string, ICommandDecision>();
 
     for (const evaluation of evaluations) {
         outcomeMap.set(evaluation.cmd, {
@@ -172,128 +189,184 @@ export function buildLeafOutcomeMap(evaluations: ILeafEvaluation[]): Map<string,
     return outcomeMap;
 }
 
-// applyLeafEnvEffects returns the leaf execution context and env after built-in env/cd updates.
-function applyLeafEnvEffects(node: AstNode, env: IEnvironment): { leafContext: ILeafContext; envOut: IEnvironment } {
-    let runningEnv = env;
-    const prefixOutcome = envPrefixRule(node, env, EMPTY_TOOL_CALL);
-    if (prefixOutcome.scopedEnv !== undefined) {
-        runningEnv = prefixOutcome.scopedEnv;
+// buildCommandContextMap indexes command cwd/env from evaluation records collected during evaluate.
+export function buildCommandContextMap(evaluations: ICommandOutcome[]): Map<string, ICommandContext> {
+    const commandContextMap = new Map<string, ICommandContext>();
+
+    for (const evaluation of evaluations) {
+        commandContextMap.set(evaluation.cmd, {
+            cwd: evaluation.cwd,
+            env: { ...evaluation.env },
+        });
     }
 
-    const leafContext: ILeafContext = {
-        cwd: runningEnv.cwd,
-        env: { ...runningEnv.env },
+    return commandContextMap;
+}
+
+// IPendingCommandMatchBuffer holds command rule_match entries waiting to become one command outcome.
+interface IPendingCommandMatchBuffer {
+
+    // Command source string.
+    cmd: string;
+
+    // Effective cwd carried on the command events.
+    cwd: string;
+
+    // Effective env carried on the command events.
+    env: Record<string, string>;
+
+    // Command rule_match entries for this command, in order.
+    matches: IRuleMatchEntry[];
+}
+
+// Compare two env maps for equality used when grouping command audit events.
+function envMapsEqual(left: Record<string, string>, right: Record<string, string>): boolean {
+
+    const leftKeys = Object.keys(left);
+    const rightKeys = Object.keys(right);
+    if (leftKeys.length !== rightKeys.length) {
+        return false;
+    }
+
+    for (const key of leftKeys) {
+        if (left[key] !== right[key]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+// Build one command outcome from a completed buffer of command rule_match entries.
+function commandOutcomeFromMatches(buffer: IPendingCommandMatchBuffer): ICommandOutcome {
+
+    const decisions: IDecision[] = [];
+    for (const match of buffer.matches) {
+        decisions.push({
+            action: match.decision,
+            reason: match.reason,
+        });
+    }
+
+    const picked = pickStrictest(decisions);
+    if (!picked) {
+        return {
+            cmd: buffer.cmd,
+            decision: "NOMATCH",
+            source: "no-rule-match",
+            cwd: buffer.cwd,
+            env: { ...buffer.env },
+        };
+    }
+
+    let chosen = buffer.matches.find((match) => {
+        return match.decision === picked.action && match.reason === picked.reason;
+    });
+    if (!chosen) {
+        chosen = buffer.matches.find((match) => match.decision === picked.action);
+    }
+
+    let source: ICommandOutcomeSource = "matched-rule";
+    if (picked.action === "deny") {
+        source = "deny-rule";
+    }
+
+    return {
+        cmd: buffer.cmd,
+        decision: picked.action.toUpperCase(),
+        ruleFile: chosen?.ruleFile,
+        ruleLine: chosen?.ruleLine,
+        reason: picked.reason,
+        source,
+        cwd: buffer.cwd,
+        env: { ...buffer.env },
     };
-
-    let envOut = runningEnv;
-    const cdOutcome = cdRule(node, runningEnv, EMPTY_TOOL_CALL);
-    if (cdOutcome.env !== undefined) {
-        envOut = cdOutcome.env;
-    }
-    const setOutcome = envSetRule(node, runningEnv, EMPTY_TOOL_CALL);
-    if (setOutcome.env !== undefined) {
-        envOut = setOutcome.env;
-    }
-    const exportOutcome = exportRule(node, runningEnv, EMPTY_TOOL_CALL);
-    if (exportOutcome.env !== undefined) {
-        envOut = exportOutcome.env;
-    }
-
-    return { leafContext, envOut };
 }
 
-// simWalkEnv walks the AST threading environment the same way interpret does, recording leaf contexts.
-function simWalkEnv(node: AstNode, env: IEnvironment, leafContextMap: Map<string, ILeafContext>): IEnvironment {
-    if (isLeaf(node)) {
-        const { leafContext, envOut } = applyLeafEnvEffects(node, env);
-        leafContextMap.set(describeNode(node), leafContext);
-        return envOut;
+// Unwrap evaluate audit entries into the command outcomes used by pending approval markdown.
+export function commandOutcomesFromAuditEntries(entries: IAuditLogEntry[]): ICommandOutcome[] {
+
+    const commandOutcomes: ICommandOutcome[] = [];
+    let pending: IPendingCommandMatchBuffer | undefined;
+
+    for (const entry of entries) {
+        if (entry.type === "no_rule_match") {
+            if (pending) {
+                commandOutcomes.push(commandOutcomeFromMatches(pending));
+                pending = undefined;
+            }
+            commandOutcomes.push({
+                cmd: entry.cmd,
+                decision: "NOMATCH",
+                source: "no-rule-match",
+                cwd: entry.cwd,
+                env: { ...entry.env },
+            });
+            continue;
+        }
+
+        if (entry.type === "rule_match") {
+            const cmd = entry.cmd ?? "";
+            const cwd = entry.cwd ?? "";
+            const env = entry.env ?? {};
+            if (
+                pending
+                && (
+                    pending.cmd !== cmd
+                    || pending.cwd !== cwd
+                    || !envMapsEqual(pending.env, env)
+                )
+            ) {
+                commandOutcomes.push(commandOutcomeFromMatches(pending));
+                pending = undefined;
+            }
+
+            if (!pending) {
+                pending = {
+                    cmd,
+                    cwd,
+                    env: { ...env },
+                    matches: [],
+                };
+            }
+
+            pending.matches.push(entry);
+            continue;
+        }
+
+        if (entry.type === "aggregation") {
+            if (pending) {
+                commandOutcomes.push(commandOutcomeFromMatches(pending));
+                pending = undefined;
+            }
+        }
+    }
+
+    if (pending) {
+        commandOutcomes.push(commandOutcomeFromMatches(pending));
+    }
+
+    return commandOutcomes;
+}
+
+// flattenSequential expands && and ; chains into an ordered command-or-compound list.
+function flattenSequential(node: IAstNode): IAstNode[] {
+
+    if (node.type === "binop") {
+        const binop = node as BinopAstNode;
+        if (binop.op === "&&" || binop.op === ";") {
+            return [
+                ...flattenSequential(binop.children.left),
+                ...flattenSequential(binop.children.right),
+            ];
+        }
     }
 
     if (node.type === "bash") {
-        return simWalkEnv(node.ast, env, leafContextMap);
+        const bashNode = node as BashAstNode;
+        return flattenSequential(bashNode.children.command);
     }
 
-    if (node.type === "xargs") {
-        return simWalkEnv(node.child, env, leafContextMap);
-    }
-
-    if (node.type === "redirect") {
-        return simWalkEnv(node.command, env, leafContextMap);
-    }
-
-    if (node.type === "for_loop") {
-        let lastEnv = env;
-        for (const item of node.items) {
-            const iterEnv: IEnvironment = {
-                ...env,
-                env: { ...env.env, [node.variable]: item },
-            };
-            lastEnv = simWalkEnv(node.body, iterEnv, leafContextMap);
-        }
-        return env;
-    }
-
-    if (node.type === "while_loop") {
-        const conditionEnv = simWalkEnv(node.condition, env, leafContextMap);
-        simWalkEnv(node.body, conditionEnv, leafContextMap);
-        return conditionEnv;
-    }
-
-    if (node.type === "group") {
-        const bodyEnv = simWalkEnv(node.body, env, leafContextMap);
-        if (node.style === "brace") {
-            return bodyEnv;
-        }
-        return env;
-    }
-
-    if (node.type === "case_statement") {
-        for (const clause of node.clauses) {
-            simWalkEnv(clause.body, env, leafContextMap);
-        }
-        return env;
-    }
-
-    if (node.type === "if_statement") {
-        const conditionEnv = simWalkEnv(node.condition, env, leafContextMap);
-        simWalkEnv(node.thenBranch, conditionEnv, leafContextMap);
-        if (node.elseBranch !== undefined) {
-            simWalkEnv(node.elseBranch, conditionEnv, leafContextMap);
-        }
-        return conditionEnv;
-    }
-
-    const binop = node as IBinOp;
-
-    if (binop.op === ";" || binop.op === "&&") {
-        const leftEnv = simWalkEnv(binop.left, env, leafContextMap);
-        return simWalkEnv(binop.right, leftEnv, leafContextMap);
-    }
-
-    simWalkEnv(binop.left, env, leafContextMap);
-    simWalkEnv(binop.right, env, leafContextMap);
-    return env;
-}
-
-// simulateLeafEnvironments returns effective cwd/env for each leaf keyed by describeNode output.
-export function simulateLeafEnvironments(root: AstNode, env0: IEnvironment): Map<string, ILeafContext> {
-    const leafContextMap = new Map<string, ILeafContext>();
-    simWalkEnv(root, env0, leafContextMap);
-    return leafContextMap;
-}
-
-// flattenSequential expands && and ; chains into an ordered leaf list.
-function flattenSequential(node: AstNode): AstNode[] {
-    if (node.type === "binop" && (node.op === "&&" || node.op === ";")) {
-        return [...flattenSequential(node.left), ...flattenSequential(node.right)];
-    }
-    if (node.type === "bash") {
-        return flattenSequential(node.ast);
-    }
-    if (isLeaf(node)) {
-        return [node];
-    }
     return [node];
 }
 
@@ -316,7 +389,7 @@ function formatEnvSummary(env: Record<string, string>): string {
 }
 
 // formatRuleLine renders a labeled rule reference line, or undefined when omitted.
-function formatRuleLine(outcome: ILeafOutcome): string | undefined {
+function formatRuleLine(outcome: ICommandDecision): string | undefined {
     if (outcome.source === "no-rule-match") {
         return undefined;
     }
@@ -342,8 +415,8 @@ function outcomeIndent(prefix: string, isLast: boolean): string {
 
 // appendOutcomeLines renders cwd/env/decision/rule/reason lines for one tree node.
 function appendOutcomeLines(
-    outcome: ILeafOutcome | undefined,
-    leafContext: ILeafContext | undefined,
+    outcome: ICommandDecision | undefined,
+    commandContext: ICommandContext | undefined,
     hookCwd: string,
     prefix: string,
     isLast: boolean,
@@ -352,12 +425,12 @@ function appendOutcomeLines(
     lines.push(`${prefix}│`);
     const indent = outcomeIndent(prefix, isLast);
 
-    if (leafContext !== undefined && leafContext.cwd !== hookCwd) {
-        lines.push(`${indent}cwd: ${leafContext.cwd}`);
+    if (commandContext !== undefined && commandContext.cwd !== hookCwd) {
+        lines.push(`${indent}cwd: ${commandContext.cwd}`);
     }
 
-    if (leafContext !== undefined && Object.keys(leafContext.env).length > 0) {
-        lines.push(`${indent}env: ${formatEnvSummary(leafContext.env)}`);
+    if (commandContext !== undefined && Object.keys(commandContext.env).length > 0) {
+        lines.push(`${indent}env: ${formatEnvSummary(commandContext.env)}`);
     }
 
     if (outcome === undefined) {
@@ -376,11 +449,11 @@ function appendOutcomeLines(
 
 // appendTreeLines renders one AST node and its children into tree lines.
 function appendTreeLines(
-    node: AstNode,
+    node: IAstNode,
     prefix: string,
     isLast: boolean,
-    leafOutcomeMap: Map<string, ILeafOutcome>,
-    leafContextMap: Map<string, ILeafContext>,
+    commandDecisionMap: Map<string, ICommandDecision>,
+    commandContextMap: Map<string, ICommandContext>,
     hookCwd: string,
     lines: string[]
 ): void {
@@ -388,77 +461,49 @@ function appendTreeLines(
     const childPrefix = isLast ? "    " : "│   ";
 
     if (node.type === "bash") {
-        appendTreeLines(node.ast, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
+        const bashNode = node as BashAstNode;
+        appendTreeLines(
+            bashNode.children.command,
+            prefix,
+            isLast,
+            commandDecisionMap,
+            commandContextMap,
+            hookCwd,
+            lines
+        );
         return;
     }
 
-    if (node.type === "xargs") {
-        appendTreeLines(node.child, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
-        return;
-    }
-
-    if (node.type === "redirect") {
-        appendTreeLines(node.command, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
-        return;
-    }
-
-    if (node.type === "while_loop") {
-        lines.push(`${prefix}${connector}${truncateLabel(describeNode(node), 80)}`);
-        appendTreeLines(node.body, `${prefix}${childPrefix}`, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
-        if (!isLast) {
-            lines.push(`${prefix}│`);
-        }
-        return;
-    }
-
-    if (node.type === "if_statement") {
-        lines.push(`${prefix}${connector}${truncateLabel(describeNode(node), 80)}`);
-        const hasElseBranch = node.elseBranch !== undefined;
-        appendTreeLines(node.thenBranch, `${prefix}${childPrefix}`, !hasElseBranch && isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
-        const elseBranch = node.elseBranch;
-        if (elseBranch !== undefined) {
-            appendTreeLines(elseBranch, `${prefix}${childPrefix}`, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
-        }
-        if (!isLast) {
-            lines.push(`${prefix}│`);
-        }
-        return;
-    }
-
-    if (node.type === "group") {
-        lines.push(`${prefix}${connector}${truncateLabel(describeNode(node), 80)}`);
-        appendTreeLines(node.body, `${prefix}${childPrefix}`, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
-        if (!isLast) {
-            lines.push(`${prefix}│`);
-        }
-        return;
-    }
-
-    if (node.type === "binop" && node.op !== "&&" && node.op !== ";") {
-        renderCompoundTree(node, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
-        return;
-    }
-
-    if (node.type === "binop" && (node.op === "&&" || node.op === ";")) {
-        const parts = flattenSequential(node);
-        if (parts.length > 1) {
-            lines.push(`${prefix}${connector}${truncateLabel(describeNode(node), 80)}`);
-            for (let index = 0; index < parts.length; index++) {
-                appendTreeLines(parts[index], `${prefix}${childPrefix}`, index === parts.length - 1, leafOutcomeMap, leafContextMap, hookCwd, lines);
+    if (node.type === "binop") {
+        const binop = node as BinopAstNode;
+        if (binop.op === "&&" || binop.op === ";") {
+            const parts = flattenSequential(node);
+            if (parts.length > 1) {
+                lines.push(`${prefix}${connector}${truncateLabel(node.source, 80)}`);
+                for (let index = 0; index < parts.length; index++) {
+                    appendTreeLines(
+                        parts[index],
+                        `${prefix}${childPrefix}`,
+                        index === parts.length - 1,
+                        commandDecisionMap,
+                        commandContextMap,
+                        hookCwd,
+                        lines
+                    );
+                }
+                if (!isLast) {
+                    lines.push(`${prefix}│`);
+                }
+                return;
             }
-            if (!isLast) {
-                lines.push(`${prefix}│`);
-            }
-            return;
         }
     }
 
-    if (isLeaf(node)) {
-        lines.push(`${prefix}${connector}${truncateLabel(describeNode(node), 80)}`);
-        const cmd = describeNode(node);
+    if (!node.children) {
+        lines.push(`${prefix}${connector}${truncateLabel(node.source, 80)}`);
         appendOutcomeLines(
-            leafOutcomeMap.get(cmd),
-            leafContextMap.get(cmd),
+            commandDecisionMap.get(node.source),
+            commandContextMap.get(node.source),
             hookCwd,
             prefix,
             isLast,
@@ -470,84 +515,62 @@ function appendTreeLines(
         return;
     }
 
-    renderCompoundTree(node, prefix, isLast, leafOutcomeMap, leafContextMap, hookCwd, lines);
-}
-
-// renderCompoundTree renders pipe and other binary nodes with left/right children.
-function renderCompoundTree(
-    node: AstNode,
-    prefix: string,
-    isLast: boolean,
-    leafOutcomeMap: Map<string, ILeafOutcome>,
-    leafContextMap: Map<string, ILeafContext>,
-    hookCwd: string,
-    lines: string[]
-): void {
-    const connector = isLast ? "└── " : "├── ";
-    const childPrefix = isLast ? "    " : "│   ";
-    lines.push(`${prefix}${connector}${truncateLabel(describeNode(node), 80)}`);
-
-    if (node.type === "binop") {
-        appendTreeLines(node.left, `${prefix}${childPrefix}`, false, leafOutcomeMap, leafContextMap, hookCwd, lines);
-        appendTreeLines(node.right, `${prefix}${childPrefix}`, true, leafOutcomeMap, leafContextMap, hookCwd, lines);
-        if (!isLast) {
-            lines.push(`${prefix}│`);
-        }
-        return;
+    lines.push(`${prefix}${connector}${truncateLabel(node.source, 80)}`);
+    const children = childNodes(node);
+    for (let index = 0; index < children.length; index++) {
+        appendTreeLines(
+            children[index],
+            `${prefix}${childPrefix}`,
+            index === children.length - 1,
+            commandDecisionMap,
+            commandContextMap,
+            hookCwd,
+            lines
+        );
     }
-
-    if (node.type === "while_loop") {
-        appendTreeLines(node.body, `${prefix}${childPrefix}`, true, leafOutcomeMap, leafContextMap, hookCwd, lines);
-        return;
-    }
-
-    if (node.type === "if_statement") {
-        const hasElseBranch = node.elseBranch !== undefined;
-        appendTreeLines(node.thenBranch, `${prefix}${childPrefix}`, !hasElseBranch, leafOutcomeMap, leafContextMap, hookCwd, lines);
-        const elseBranch = node.elseBranch;
-        if (elseBranch !== undefined) {
-            appendTreeLines(elseBranch, `${prefix}${childPrefix}`, true, leafOutcomeMap, leafContextMap, hookCwd, lines);
-        }
-        return;
-    }
-
-    if (node.type === "group") {
-        appendTreeLines(node.body, `${prefix}${childPrefix}`, true, leafOutcomeMap, leafContextMap, hookCwd, lines);
-        return;
-    }
-
-    if (node.type === "bash") {
-        appendTreeLines(node.ast, `${prefix}${childPrefix}`, true, leafOutcomeMap, leafContextMap, hookCwd, lines);
+    if (!isLast) {
+        lines.push(`${prefix}│`);
     }
 }
 
 // formatPendingPromptTree renders the sub-command ASCII tree block content.
 export function formatPendingPromptTree(
-    root: AstNode,
-    leafOutcomeMap: Map<string, ILeafOutcome>,
-    leafContextMap: Map<string, ILeafContext>,
+    root: IAstNode,
+    commandDecisionMap: Map<string, ICommandDecision>,
+    commandContextMap: Map<string, ICommandContext>,
     hookCwd: string
 ): string {
     const lines: string[] = [];
-    lines.push(truncateLabel(describeNode(root), 80));
+    lines.push(truncateLabel(root.source, 80));
 
-    if (root.type === "binop" && (root.op === "&&" || root.op === ";")) {
-        const parts = flattenSequential(root);
-        for (let index = 0; index < parts.length; index++) {
-            appendTreeLines(parts[index], "", index === parts.length - 1, leafOutcomeMap, leafContextMap, hookCwd, lines);
+    const displayRoot = root.type === "bash"
+        ? (root as BashAstNode).children.command
+        : root;
+
+    if (displayRoot.type === "binop") {
+        const binop = displayRoot as BinopAstNode;
+        if (binop.op === "&&" || binop.op === ";") {
+            const parts = flattenSequential(displayRoot);
+            for (let index = 0; index < parts.length; index++) {
+                appendTreeLines(
+                    parts[index],
+                    "",
+                    index === parts.length - 1,
+                    commandDecisionMap,
+                    commandContextMap,
+                    hookCwd,
+                    lines
+                );
+            }
+            return lines.join("\n");
         }
     }
-    else if (root.type === "binop") {
-        renderCompoundTree(root, "", true, leafOutcomeMap, leafContextMap, hookCwd, lines);
-    }
-    else {
-        appendTreeLines(root, "", true, leafOutcomeMap, leafContextMap, hookCwd, lines);
-    }
 
+    appendTreeLines(displayRoot, "", true, commandDecisionMap, commandContextMap, hookCwd, lines);
     return lines.join("\n");
 }
 
-// decisionPriority returns a numeric rank for picking the strictest leaf outcome.
+// decisionPriority returns a numeric rank for picking the strictest command outcome.
 function decisionPriority(decision: string): number {
     if (decision === "DENY") {
         return 3;
@@ -559,7 +582,7 @@ function decisionPriority(decision: string): number {
 }
 
 // sourceLabelForOutcome maps an outcome source to the verdict parenthetical text.
-function sourceLabelForOutcome(outcome: ILeafOutcome): string {
+function sourceLabelForOutcome(outcome: ICommandDecision): string {
     if (outcome.source === "no-rule-match") {
         return "no rule matched";
     }
@@ -569,19 +592,19 @@ function sourceLabelForOutcome(outcome: ILeafOutcome): string {
     return "matched rule";
 }
 
-// resolveVerdictTrigger finds the strictest leaf that drove the final decision.
+// resolveVerdictTrigger finds the strictest command that drove the final decision.
 export function resolveVerdictTrigger(
-    leafOutcomeMap: Map<string, ILeafOutcome>,
-    leafContextMap: Map<string, ILeafContext>,
-    root: AstNode,
+    commandDecisionMap: Map<string, ICommandDecision>,
+    commandContextMap: Map<string, ICommandContext>,
+    root: IAstNode,
     hookCwd: string,
     decisionReason: string | undefined
 ): IVerdictTrigger {
-    let bestCmd = describeNode(root);
-    let bestOutcome: ILeafOutcome | undefined = leafOutcomeMap.get(bestCmd);
+    let bestCmd = root.source;
+    let bestOutcome: ICommandDecision | undefined = commandDecisionMap.get(bestCmd);
     let bestPriority = bestOutcome !== undefined ? decisionPriority(bestOutcome.decision) : 0;
 
-    for (const [cmd, outcome] of leafOutcomeMap.entries()) {
+    for (const [cmd, outcome] of commandDecisionMap.entries()) {
         const priority = decisionPriority(outcome.decision);
         if (priority > bestPriority) {
             bestPriority = priority;
@@ -595,15 +618,15 @@ export function resolveVerdictTrigger(
         reason = bestOutcome.reason;
     }
 
-    const leafContext = leafContextMap.get(bestCmd);
+    const commandContext = commandContextMap.get(bestCmd);
     let cwd: string | undefined;
-    if (leafContext !== undefined && leafContext.cwd !== hookCwd) {
-        cwd = leafContext.cwd;
+    if (commandContext !== undefined && commandContext.cwd !== hookCwd) {
+        cwd = commandContext.cwd;
     }
 
     let env: Record<string, string> | undefined;
-    if (leafContext !== undefined && Object.keys(leafContext.env).length > 0) {
-        env = leafContext.env;
+    if (commandContext !== undefined && Object.keys(commandContext.env).length > 0) {
+        env = commandContext.env;
     }
 
     const sourceLabel = bestOutcome !== undefined ? sourceLabelForOutcome(bestOutcome) : "no rule matched";
@@ -619,21 +642,21 @@ export function resolveVerdictTrigger(
 }
 
 // formatContextBlock renders the Context section body with hook cwd and hook-time env vars.
-export function formatContextBlock(call: IToolCall, env0: IEnvironment): string {
-    const envKeys = Object.keys(env0.env).sort();
+export function formatContextBlock(call: IToolCall, context0: IContext): string {
+    const envKeys = Object.keys(context0.env).sort();
     if (envKeys.length === 0) {
         return call.cwd;
     }
 
     const lines = [call.cwd, ""];
     for (const key of envKeys) {
-        lines.push(`${key}=${env0.env[key]}`);
+        lines.push(`${key}=${context0.env[key]}`);
     }
     return lines.join("\n");
 }
 
 // appendVerdictOutcomeLines appends labeled decision/rule/reason lines for one outcome.
-function appendVerdictOutcomeLines(lines: string[], outcome: ILeafOutcome | undefined): void {
+function appendVerdictOutcomeLines(lines: string[], outcome: ICommandDecision | undefined): void {
     if (outcome === undefined) {
         return;
     }
@@ -682,24 +705,24 @@ function formatVerdictBlock(trigger: IVerdictTrigger, decision: string, hookCwd:
 }
 
 // formatPendingPromptMarkdown builds the full pending approval detail file.
-export function formatPendingPromptMarkdown(
+export async function formatPendingPromptMarkdown(
     call: IToolCall,
-    root: AstNode,
-    leafEvaluations: ILeafEvaluation[],
+    root: IAstNode,
+    commandOutcomes: ICommandOutcome[],
     decision: string,
     reason: string | undefined,
     pendingSince: Date
-): string {
-    const env0: IEnvironment = {
+): Promise<string> {
+    const context0: IContext = {
         cwd: call.cwd,
         cwdResolved: true,
         env: {},
     };
-    const leafOutcomeMap = buildLeafOutcomeMap(leafEvaluations);
-    const leafContextMap = simulateLeafEnvironments(root, env0);
-    const treeBlock = formatPendingPromptTree(root, leafOutcomeMap, leafContextMap, call.cwd);
-    const trigger = resolveVerdictTrigger(leafOutcomeMap, leafContextMap, root, call.cwd, reason);
-    const contextBlock = formatContextBlock(call, env0);
+    const commandDecisionMap = buildCommandDecisionMap(commandOutcomes);
+    const commandContextMap = buildCommandContextMap(commandOutcomes);
+    const treeBlock = formatPendingPromptTree(root, commandDecisionMap, commandContextMap, call.cwd);
+    const trigger = resolveVerdictTrigger(commandDecisionMap, commandContextMap, root, call.cwd, reason);
+    const contextBlock = formatContextBlock(call, context0);
 
     const sections: string[] = [];
     sections.push(`# ${call.tool_name} — ${decision.toUpperCase()}`);
@@ -736,8 +759,8 @@ export function formatPendingPromptMarkdown(
 export async function writePendingPrompt(
     projectDir: string,
     call: IToolCall,
-    root: AstNode,
-    leafEvaluations: ILeafEvaluation[],
+    root: IAstNode,
+    commandOutcomes: ICommandOutcome[],
     decision: string,
     reason: string | undefined,
     pendingSince: Date
@@ -746,7 +769,14 @@ export async function writePendingPrompt(
     await mkdir(pendingDir, { recursive: true });
     const baseFileName = buildPendingPromptFileName(call, pendingSince);
     const filePath = await resolvePendingPromptFilePath(pendingDir, baseFileName);
-    const content = formatPendingPromptMarkdown(call, root, leafEvaluations, decision, reason, pendingSince);
+    const content = await formatPendingPromptMarkdown(
+        call,
+        root,
+        commandOutcomes,
+        decision,
+        reason,
+        pendingSince
+    );
     await writeFile(filePath, content, "utf-8");
 }
 

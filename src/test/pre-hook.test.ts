@@ -1,8 +1,10 @@
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync, existsSync, readdirSync } from "fs";
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync, readdirSync, readFileSync } from "fs";
 import { join } from "path";
-import { tmpdir } from "os";
-import { readStdin, runHook } from "../pre-hook";
+import { homedir, tmpdir } from "os";
+import { readStdin, resolveHomeDir, runHook } from "../pre-hook";
+import * as decisionModule from "../decision";
 import { resolvePendingDir } from "../pending-prompt-log";
+import { resolveLogBaseDir } from "../audit-log";
 
 // An async iterable that yields a single Buffer chunk, used to mock process.stdin.
 interface IMockStdin {
@@ -30,6 +32,56 @@ function setStdin(mock: IMockStdin): void {
         configurable: true,
     });
 }
+
+// makeIsolatedProject creates a temp project dir with optional permissions.yaml and an empty home.
+interface IIsolatedDirs {
+    // Temporary project directory path.
+    projectDir: string;
+    // Temporary empty home directory path.
+    homeDir: string;
+}
+
+function makeIsolatedDirs(permissionsYaml: string): IIsolatedDirs {
+    const projectDir = mkdtempSync(join(tmpdir(), "pre-hook-"));
+    mkdirSync(join(projectDir, ".claude", "permissions.d"), { recursive: true });
+    writeFileSync(join(projectDir, ".claude", "permissions.yaml"), permissionsYaml, "utf-8");
+    const homeDir = mkdtempSync(join(tmpdir(), "pre-hook-home-"));
+    return { projectDir, homeDir };
+}
+
+describe("resolveHomeDir", () => {
+    test("uses HOME when set", () => {
+        const savedHome = process.env["HOME"];
+        process.env["HOME"] = "/tmp/custom-home";
+        try {
+            expect(resolveHomeDir()).toBe("/tmp/custom-home");
+        }
+        finally {
+            if (savedHome === undefined) {
+                delete process.env["HOME"];
+            }
+            else {
+                process.env["HOME"] = savedHome;
+            }
+        }
+    });
+
+    test("falls back to os.homedir when HOME is unset", () => {
+        const savedHome = process.env["HOME"];
+        delete process.env["HOME"];
+        try {
+            expect(resolveHomeDir()).toBe(homedir());
+        }
+        finally {
+            if (savedHome === undefined) {
+                delete process.env["HOME"];
+            }
+            else {
+                process.env["HOME"] = savedHome;
+            }
+        }
+    });
+});
 
 describe("readStdin", () => {
     test("returns content as a UTF-8 string", async () => {
@@ -62,13 +114,15 @@ describe("runHook", () => {
     let stderrSpy: jest.SpyInstance;
     let stdoutSpy: jest.SpyInstance;
     let originalProjectDir: string | undefined;
+    let originalHome: string | undefined;
 
     beforeEach(() => {
         exitSpy = jest.spyOn(process, "exit").mockImplementation(jest.fn() as any);
         stderrSpy = jest.spyOn(process.stderr, "write").mockImplementation(() => true);
         stdoutSpy = jest.spyOn(process.stdout, "write").mockImplementation(() => true);
         originalProjectDir = process.env["CLAUDE_PROJECT_DIR"];
-        process.env["CLAUDE_PROJECT_DIR"] = require("os").tmpdir();
+        originalHome = process.env["HOME"];
+        process.env["CLAUDE_PROJECT_DIR"] = tmpdir();
     });
 
     afterEach(() => {
@@ -81,12 +135,30 @@ describe("runHook", () => {
         else {
             process.env["CLAUDE_PROJECT_DIR"] = originalProjectDir;
         }
+        if (originalHome === undefined) {
+            delete process.env["HOME"];
+        }
+        else {
+            process.env["HOME"] = originalHome;
+        }
     });
 
     test("malformed JSON writes to stderr and exits with code 1", async () => {
         setStdin(createMockStdin("not valid json"));
         await runHook();
         expect(stderrSpy).toHaveBeenCalled();
+        expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    test("missing CLAUDE_PROJECT_DIR writes to stderr and exits with code 1", async () => {
+        delete process.env["CLAUDE_PROJECT_DIR"];
+        setStdin(createMockStdin(JSON.stringify({
+            tool_name: "Bash",
+            tool_input: { command: "ls" },
+            cwd: "/tmp",
+        })));
+        await runHook();
+        expect(stderrSpy.mock.calls[0][0]).toContain("CLAUDE_PROJECT_DIR is not set");
         expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
@@ -98,33 +170,38 @@ describe("runHook", () => {
     });
 
     test("valid ToolCall writes hookSpecificOutput to stdout and exits with code 0", async () => {
-        const toolCall = JSON.stringify({
-            tool_name: "Read",
-            tool_input: { file_path: "/test.txt" },
-            cwd: "/home/user",
-        });
-        setStdin(createMockStdin(toolCall));
-        await runHook();
-        expect(stdoutSpy).toHaveBeenCalled();
-        const written = stdoutSpy.mock.calls[0][0] as string;
-        const parsed = JSON.parse(written) as { hookSpecificOutput: { hookEventName: string; permissionDecision: string } };
-        expect(parsed.hookSpecificOutput.hookEventName).toBe("PreToolUse");
-        expect(["allow", "deny", "ask"]).toContain(parsed.hookSpecificOutput.permissionDecision);
-        expect(exitSpy).toHaveBeenCalledWith(0);
+        const { projectDir, homeDir } = makeIsolatedDirs("{}\n");
+        process.env["HOME"] = homeDir;
+        process.env["CLAUDE_PROJECT_DIR"] = projectDir;
+        try {
+            const toolCall = JSON.stringify({
+                tool_name: "Read",
+                tool_input: { file_path: "/test.txt" },
+                cwd: "/home/user",
+            });
+            setStdin(createMockStdin(toolCall));
+            await runHook();
+            expect(stdoutSpy).toHaveBeenCalled();
+            const written = stdoutSpy.mock.calls[0][0] as string;
+            const parsed = JSON.parse(written) as { hookSpecificOutput: { hookEventName: string; permissionDecision: string } };
+            expect(parsed.hookSpecificOutput.hookEventName).toBe("PreToolUse");
+            expect(["allow", "deny", "ask"]).toContain(parsed.hookSpecificOutput.permissionDecision);
+            expect(exitSpy).toHaveBeenCalledWith(0);
+        }
+        finally {
+            rmSync(homeDir, { recursive: true, force: true });
+            rmSync(projectDir, { recursive: true, force: true });
+        }
     });
 
     test("project permissions.d/aws.yaml deny rule is honoured end-to-end via runHook", async () => {
-        const projectDir = mkdtempSync(join(tmpdir(), "pre-hook-dropin-"));
-        mkdirSync(join(projectDir, ".claude", "permissions.d"), { recursive: true });
-        writeFileSync(join(projectDir, ".claude", "permissions.yaml"), "bash:\n  ls:\n    decide: allow\n", "utf-8");
+        const { projectDir, homeDir } = makeIsolatedDirs("bash:\n  ls:\n    decide: allow\n");
         writeFileSync(
             join(projectDir, ".claude", "permissions.d", "aws.yaml"),
-            "bash:\n  aws:\n    decide: deny\n    reason: blocked by drop-in\n",
+            "bash:\n  aws:\n    decide: deny\n    reason: blocked by permissions.d\n",
             "utf-8"
         );
-        const emptyHomeDir = mkdtempSync(join(tmpdir(), "pre-hook-home-"));
-        const savedHome = process.env["HOME"];
-        process.env["HOME"] = emptyHomeDir;
+        process.env["HOME"] = homeDir;
         process.env["CLAUDE_PROJECT_DIR"] = projectDir;
         try {
             const toolCall = JSON.stringify({
@@ -137,31 +214,19 @@ describe("runHook", () => {
             const written = stdoutSpy.mock.calls[0][0] as string;
             const parsed = JSON.parse(written) as { hookSpecificOutput: { permissionDecision: string; permissionDecisionReason?: string } };
             expect(parsed.hookSpecificOutput.permissionDecision).toBe("deny");
-            expect(parsed.hookSpecificOutput.permissionDecisionReason).toBe("blocked by drop-in");
+            expect(parsed.hookSpecificOutput.permissionDecisionReason).toBe("blocked by permissions.d");
         }
         finally {
-            if (savedHome !== undefined) {
-                process.env["HOME"] = savedHome;
-            }
-            else {
-                delete process.env["HOME"];
-            }
-            rmSync(emptyHomeDir, { recursive: true, force: true });
+            rmSync(homeDir, { recursive: true, force: true });
             rmSync(projectDir, { recursive: true, force: true });
         }
     });
 
     test("ask decision writes a pending prompt detail file", async () => {
-        const projectDir = mkdtempSync(join(tmpdir(), "pre-hook-pending-"));
-        mkdirSync(join(projectDir, ".claude"), { recursive: true });
-        writeFileSync(
-            join(projectDir, ".claude", "permissions.yaml"),
-            "bash:\n  curl:\n    decide: ask\n    reason: network access requires approval\n",
-            "utf-8"
+        const { projectDir, homeDir } = makeIsolatedDirs(
+            "bash:\n  curl:\n    decide: ask\n    reason: network access requires approval\n"
         );
-        const emptyHomeDir = mkdtempSync(join(tmpdir(), "pre-hook-pending-home-"));
-        const savedHome = process.env["HOME"];
-        process.env["HOME"] = emptyHomeDir;
+        process.env["HOME"] = homeDir;
         process.env["CLAUDE_PROJECT_DIR"] = projectDir;
         try {
             const toolCall = JSON.stringify({
@@ -174,15 +239,193 @@ describe("runHook", () => {
             const pendingFiles = readdirSync(resolvePendingDir(projectDir)).filter(fileName => fileName.endsWith(".md"));
             expect(pendingFiles.length).toBe(1);
             expect(pendingFiles[0]).toMatch(/^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-.+\.md$/);
+            const pendingContent = readFileSync(join(resolvePendingDir(projectDir), pendingFiles[0]), "utf-8");
+            expect(pendingContent).toContain("source: matched rule");
+            expect(pendingContent).toContain("network access requires approval");
+            expect(pendingContent).toContain("curl https://example.com");
         }
         finally {
-            if (savedHome !== undefined) {
-                process.env["HOME"] = savedHome;
-            }
-            else {
-                delete process.env["HOME"];
-            }
-            rmSync(emptyHomeDir, { recursive: true, force: true });
+            rmSync(homeDir, { recursive: true, force: true });
+            rmSync(projectDir, { recursive: true, force: true });
+        }
+    });
+
+    test("ask with no matching rule writes NOMATCH node detail in the pending prompt", async () => {
+        const { projectDir, homeDir } = makeIsolatedDirs("{}\n");
+        process.env["HOME"] = homeDir;
+        process.env["CLAUDE_PROJECT_DIR"] = projectDir;
+        try {
+            const toolCall = JSON.stringify({
+                tool_name: "Bash",
+                tool_input: { command: "ls" },
+                cwd: projectDir,
+            });
+            setStdin(createMockStdin(toolCall));
+            await runHook();
+            const pendingFiles = readdirSync(resolvePendingDir(projectDir)).filter(fileName => fileName.endsWith(".md"));
+            expect(pendingFiles.length).toBe(1);
+            const pendingContent = readFileSync(join(resolvePendingDir(projectDir), pendingFiles[0]), "utf-8");
+            expect(pendingContent).toContain("decision: NOMATCH");
+            expect(pendingContent).toContain("source: no rule matched");
+            expect(pendingContent).toContain("ls");
+        }
+        finally {
+            rmSync(homeDir, { recursive: true, force: true });
+            rmSync(projectDir, { recursive: true, force: true });
+        }
+    });
+
+    test("ask for a compound command writes node detail for each side", async () => {
+        const { projectDir, homeDir } = makeIsolatedDirs(
+            "bash:\n  ls:\n    decide: allow\n  curl:\n    decide: ask\n    reason: network access requires approval\n"
+        );
+        process.env["HOME"] = homeDir;
+        process.env["CLAUDE_PROJECT_DIR"] = projectDir;
+        try {
+            const toolCall = JSON.stringify({
+                tool_name: "Bash",
+                tool_input: { command: "ls && curl https://example.com" },
+                cwd: projectDir,
+            });
+            setStdin(createMockStdin(toolCall));
+            await runHook();
+            const pendingFiles = readdirSync(resolvePendingDir(projectDir)).filter(fileName => fileName.endsWith(".md"));
+            expect(pendingFiles.length).toBe(1);
+            const pendingContent = readFileSync(join(resolvePendingDir(projectDir), pendingFiles[0]), "utf-8");
+            expect(pendingContent).toContain("ls");
+            expect(pendingContent).toContain("curl https://example.com");
+            expect(pendingContent).toContain("network access requires approval");
+            expect(pendingContent).toContain("source: matched rule");
+        }
+        finally {
+            rmSync(homeDir, { recursive: true, force: true });
+            rmSync(projectDir, { recursive: true, force: true });
+        }
+    });
+
+    test("allow decision writes tool_request and final_decision audit entries (e2e/integration/audit-log)", async () => {
+        const { projectDir, homeDir } = makeIsolatedDirs("bash:\n  ls:\n    decide: allow\n");
+        process.env["HOME"] = homeDir;
+        process.env["CLAUDE_PROJECT_DIR"] = projectDir;
+        try {
+            const toolCall = JSON.stringify({
+                tool_name: "Bash",
+                tool_input: { command: "ls" },
+                cwd: "/home/user/project",
+            });
+            setStdin(createMockStdin(toolCall));
+            await runHook();
+            const logBaseDir = resolveLogBaseDir(projectDir);
+            const monthDirs = readdirSync(logBaseDir).filter(entryName => /^\d{4}-\d{2}$/.test(entryName));
+            expect(monthDirs.length).toBeGreaterThan(0);
+            const dayDirs = readdirSync(join(logBaseDir, monthDirs[0])).filter(entryName => /^\d{2}$/.test(entryName));
+            expect(dayDirs.length).toBeGreaterThan(0);
+            const dayFiles = readdirSync(join(logBaseDir, monthDirs[0], dayDirs[0])).filter(fileName => fileName.endsWith(".json"));
+            expect(dayFiles.length).toBe(1);
+            const logLines = readFileSync(join(logBaseDir, monthDirs[0], dayDirs[0], dayFiles[0]), "utf-8")
+                .split("\n")
+                .filter(Boolean)
+                .map(line => JSON.parse(line) as { type: string; tool: string; decision?: string; filePath?: string; ruleCount?: number });
+            expect(logLines).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({ type: "tool_request", tool: "Bash" }),
+                    expect.objectContaining({ type: "final_decision", tool: "Bash", decision: "allow" }),
+                ])
+            );
+        }
+        finally {
+            rmSync(homeDir, { recursive: true, force: true });
+            rmSync(projectDir, { recursive: true, force: true });
+        }
+    });
+
+    test("writes config_load audit entries for home and project permissions files", async () => {
+        const { projectDir, homeDir } = makeIsolatedDirs("bash:\n  ls:\n    decide: allow\n");
+        writeFileSync(
+            join(projectDir, ".claude", "permissions.d", "aws.yaml"),
+            "bash:\n  aws:\n    decide: deny\n",
+            "utf-8"
+        );
+        process.env["HOME"] = homeDir;
+        process.env["CLAUDE_PROJECT_DIR"] = projectDir;
+        try {
+            const toolCall = JSON.stringify({
+                tool_name: "Bash",
+                tool_input: { command: "ls" },
+                cwd: projectDir,
+            });
+            setStdin(createMockStdin(toolCall));
+            await runHook();
+            const logBaseDir = resolveLogBaseDir(projectDir);
+            const monthDirs = readdirSync(logBaseDir).filter(entryName => /^\d{4}-\d{2}$/.test(entryName));
+            const dayDirs = readdirSync(join(logBaseDir, monthDirs[0])).filter(entryName => /^\d{2}$/.test(entryName));
+            const dayFiles = readdirSync(join(logBaseDir, monthDirs[0], dayDirs[0])).filter(fileName => fileName.endsWith(".json"));
+            const logLines = readFileSync(join(logBaseDir, monthDirs[0], dayDirs[0], dayFiles[0]), "utf-8")
+                .split("\n")
+                .filter(Boolean)
+                .map(line => JSON.parse(line) as { type: string; filePath?: string; ruleCount?: number });
+            expect(logLines).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({ type: "config_load", filePath: "~/.claude/permissions.yaml", ruleCount: 0 }),
+                    expect.objectContaining({ type: "config_load", filePath: ".claude/permissions.yaml", ruleCount: 1 }),
+                    expect.objectContaining({ type: "config_load", filePath: ".claude/permissions.d/aws.yaml", ruleCount: 1 }),
+                ])
+            );
+        }
+        finally {
+            rmSync(homeDir, { recursive: true, force: true });
+            rmSync(projectDir, { recursive: true, force: true });
+        }
+    });
+
+    test("Bash tool call with no rules returns ask", async () => {
+        const { projectDir, homeDir } = makeIsolatedDirs("{}\n");
+        process.env["HOME"] = homeDir;
+        process.env["CLAUDE_PROJECT_DIR"] = projectDir;
+        try {
+            const toolCall = JSON.stringify({
+                tool_name: "Bash",
+                tool_input: { command: "ls" },
+                cwd: "/home/user",
+            });
+            setStdin(createMockStdin(toolCall));
+            await runHook();
+            const written = stdoutSpy.mock.calls[0][0] as string;
+            const parsed = JSON.parse(written) as { hookSpecificOutput: { permissionDecision: string } };
+            expect(parsed.hookSpecificOutput.permissionDecision).toBe("ask");
+        }
+        finally {
+            rmSync(homeDir, { recursive: true, force: true });
+            rmSync(projectDir, { recursive: true, force: true });
+        }
+    });
+
+    test("undefined decide result defaults to ask with no reason", async () => {
+        const { projectDir, homeDir } = makeIsolatedDirs("{}\n");
+        process.env["HOME"] = homeDir;
+        process.env["CLAUDE_PROJECT_DIR"] = projectDir;
+        const decideSpy = jest.spyOn(decisionModule, "decide").mockResolvedValue(undefined);
+        try {
+            const toolCall = JSON.stringify({
+                tool_name: "Bash",
+                tool_input: { command: "ls" },
+                cwd: projectDir,
+            });
+            setStdin(createMockStdin(toolCall));
+            await runHook();
+            const written = stdoutSpy.mock.calls[0][0] as string;
+            const parsed = JSON.parse(written) as {
+                hookSpecificOutput: {
+                    permissionDecision: string;
+                    permissionDecisionReason: string | undefined;
+                };
+            };
+            expect(parsed.hookSpecificOutput.permissionDecision).toBe("ask");
+            expect(parsed.hookSpecificOutput.permissionDecisionReason).toBeUndefined();
+        }
+        finally {
+            decideSpy.mockRestore();
+            rmSync(homeDir, { recursive: true, force: true });
             rmSync(projectDir, { recursive: true, force: true });
         }
     });

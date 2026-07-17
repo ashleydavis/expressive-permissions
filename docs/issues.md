@@ -1,8 +1,17 @@
 # Issues
 
-Known design and implementation problems. Add one section per issue; list affected examples under each.
+This doc lists known design and implementation problems. Add one section per issue; list affected examples under each.
 
----
+
+## Redirect rules
+
+There is one factory and two rules. Two rules might be necessary. Might be possible to refactor to one parameterized rule.
+
+
+## User feedback
+
+Make sure we have Rust or Elm style error messages that show the file and line that loaded a rule.
+
 
 ## Command substitutions use a sidecar field instead of AST nodes
 
@@ -16,21 +25,21 @@ Illustrative target shape for `echo $(whoami)`:
 
 ```yaml
 type: command
-binary: echo
+commandName: echo
 options: {}
 cmd: []   # or a structured word list; not the literal "$(whoami)"
 envPrefix: {}
-raw: "echo $(whoami)"
+source: "echo $(whoami)"
 substitution:          # new node type, analogous to redirect.command
   type: substitution   # or command_substitution
-  raw: "$(whoami)"
+  source: "$(whoami)"
   command:
     type: command
-    binary: whoami
+    commandName: whoami
     options: {}
     cmd: []
     envPrefix: {}
-    raw: "whoami"
+    source: "whoami"
 ```
 
 Same hierarchy applies to backtick form (`rm \`cat list\``: `rm` command → backtick substitution node → `cat` command).
@@ -40,7 +49,6 @@ Same hierarchy applies to backtick form (`rm \`cat list\``: `rm` command → bac
 - `examples/ast/backtick-substitution/`
 - `examples/ast/command-substitution/`
 
----
 
 ## AST child fields are ad hoc per node type
 
@@ -69,13 +77,12 @@ A generic visitor can then walk any node by iterating `children` keys (and recur
 
 **Affected:** entire AST representation (`src/types.ts`, `src/build-ast.ts`, all walkers and interpreters, all `examples/ast/`).
 
----
 
 ## File paths are flat fields, not AST child nodes
 
 For Read, Write, Edit, and MultiEdit tool calls, `file_path` is a scalar field on the tool root node (e.g. `type: edit` with `file_path: /tmp/foo.ts`). Rules in `write:`, `edit:`, and similar sections match only when the walker is at that root and inspect `node.file_path` directly.
 
-Bash shell redirects work differently and already expose file targets on intermediate nodes. Each redirect is a `redirect` node with a `target` field; `redirect.out` / `redirect.in` rules fire during tree traversal on those nodes, independent of the inner `command` binary. That gives granular, path-centric policy for shell file I/O without a separate `bash:` rule per command.
+Bash shell redirects work differently and already expose file targets on intermediate nodes. Each redirect is a `redirect` node with a `target` field; `redirect.out` / `redirect.in` rules fire during tree traversal on those nodes, independent of the inner command. That gives granular, path-centric policy for shell file I/O without a separate `bash:` rule per command.
 
 If file-tool targets were represented as child AST nodes (analogous to `redirect` wrapping a command with a `target`), the same walk-and-match model could apply to Edit, Write, and MultiEdit. A unified file-access policy could cover redirect targets, file-tool paths, `other`-tool paths, and Bash command arguments in one place, with path rules evaluated at the target node during traversal instead of only at the tool root or command leaf.
 
@@ -100,20 +107,17 @@ Bash command arguments and flag values that are paths (including those marked `k
 
 **Reference examples (desired shape today for Bash redirects):**
 
-- `examples/ast/redirect-and-binop/` — `echo hi > out.txt` after `cd /tmp`; `target: out.txt` on a `redirect` node separate from the inner `echo` command
-- `examples/ast/redirect-append/` — `>> bar.txt`
-- `examples/ast/redirect-fd-merge/` — `> out.log` with `2>&1`
-- `examples/ast/redirect-stderr/` — `2> err.log`
-- `examples/ast/redirect-stdin/` — `< in.txt`
-- `examples/ast/redirect-stdout/` — `> out.log`
-- `examples/ast/redirect-stdout-echo/` — `echo foo > bar.txt`
+- `examples/ast/redirect-and-binop/`: `echo hi > out.txt` after `cd /tmp`; `target: out.txt` on a `redirect` node separate from the inner `echo` command
+- `examples/ast/redirect-append/`: `>> bar.txt`
+- `examples/ast/redirect-fd-merge/`: `> out.log` with `2>&1`
+- `examples/ast/redirect-stderr/`: `2> err.log`
+- `examples/ast/redirect-stdin/`: `< in.txt`
+- `examples/ast/redirect-stdout/`: `> out.log`
+- `examples/ast/redirect-stdout-echo/`: `echo foo > bar.txt`
 
 **Affected examples (file tools, flat `file_path` on tool root):**
 
 - `examples/ast/read-basic/`
-- `examples/ast/read-with-limit/`
-- `examples/ast/read-with-offset/`
-- `examples/ast/read-with-offset-and-limit/`
 - `examples/ast/write-basic/`
 - `examples/ast/edit-basic/`
 - `examples/ast/edit-replace-all/`
@@ -122,31 +126,30 @@ Bash command arguments and flag values that are paths (including those marked `k
 
 **Affected examples (`other` tools, path buried in opaque `tool_input`):**
 
-- `examples/ast/other-grep/` — `path: /tmp`
+- `examples/ast/grep-basic/`: `path: /tmp`
 
 **Affected examples (Bash commands, paths flat in `cmd` or `options`):**
 
-- `examples/ast/and-operator/` — `cd /tmp`
-- `examples/ast/backtick-substitution/` — `cat list` (path positional inside substitution)
-- `examples/ast/cd/` — `cd /tmp`
-- `examples/ast/flag-long-boolean/` — `rm ... /tmp`
-- `examples/ast/flag-ls-combined/` — `ls ... /tmp`
-- `examples/ast/flag-path-value/` — `git -C /some/path` (path in `options.C`, descriptor `kind: path`)
-- `examples/ast/flag-short-separate/` — `rm ... /tmp`
-- `examples/ast/if-in-for-loop/` — `cd /work/tf-config`, `diff ... variant-1a/$f variant-2/$f` (also contains redirect targets on `redirect` nodes; see reference examples above)
-- `examples/ast/if-statement/` — `test -f f`
-- `examples/ast/multiple-positionals/` — `mv src/main.ts dist/main.ts`
-- `examples/ast/nested-and-pipe/` — `cd /some/path`
-- `examples/ast/redirect-and-binop/` — `cd /tmp` (redirect half already correct; see reference examples above)
-- `examples/ast/subshell/` — `cd src`
-- `examples/ast/until-loop/` — `test -f /tmp/ready`
-- `examples/ast/xargs/` — `find .`
+- `examples/ast/and-operator/`: `cd /tmp`
+- `examples/ast/backtick-substitution/`: `cat list` (path positional inside substitution)
+- `examples/ast/cd/`: `cd /tmp`
+- `examples/ast/flag-long-boolean/`: `rm ... /tmp`
+- `examples/ast/flag-ls-combined/`: `ls ... /tmp`
+- `examples/ast/flag-path-value/`: `git -C /some/path` (path in `options.C`, descriptor `kind: path`)
+- `examples/ast/flag-short-separate/`: `rm ... /tmp`
+- `examples/ast/if-in-for-loop/`: `cd /work/tf-config`, `diff ... variant-1a/$f variant-2/$f` (also contains redirect targets on `redirect` nodes; see reference examples above)
+- `examples/ast/if-statement/`: `test -f f`
+- `examples/ast/multiple-positionals/`: `mv src/main.ts dist/main.ts`
+- `examples/ast/nested-and-pipe/`: `cd /some/path`
+- `examples/ast/redirect-and-binop/`: `cd /tmp` (redirect half already correct; see reference examples above)
+- `examples/ast/subshell/`: `cd src`
+- `examples/ast/until-loop/`: `test -f /tmp/ready`
+- `examples/ast/xargs/`: `find .`
 
----
 
 ## Standalone env assignments reuse an empty command node
 
-A bare `FOO=bar` assignment is represented as a `command` node with `binary: ""`, empty `cmd`, and the vars parked on `envPrefix`. That overloads the command leaf: it is not a command at all, and walkers must special-case `binary === ""` to distinguish standalone assignment from `FOO=bar cmd` (where the same `envPrefix` field means something different semantically).
+A bare `FOO=bar` assignment is represented as a `command` node with `commandName: ""`, empty `cmd`, and the vars parked on `envPrefix`. That overloads the command leaf: it is not a command at all, and walkers must special-case `commandName === ""` to distinguish standalone assignment from `FOO=bar cmd` (where the same `envPrefix` field means something different semantically).
 
 **Recommended fix:** Introduce a dedicated env-assignment AST node (e.g. `env_set` or `env_assignment`) that holds the variable map. Any command scoped by those vars becomes a child of that node instead of carrying `envPrefix` on the command leaf.
 
@@ -157,19 +160,19 @@ Illustrative target shapes:
 type: env_set
 vars:
   FOO: "bar"
-raw: "FOO=bar"
+source: "FOO=bar"
 
 # prefix: FOO=bar cmd
 type: env_set
 vars:
   FOO: "bar"
-raw: "FOO=bar cmd"
+source: "FOO=bar cmd"
 child:
   type: command
-  binary: cmd
+  commandName: cmd
   options: {}
   cmd: []
-  raw: "cmd"
+  source: "cmd"
 ```
 
 For `FOO=bar && cmd`, the env-set node would be the left child of the `binop`; the right `cmd` command would not inherit `FOO` unless the shell semantics thread env through the sequence (today `envSetRule` updates env for subsequent siblings in a sequence).
@@ -183,7 +186,6 @@ Built-in rules `envSetRule` and `envPrefixRule` would move to match and walk the
 - `examples/ast/multi-env-prefix/`
 - (and any example where `envPrefix` appears on a `command` node)
 
----
 
 ## Shell quoting is incomplete
 
@@ -214,3 +216,47 @@ After lexing, `extractSubstitutions()` scans resolved word text for `$(...)` and
 - `examples/ast/quoted-arg/` (basic double quotes work; documents the quoting surface)
 - `examples/ast/command-substitution/` (unquoted and double-quoted `$(...)`; quote-context bug affects single-quoted and escaped forms not yet illustrated)
 - `examples/ast/backtick-substitution/` (same for backticks inside quotes)
+
+
+## Command-specific parsing is hardcoded instead of pluggable
+
+The parser embeds bespoke logic for individual commands (notably `xargs`: dedicated AST node type, option tables, flag consumers, and a post-parse transform). Each new wrapper command (`timeout`, `mise`, and similar) would require the same pattern: new node types, parser branches, and walker special cases scattered through `src/parse.ts` and related code.
+
+**Recommended fix:** Introduce command-specific parser plugins. Each plugin registers for a command name and owns how that invocation is parsed (splitting wrapper options from the inner command, producing an intermediate AST node, or rewriting the tree). The core parser stays generic; `xargs`, `timeout`, `mise`, and future wrappers ship as plugins instead of inline hardcoding.
+
+**Affected examples:**
+
+- `examples/ast/xargs/`
+
+
+## `cmd-in` path globs match non-path positionals
+
+When a `cmd-in` pattern is path-style (`/` or `./` prefix), every positional is resolved against cwd before glob matching. `cmd-in` is OR across all positionals, so a non-path argument that happens to look relative can satisfy a project-scoped path glob.
+
+Example: with cwd in the project and rule `cmd-in: ["${{PROJECT_DIR}}/**"]`, `sed s/a/b/ /etc/passwd` allows because `s/a/b/` resolves to a path under the project, even though the only file argument is outside it.
+
+**Recommended fix:** For path-style `cmd-in` patterns, only match positionals (and flag values) that command descriptors mark as `kind: path`, or otherwise skip arguments that are not path-like. Keep glob and `/regex/` matching for non-path patterns unchanged.
+
+**Example to add** as `examples/decision/bash-cmd-in-path-ignores-non-path-positional/index.yaml` once fixed (must not land in the suite while it fails):
+
+```yaml
+description: "bash: cmd-in path glob should not match a non-path positional under the project"
+input:
+  tool_name: Bash
+  tool_input:
+    command: sed s/a/b/ /etc/passwd
+  cwd: ${PROJECT_DIR}
+rules:
+  bash:
+    sed:
+      cmd-in:
+        - ${{PROJECT_DIR}}/**
+      decide: allow
+      reason: Allow sed on files within the project directory
+expected:
+  decision: ask
+```
+
+**Affected examples:**
+
+- `examples/decision/bash-cmd-in-projectdir-relative-allow/` (intended relative file match; also passes via the sed script positional)

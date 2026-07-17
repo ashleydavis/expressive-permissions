@@ -1,0 +1,21 @@
+description: "bash: an inline env prefix is scoped to its own command and must
+  NOT leak to a later command in the sequence, so $F there stays literal and
+  asks"
+source_e2e: e2e/bash/bash-env-var-scoped-prefix-does-not-leak-ask/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: F=/tmp/out.log echo hi; sed -i 's/a/b/' "$F"
+  cwd: /home/user/outside-the-project
+rules:
+  bash:
+    echo:
+      decide: allow
+      reason: echo is allowed
+    sed:
+      cmd-in:
+        - /tmp/**
+      decide: allow
+      reason: sed within /tmp
+expected:
+  decision: ask

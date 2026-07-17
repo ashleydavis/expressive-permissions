@@ -1,0 +1,16 @@
+description: "bash file: contains does not match → ABSTAIN (falls to default ask)"
+source_e2e: e2e/bash/bash-file-contains-no-match-abstain/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: kubectl delete pod mypod
+  cwd: /home/user/project
+rules:
+  bash:
+    kubectl:
+      file:
+        fixtures/no-sandbox.txt:
+          contains: sandbox
+      decide: allow
+expected:
+  decision: ask

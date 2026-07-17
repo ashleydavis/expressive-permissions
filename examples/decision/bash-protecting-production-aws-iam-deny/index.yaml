@@ -1,0 +1,17 @@
+description: "protecting-production: aws iam * → deny (PROTECTING-PRODUCTION.md Block all write operations)"
+input:
+  tool_name: Bash
+  tool_input:
+    command: aws iam create-user --user-name test-user
+  cwd: /home/user/project
+rules:
+  bash:
+    aws:
+      - cmd: "iam *"
+        decide: deny
+        reason: All IAM changes require manual approval.
+      - cmd: "* describe-*"
+        decide: allow
+expected:
+  decision: deny
+  reason: All IAM changes require manual approval.

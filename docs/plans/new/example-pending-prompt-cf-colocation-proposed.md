@@ -1,4 +1,4 @@
-# Bash — ASK
+# Bash: ASK
 
 Pending since 2026-06-19T19:18:51.631+10:00
 
@@ -28,7 +28,7 @@ while IFS= read -r id; do
   [[ -z "$id" ]] && continue
   if grep -Fq "$id" migration/live-funcaptcha_com.json; then :; else echo "  MISSING from live: $id"; miss=1; fi
 done <<< "$ids"
-[[ "$miss" == "0" ]] && echo "OK — all ids/arns present in live dump"
+[[ "$miss" == "0" ]] && echo "OK: all ids/arns present in live dump"
 ```
 
 ## Context
@@ -119,7 +119,7 @@ cd /home/ash/tickets/cf-colocation-spike-7881/cloudfront-colocation-prototype/v�
     │             rule: ~/.claude/permissions.d/bash-readonly.yaml:94
     │             reason: "Just printing stuff"
     │
-    └── [[ "$miss" == "0" ]] && echo "OK — all ids/arns present in live dump"
+    └── [[ "$miss" == "0" ]] && echo "OK: all ids/arns present in live dump"
     
           cwd: /home/ash/tickets/cf-colocation-spike-7881/cloudfront-colocation-prototype/variant-1a
           env: ids=…, miss=0

@@ -1,0 +1,16 @@
+description: "redirect.out: allow write under project dir"
+source_e2e: e2e/bash/bash-redirect-out-project-allow/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: echo hi > ./logs/out.txt
+  cwd: ${PROJECT_DIR}
+rules:
+  redirect:
+    out:
+      - path-in:
+          - ./**
+        decide: allow
+      - decide: ask
+expected:
+  decision: allow

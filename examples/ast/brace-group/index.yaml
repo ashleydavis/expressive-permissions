@@ -1,28 +1,33 @@
 tool_call:
-  tool_name: "Bash"
+  tool_name: Bash
   tool_input:
     command: "{ echo a; echo b; }"
 ast:
-  type: "bash"
-  raw: "{ echo a; echo b; }"
-  ast:
-    type: "group"
-    style: "brace"
-    body:
-      type: "binop"
-      op: ";"
-      left:
-        type: "command"
-        binary: "echo"
-        options: {}
-        cmd: "a"
-        envPrefix: {}
-        raw: "echo a"
-      right:
-        type: "command"
-        binary: "echo"
-        options: {}
-        cmd: "b"
-        envPrefix: {}
-        raw: "echo b"
-    raw: "{ echo a; echo b; }"
+  type: bash
+  source: "{ echo a; echo b; }"
+  children:
+    command:
+      type: brace_group
+      source: "{ echo a; echo b; }"
+      children:
+        body:
+          type: binop
+          source: echo a ; echo b
+          children:
+            left:
+              type: command
+              source: echo a
+              commandName: echo
+              options: {}
+              positionals:
+                - a
+              envPrefix: {}
+            right:
+              type: command
+              source: echo b
+              commandName: echo
+              options: {}
+              positionals:
+                - b
+              envPrefix: {}
+          op: ;

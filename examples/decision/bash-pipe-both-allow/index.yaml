@@ -1,0 +1,15 @@
+description: "bash: cmd1 | cmd2 both allow → allow"
+source_e2e: e2e/bash/bash-pipe-both-allow/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: ls | grep foo
+  cwd: /home/user/project
+rules:
+  bash:
+    ls:
+      decide: allow
+    grep:
+      decide: allow
+expected:
+  decision: allow

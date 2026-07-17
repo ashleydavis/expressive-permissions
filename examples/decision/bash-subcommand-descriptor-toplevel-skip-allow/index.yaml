@@ -1,0 +1,33 @@
+description: "bash: top-level arity-1 flag is skipped correctly when finding
+  sub-command; sub-command flag then resolved"
+source_e2e: e2e/bash/bash-subcommand-descriptor-toplevel-skip-allow/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: git -C /tmp/repo commit -m msg
+  cwd: ${PROJECT_DIR}
+rules:
+  bash:
+    git:
+      commit:
+        options:
+          m: msg
+        decide: allow
+expected:
+  decision: allow
+project_dir_files:
+  commands/git.yaml:
+    git:
+      description: Git version control
+      flags:
+        C:
+          arity: 1
+          kind: path
+          description: Run as if git was started in this directory
+      cmds:
+        commit:
+          flags:
+            m|message:
+              arity: 1
+              kind: string
+              description: Commit message

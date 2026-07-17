@@ -11,7 +11,7 @@ AST:
 ```mermaid
 graph TD
   n0["bash"]
-  n1["group<br/>style: brace"]
+  n1["brace_group"]
   n2["binop<br/>op: ;"]
   n3["command<br/>binary: echo<br/>cmd: a"]
   n2 --> n3

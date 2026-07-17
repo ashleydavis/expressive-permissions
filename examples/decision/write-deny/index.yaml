@@ -1,0 +1,16 @@
+description: "file: write to /etc/** deny"
+source_e2e: e2e/file/write-deny/test.yaml
+input:
+  tool_name: Write
+  tool_input:
+    file_path: /etc/hosts
+    content: 127.0.0.1 evil.com
+  cwd: /home/user/project
+rules:
+  write:
+    path: /etc/**
+    decide: deny
+    reason: system files denied
+expected:
+  decision: deny
+  reason: system files denied

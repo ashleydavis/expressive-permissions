@@ -1,0 +1,15 @@
+description: "bash: xargs rm should be denied"
+source_e2e: e2e/bash/bash-xargs-rm-deny/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: xargs rm -f
+  cwd: ${PROJECT_DIR}
+rules: {}
+expected:
+  decision: deny
+home_dir_files:
+  bash-rules.yaml:
+    bash:
+      rm:
+        decide: deny

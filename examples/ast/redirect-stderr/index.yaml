@@ -1,18 +1,21 @@
 tool_call:
-  tool_name: "Bash"
+  tool_name: Bash
   tool_input:
-    command: "cmd 2> err.log"
+    command: cmd 2> err.log
 ast:
-  type: "bash"
-  raw: "cmd 2> err.log"
-  ast:
-    type: "redirect"
-    op: "2>"
+  type: bash
+  source: cmd 2> err.log
+  children:
     command:
-      type: "command"
-      binary: "cmd"
-      options: {}
-      cmd: []
-      envPrefix: {}
-      raw: "cmd 2> err.log"
-    target: "err.log"
+      type: redirect
+      source: cmd 2> err.log
+      children:
+        command:
+          type: command
+          source: cmd 2> err.log
+          commandName: cmd
+          options: {}
+          positionals: []
+          envPrefix: {}
+      op: 2>
+      target: err.log

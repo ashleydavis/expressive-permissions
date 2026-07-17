@@ -1,0 +1,15 @@
+description: "bash: flag absent causes rule to abstain → ask"
+source_e2e: e2e/bash/bash-args-no-match/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: rm dir
+  cwd: /home/user/project
+rules:
+  bash:
+    rm:
+      options:
+        - r
+      decide: deny
+expected:
+  decision: ask

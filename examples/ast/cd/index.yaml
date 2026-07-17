@@ -1,24 +1,28 @@
 tool_call:
-  tool_name: "Bash"
+  tool_name: Bash
   tool_input:
-    command: "cd /tmp && ls"
+    command: cd /tmp && ls
 ast:
-  type: "bash"
-  raw: "cd /tmp && ls"
-  ast:
-    type: "binop"
-    op: "&&"
-    left:
-      type: "command"
-      binary: "cd"
-      options: {}
-      cmd: "/tmp"
-      envPrefix: {}
-      raw: "cd /tmp"
-    right:
-      type: "command"
-      binary: "ls"
-      options: {}
-      cmd: []
-      envPrefix: {}
-      raw: "ls"
+  type: bash
+  source: cd /tmp && ls
+  children:
+    command:
+      type: binop
+      source: cd /tmp && ls
+      children:
+        left:
+          type: command
+          source: cd /tmp
+          commandName: cd
+          options: {}
+          positionals:
+            - /tmp
+          envPrefix: {}
+        right:
+          type: command
+          source: ls
+          commandName: ls
+          options: {}
+          positionals: []
+          envPrefix: {}
+      op: "&&"

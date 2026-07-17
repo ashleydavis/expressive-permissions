@@ -1,22 +1,27 @@
 tool_call:
-  tool_name: "Bash"
+  tool_name: Bash
   tool_input:
-    command: "cmd > out.log 2>&1"
+    command: cmd > out.log 2>&1
 ast:
-  type: "bash"
-  raw: "cmd > out.log 2>&1"
-  ast:
-    type: "redirect"
-    op: "2>&"
+  type: bash
+  source: cmd > out.log 2>&1
+  children:
     command:
-      type: "redirect"
-      op: ">"
-      command:
-        type: "command"
-        binary: "cmd"
-        options: {}
-        cmd: []
-        envPrefix: {}
-        raw: "cmd > out.log 2>&1"
-      target: "out.log"
-    target: "1"
+      type: redirect
+      source: cmd > out.log 2>&1
+      children:
+        command:
+          type: redirect
+          source: cmd > out.log
+          children:
+            command:
+              type: command
+              source: cmd > out.log 2>&1
+              commandName: cmd
+              options: {}
+              positionals: []
+              envPrefix: {}
+          op: ">"
+          target: out.log
+      op: 2>&
+      target: "1"

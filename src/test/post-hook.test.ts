@@ -1,10 +1,12 @@
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "fs";
+import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { spawnSync, SpawnSyncReturns } from "child_process";
 import { resolveJsonLogPath, resolveLogBaseDir } from "../audit-log";
 import { IToolExecutionEntry } from "../audit-log";
-import { resolvePendingDir } from "../pending-prompt-log";
+import { resolvePendingDir, writePendingPrompt } from "../pending-prompt-log";
+import { parse } from "../parse";
+import { IToolCall } from "../types";
 
 // makeTmpDir creates a temporary directory and returns its path.
 function makeTmpDir(): string {
@@ -20,16 +22,6 @@ function makePostStdin(overrides: Record<string, unknown>): string {
         cwd: "/home/user/project",
     };
     return JSON.stringify({ ...base, ...overrides });
-}
-
-// spawnPreHook spawns pre-hook.ts via bun with the given stdin and env, returning the result.
-function spawnPreHook(stdinData: string, env: Record<string, string>): SpawnSyncReturns<string> {
-    const preHookPath = join(__dirname, "..", "pre-hook.ts");
-    return spawnSync("bun", [preHookPath], {
-        input: stdinData,
-        env,
-        encoding: "utf-8",
-    });
 }
 
 // spawnPostHook spawns post-hook.ts via bun with the given stdin and env, returning the result.
@@ -108,24 +100,22 @@ test("runPostHook exits 1 when CLAUDE_PROJECT_DIR is absent", () => {
     expect(result.stderr).toContain("CLAUDE_PROJECT_DIR is not set");
 });
 
-test("runPostHook leaves the pending prompt file in place", () => {
+test("runPostHook leaves the pending prompt file in place", async () => {
     const tmpDir = mkdtempSync(join(tmpdir(), "post-hook-pending-"));
-    mkdirSync(join(tmpDir, ".claude"), { recursive: true });
-    writeFileSync(
-        join(tmpDir, ".claude", "permissions.yaml"),
-        "bash:\n  curl:\n    decide: ask\n    reason: network access requires approval\n",
-        "utf-8"
-    );
     const command = "curl https://example.com";
-    const preInput = JSON.stringify({
+    const call: IToolCall = {
         tool_name: "Bash",
         tool_input: { command },
         cwd: tmpDir,
-    });
+    };
     const env = buildEnv(tmpDir);
     try {
-        const preResult = spawnPreHook(preInput, env);
-        expect(preResult.status).toBe(0);
+        const root = await parse({
+            tool_name: call.tool_name,
+            tool_input: { command },
+            cwd: tmpDir,
+        }, new Map());
+        await writePendingPrompt(tmpDir, call, root, [], "ask", undefined, new Date());
         const pendingFiles = readdirSync(resolvePendingDir(tmpDir)).filter(fileName => fileName.endsWith(".md"));
         expect(pendingFiles.length).toBe(1);
         const pendingPath = join(resolvePendingDir(tmpDir), pendingFiles[0]);

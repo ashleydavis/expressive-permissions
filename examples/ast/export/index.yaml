@@ -1,14 +1,16 @@
 tool_call:
-  tool_name: "Bash"
+  tool_name: Bash
   tool_input:
-    command: "export FOO=bar"
+    command: export FOO=bar
 ast:
-  type: "bash"
-  raw: "export FOO=bar"
-  ast:
-    type: "command"
-    binary: "export"
-    options: {}
-    cmd: "FOO=bar"
-    envPrefix: {}
-    raw: "export FOO=bar"
+  type: bash
+  source: export FOO=bar
+  children:
+    command:
+      type: command
+      source: export FOO=bar
+      commandName: export
+      options: {}
+      positionals:
+        - FOO=bar
+      envPrefix: {}

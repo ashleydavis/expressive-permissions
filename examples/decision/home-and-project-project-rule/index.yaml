@@ -1,0 +1,17 @@
+description: "both configs loaded simultaneously: rule from project config allows ls"
+source_e2e: e2e/integration/home-and-project-project-rule/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: ls /tmp
+  cwd: /home/user/project
+rules:
+  bash:
+    ls:
+      decide: allow
+expected:
+  decision: allow
+home_rules:
+  bash:
+    cat:
+      decide: allow

@@ -1,0 +1,18 @@
+description: "bash: a variable set with export is persistent, so $G in a later
+  command is expanded before cmd matching"
+source_e2e: e2e/bash/bash-env-var-export-expanded/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: export G=/tmp/out.log; sed -i 's/a/b/' "$G"
+  cwd: /home/user/outside-the-project
+rules:
+  bash:
+    sed:
+      cmd-in:
+        - /tmp/**
+      decide: allow
+      reason: sed within /tmp
+expected:
+  decision: allow
+  reason: set environment variable; sed within /tmp

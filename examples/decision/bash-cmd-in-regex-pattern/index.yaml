@@ -1,0 +1,16 @@
+description: "bash: /regex/ pattern in cmd-in field"
+input:
+  tool_name: Bash
+  tool_input:
+    command: awk 'BEGIN{system("id")}'
+  cwd: /home/user/project
+rules:
+  bash:
+    awk:
+      cmd-in:
+        - /system *\(/
+      decide: deny
+      reason: awk system() calls blocked
+expected:
+  decision: deny
+  reason: awk system() calls blocked

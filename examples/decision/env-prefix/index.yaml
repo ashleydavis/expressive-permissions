@@ -1,0 +1,16 @@
+description: "integration: FOO=bar cmd — env prefix visible to same-command rule"
+source_e2e: e2e/integration/env-prefix/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: NODE_ENV=test npm test
+  cwd: /home/user/project
+rules:
+  bash:
+    npm:
+      test:
+        env:
+          NODE_ENV: test
+        decide: allow
+expected:
+  decision: allow

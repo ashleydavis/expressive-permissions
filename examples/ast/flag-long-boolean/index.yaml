@@ -4,13 +4,15 @@ tool_call:
     command: rm --recursive --force /tmp
 ast:
   type: bash
-  raw: rm --recursive --force /tmp
-  ast:
-    type: command
-    binary: rm
-    options:
-      recursive: true
-      force: true
-    cmd: /tmp
-    envPrefix: {}
-    raw: rm --recursive --force /tmp
+  source: rm --recursive --force /tmp
+  children:
+    command:
+      type: command
+      source: rm --recursive --force /tmp
+      commandName: rm
+      options:
+        recursive: true
+        force: true
+      positionals:
+        - /tmp
+      envPrefix: {}

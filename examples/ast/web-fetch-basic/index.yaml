@@ -1,0 +1,8 @@
+tool_call:
+  tool_name: WebFetch
+  tool_input:
+    url: https://example.com
+ast:
+  type: webfetch
+  source: WebFetch https://example.com
+  url: https://example.com

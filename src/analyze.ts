@@ -1,8 +1,8 @@
-import { CapturingAuditLogger, IAuditLogEntry, IAuditLogger } from "./audit-log";
-import { loadHomeConfigRules, loadProjectConfigRules, discoverHomeConfigDirFiles, discoverProjectConfigDirFiles, makeConfigFileLoader } from "./load-config";
-import { RuleLayer, FileLayer, IRuleLayer, RuleRegistry } from "./rule-registry";
-import { builtinRules } from "./rules";
-import { decide } from "./interpret";
+import { CapturingAuditLogger, IAuditLogEntry } from "./audit-log";
+import { decide } from "./decision";
+import { load } from "./load";
+import { parse } from "./parse";
+import { IAstNode } from "./ast";
 import { IToolCall } from "./types";
 import { loadCommandDescriptors } from "./load-commands";
 
@@ -55,49 +55,35 @@ export function parseToolCallInput(input: string, cwd: string): IToolCall {
     return { tool_name: "Bash", tool_input: { command: input }, cwd };
 }
 
-// buildAnalysisRegistry constructs a RuleRegistry with three layers: built-in rules,
-// home config rules, and project config rules. Sets CLAUDE_PROJECT_DIR in process.env
-// to projectDir before calling loaders, then restores the original value.
-export function buildAnalysisRegistry(projectDir: string, logger: IAuditLogger): RuleRegistry {
-    const originalProjectDir = process.env["CLAUDE_PROJECT_DIR"];
-    process.env["CLAUDE_PROJECT_DIR"] = projectDir;
+// parseToolCallToAst converts a hook tool call into a parsed AST node.
+export async function parseToolCallToAst(call: IToolCall, homeDir: string, projectDir: string): Promise<IAstNode> {
 
-    const layers: IRuleLayer[] = [
-        new RuleLayer(builtinRules),
-        new FileLayer(loadHomeConfigRules, "~/.claude/permissions.yaml", logger),
-    ];
-    for (const homeDropInSource of discoverHomeConfigDirFiles()) {
-        layers.push(new FileLayer(makeConfigFileLoader(homeDropInSource), homeDropInSource.displayPath, logger));
+    const newToolInput: Record<string, string> = {};
+    for (const [key, value] of Object.entries(call.tool_input)) {
+        if (typeof value === "string") {
+            newToolInput[key] = value;
+        }
     }
-    layers.push(new FileLayer(loadProjectConfigRules, ".claude/permissions.yaml", logger));
-    for (const projectDropInSource of discoverProjectConfigDirFiles()) {
-        layers.push(new FileLayer(makeConfigFileLoader(projectDropInSource), projectDropInSource.displayPath, logger));
-    }
-    const registry = new RuleRegistry(layers);
-
-    if (originalProjectDir === undefined) {
-        delete process.env["CLAUDE_PROJECT_DIR"];
-    }
-    else {
-        process.env["CLAUDE_PROJECT_DIR"] = originalProjectDir;
-    }
-
-    return registry;
+    const descriptors = await loadCommandDescriptors(homeDir, projectDir);
+    return parse({
+        tool_name: call.tool_name,
+        tool_input: newToolInput,
+        cwd: call.cwd,
+    }, descriptors);
 }
 
-// analyzePermission parses the input string into a ToolCall, builds a fresh registry
-// for projectDir, loads command descriptors, runs decide(), and returns the decision,
-// reason, and full trace.
+// analyzePermission parses the input string into a ToolCall, loads rules, runs decide(),
+// and returns the decision, reason, and captured evaluation trace.
 export async function analyzePermission(input: string, cwd: string, projectDir: string, homeDir: string): Promise<IAnalysisResult> {
-    const logger = new CapturingAuditLogger();
-    const registry = buildAnalysisRegistry(projectDir, logger);
     const toolCall = parseToolCallInput(input, cwd);
-    const descriptors = await loadCommandDescriptors(homeDir, projectDir);
-    const { decision } = decide(toolCall, logger, registry, descriptors);
-
+    const ast = await parseToolCallToAst(toolCall, homeDir, projectDir);
+    const capturingLogger = new CapturingAuditLogger();
+    const rules = await load(projectDir, homeDir, capturingLogger);
+    const startingContext = { cwd: toolCall.cwd, cwdResolved: true, env: {} };
+    const decision = await decide(ast, rules, startingContext, capturingLogger);
     return {
-        decision: decision.action,
-        reason: "reason" in decision ? decision.reason : undefined,
-        trace: logger.getEntries(),
+        decision: decision !== undefined ? decision.action : "ask",
+        reason: decision !== undefined ? decision.reason : undefined,
+        trace: capturingLogger.getEntries(),
     };
 }

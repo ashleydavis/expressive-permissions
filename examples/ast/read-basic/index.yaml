@@ -4,4 +4,5 @@ tool_call:
     file_path: /etc/hosts
 ast:
   type: read
+  source: Read /etc/hosts
   file_path: /etc/hosts

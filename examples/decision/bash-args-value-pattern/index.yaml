@@ -1,0 +1,18 @@
+description: "bash: flag value glob --message=wip* triggers deny"
+source_e2e: e2e/bash/bash-args-value-pattern/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: git commit --message=wip-some-change
+  cwd: /home/user/project
+rules:
+  bash:
+    git:
+      commit:
+        options:
+          message: wip*
+        decide: deny
+        reason: no wip commits
+expected:
+  decision: deny
+  reason: no wip commits

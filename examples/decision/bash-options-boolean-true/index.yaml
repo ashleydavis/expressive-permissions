@@ -1,0 +1,14 @@
+description: "bash options object with boolean true should match flag presence (CONFIGURATION.md Short and long flag forms)"
+input:
+  tool_name: Bash
+  tool_input:
+    command: rm -r /tmp/dir
+  cwd: /home/user/project
+rules:
+  bash:
+    rm:
+      options:
+        r|recursive: true
+      decide: deny
+expected:
+  decision: deny

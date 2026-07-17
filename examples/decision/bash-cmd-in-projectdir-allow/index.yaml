@@ -1,0 +1,16 @@
+description: "bash: cmd-in ${{PROJECT_DIR}}/** expands and matches project paths"
+input:
+  tool_name: Bash
+  tool_input:
+    command: sed s/a/b/ ${PROJECT_DIR}/foo.txt
+  cwd: ${PROJECT_DIR}
+rules:
+  bash:
+    sed:
+      cmd-in:
+        - ${{PROJECT_DIR}}/**
+      decide: allow
+      reason: Allow sed on files within the project directory
+expected:
+  decision: allow
+  reason: Allow sed on files within the project directory

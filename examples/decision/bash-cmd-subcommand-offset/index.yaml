@@ -1,0 +1,15 @@
+description: "bash: positional checked after subcommand offset"
+source_e2e: e2e/bash/bash-cmd-subcommand-offset/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: git log src/index.ts
+  cwd: /home/user/project
+rules:
+  bash:
+    git:
+      log:
+        cmd: src/**
+        decide: allow
+expected:
+  decision: allow

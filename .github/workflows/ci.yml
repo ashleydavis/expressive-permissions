@@ -29,5 +29,8 @@ jobs:
       - name: Smoke tests (bash parser)
         run: bash scripts/smoke-tests-bash-parser.sh
 
+      - name: Smoke tests (decision examples)
+        run: bash scripts/smoke-tests-decision.sh
+
       - name: Smoke tests (hook sanity)
         run: bash scripts/hook-smoke-tests.sh

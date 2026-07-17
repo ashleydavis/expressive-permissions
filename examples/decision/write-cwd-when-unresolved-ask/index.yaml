@@ -1,0 +1,17 @@
+description: "write: cwd rule does not match when cwd tracking is unresolved"
+input:
+  tool_name: Write
+  tool_input:
+    file_path: /home/user/project/secrets.txt
+    content: leaked
+  cwd: /home/user/project
+  cwd_resolved: false
+rules:
+  write:
+    - cwd: /home/user/**
+      rules:
+        - path: "**/secrets.txt"
+          decide: deny
+          reason: secrets in known dir
+expected:
+  decision: ask

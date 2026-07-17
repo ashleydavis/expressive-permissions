@@ -1,16 +1,18 @@
 tool_call:
-  tool_name: "Bash"
+  tool_name: Bash
   tool_input:
-    command: "ls -la /tmp"
+    command: ls -la /tmp
 ast:
-  type: "bash"
-  raw: "ls -la /tmp"
-  ast:
-    type: "command"
-    binary: "ls"
-    options:
-      l: true
-      a: true
-    cmd: "/tmp"
-    envPrefix: {}
-    raw: "ls -la /tmp"
+  type: bash
+  source: ls -la /tmp
+  children:
+    command:
+      type: command
+      source: ls -la /tmp
+      commandName: ls
+      options:
+        l: true
+        a: true
+      positionals:
+        - /tmp
+      envPrefix: {}

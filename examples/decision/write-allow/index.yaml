@@ -1,0 +1,14 @@
+description: "file: write path allow"
+source_e2e: e2e/file/write-allow/test.yaml
+input:
+  tool_name: Write
+  tool_input:
+    file_path: /home/user/project/output.txt
+    content: hello
+  cwd: /home/user/project
+rules:
+  write:
+    path: /home/**
+    decide: allow
+expected:
+  decision: allow

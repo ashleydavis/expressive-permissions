@@ -2,7 +2,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EXAMPLES_DIR="$SCRIPT_DIR/../examples/ast"
-CHECK_SCRIPT="$SCRIPT_DIR/../scripts/check-ast-example.ts"
+CHECK_SCRIPT="$SCRIPT_DIR/check-example.ts"
 
 passed=0
 failed=0
@@ -11,7 +11,7 @@ for yaml_file in "$EXAMPLES_DIR"/*/index.yaml; do
     [ -f "$yaml_file" ] || continue
     name=$(basename "$(dirname "$yaml_file")")
 
-    if error_output=$(bun "$CHECK_SCRIPT" "$yaml_file" 2>&1); then
+    if error_output=$(bun "$CHECK_SCRIPT" "$name" 2>&1); then
         printf "PASS  %s\n" "$name"
         passed=$((passed + 1))
     else

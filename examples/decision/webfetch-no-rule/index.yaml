@@ -1,0 +1,10 @@
+description: "webfetch: no rule defaults to ask"
+source_e2e: e2e/webfetch/webfetch-no-rule/test.yaml
+input:
+  tool_name: WebFetch
+  tool_input:
+    url: https://example.com/data
+  cwd: /home/user/project
+rules: {}
+expected:
+  decision: ask

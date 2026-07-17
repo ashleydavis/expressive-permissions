@@ -1,0 +1,26 @@
+description: "bash not: cmd-in has no positional path → not condition does not match → rule fires (allow)"
+source_e2e: e2e/bash/bash-gh-run-view-sed-pipeline-allow/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: "sed -e '750,800p'"
+  cwd: /home/user/project
+rules:
+  bash:
+    sed:
+      - not:
+          cmd-in:
+            - "**"
+        decide: allow
+        reason: sed with no file path positional (stdin only)
+expected:
+  decision: allow
+project_dir_files:
+  commands/sed.yaml:
+    sed:
+      description: Stream editor
+      flags:
+        e|expression:
+          arity: 1
+          kind: string
+          description: Script expression

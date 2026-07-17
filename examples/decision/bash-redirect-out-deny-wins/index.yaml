@@ -1,0 +1,19 @@
+description: "redirect.out: deny beats allow on redirect target"
+source_e2e: e2e/bash/bash-redirect-out-deny-wins/test.yaml
+input:
+  tool_name: Bash
+  tool_input:
+    command: echo hi > /etc/shadow
+  cwd: ${PROJECT_DIR}
+rules:
+  redirect:
+    out:
+      - path: /etc/**
+        decide: deny
+      - path-in:
+          - /tmp/**
+          - ./**
+        decide: allow
+      - decide: ask
+expected:
+  decision: deny

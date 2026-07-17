@@ -2,9 +2,6 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { parseToolCallInput, analyzePermission } from "../analyze";
-import { RuleLayer, RuleRegistry } from "../rule-registry";
-import { IRule, ABSTAIN, IRuleOutcome, AstNode, IEnvironment, IToolCall } from "../types";
-import { NullAuditLogger } from "../audit-log";
 
 // makeTmpProjectDir creates a temp directory with a .claude/ subdirectory and optional
 // permissions.yaml content, returning the project dir path.
@@ -81,7 +78,7 @@ test("parseToolCallInput prefixes are case-insensitive", () => {
 // analyzePermission
 // ---------------------------------------------------------------------------
 
-test("analyzePermission with allow rule for git returns decision=allow with rule_match trace", async () => {
+test("analyzePermission with allow rule for git returns decision=allow", async () => {
     const projectDir = makeTmpProjectDir(`
 bash:
   git:
@@ -90,17 +87,38 @@ bash:
     try {
         const result = await analyzePermission("git status", "/project", projectDir, tmpdir());
         expect(result.decision).toBe("allow");
-        const ruleMatchEntries = result.trace.filter(
-            (entry) => entry.type === "rule_match"
-        );
-        expect(ruleMatchEntries.length).toBeGreaterThan(0);
+        expect(result.trace.some((entry) => entry.type === "rule_match")).toBe(true);
+        expect(result.trace.some((entry) => entry.type === "aggregation")).toBe(true);
     }
     finally {
         rmSync(projectDir, { recursive: true, force: true });
     }
 });
 
-test("analyzePermission with no matching rules returns decision=ask with no_rule_match trace", async () => {
+test("analyzePermission includes config_load entries in the trace", async () => {
+    const projectDir = makeTmpProjectDir(`
+bash:
+  ls:
+    - decide: allow
+`);
+    const emptyHomeDir = mkdtempSync(join(tmpdir(), "analyze-test-home-"));
+    try {
+        const result = await analyzePermission("ls", "/project", projectDir, emptyHomeDir);
+        const configEntries = result.trace.filter((entry) => entry.type === "config_load");
+        expect(configEntries).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ type: "config_load", filePath: "~/.claude/permissions.yaml", ruleCount: 0 }),
+                expect.objectContaining({ type: "config_load", filePath: ".claude/permissions.yaml", ruleCount: 1 }),
+            ])
+        );
+    }
+    finally {
+        rmSync(emptyHomeDir, { recursive: true, force: true });
+        rmSync(projectDir, { recursive: true, force: true });
+    }
+});
+
+test("analyzePermission with no matching rules returns decision=ask", async () => {
     const projectDir = makeTmpProjectDir();
     const emptyHomeDir = mkdtempSync(join(tmpdir(), "analyze-test-home-"));
     const savedHome = process.env["HOME"];
@@ -108,10 +126,7 @@ test("analyzePermission with no matching rules returns decision=ask with no_rule
     try {
         const result = await analyzePermission("ls /tmp", "/project", projectDir, tmpdir());
         expect(result.decision).toBe("ask");
-        const noMatchEntries = result.trace.filter(
-            (entry) => entry.type === "no_rule_match"
-        );
-        expect(noMatchEntries.length).toBeGreaterThan(0);
+        expect(result.trace.some((entry) => entry.type === "no_rule_match")).toBe(true);
     }
     finally {
         if (savedHome !== undefined) {
@@ -142,17 +157,17 @@ bash:
     }
 });
 
-test("analyzePermission honours a project permissions.d/aws.yaml drop-in deny rule and logs config_load for it", async () => {
+test("analyzePermission honours a project permissions.d/aws.yaml deny rule", async () => {
     const projectDir = makeTmpProjectDir(`
 bash:
   ls:
     decide: allow
 `);
-    const dropInDir = join(projectDir, ".claude", "permissions.d");
-    mkdirSync(dropInDir, { recursive: true });
+    const permissionsDir = join(projectDir, ".claude", "permissions.d");
+    mkdirSync(permissionsDir, { recursive: true });
     writeFileSync(
-        join(dropInDir, "aws.yaml"),
-        "bash:\n  aws:\n    decide: deny\n    reason: aws blocked by drop-in\n",
+        join(permissionsDir, "aws.yaml"),
+        "bash:\n  aws:\n    decide: deny\n    reason: aws blocked by permissions.d\n",
         "utf-8"
     );
     const emptyHomeDir = mkdtempSync(join(tmpdir(), "analyze-test-home-"));
@@ -161,10 +176,8 @@ bash:
     try {
         const result = await analyzePermission("aws s3 ls", "/project", projectDir, tmpdir());
         expect(result.decision).toBe("deny");
-        expect(result.reason).toBe("aws blocked by drop-in");
-        const configLoads = result.trace.filter((entry) => entry.type === "config_load");
-        const matchedDropInLoad = configLoads.find((entry) => entry.filePath === ".claude/permissions.d/aws.yaml");
-        expect(matchedDropInLoad).toBeDefined();
+        expect(result.reason).toBe("aws blocked by permissions.d");
+        expect(result.trace.some((entry) => entry.type === "rule_match")).toBe(true);
     }
     finally {
         if (savedHome !== undefined) {
@@ -174,6 +187,30 @@ bash:
             delete process.env["HOME"];
         }
         rmSync(emptyHomeDir, { recursive: true, force: true });
+        rmSync(projectDir, { recursive: true, force: true });
+    }
+});
+
+test("analyzePermission returns ask for ls", async () => {
+    const projectDir = makeTmpProjectDir("{}");
+    try {
+        const result = await analyzePermission("ls", "/project", projectDir, tmpdir());
+        expect(result.decision).toBe("ask");
+        expect(result.trace.some((entry) => entry.type === "no_rule_match")).toBe(true);
+    }
+    finally {
+        rmSync(projectDir, { recursive: true, force: true });
+    }
+});
+
+test("analyzePermission returns ask for ls -l", async () => {
+    const projectDir = makeTmpProjectDir("{}");
+    try {
+        const result = await analyzePermission("ls -l", "/project", projectDir, tmpdir());
+        expect(result.decision).toBe("ask");
+        expect(result.trace.some((entry) => entry.type === "no_rule_match")).toBe(true);
+    }
+    finally {
         rmSync(projectDir, { recursive: true, force: true });
     }
 });
